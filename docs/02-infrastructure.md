@@ -1,6 +1,6 @@
 # Phase 1: 인프라 구축
 
-> **기간:** 2025.02.12 ~  
+> **기간:** 2025.02.12  
 > **목표:** MySQL(CDC Source) + Kafka 3-Broker 클러스터를 16GB 메모리 제약 안에서 구축하고, 안정성을 검증한다.
 
 ---
@@ -189,6 +189,7 @@ Zookeeper는 Kafka 클러스터의 메타데이터(Broker 목록, Topic 설정, 
 - 웹 브라우저에서 Broker 상태, Topic 목록, 메시지 내용을 실시간 확인 가능
 - 이후 Cloudflare Tunnel로 외부 접근 시, 면접관에게 보여줄 수 있는 관리 화면
 - 메모리 384MB 제한으로 가볍게 운영
+- 포트: 8088 (기존 n8n이 8080을 사용 중이어서 변경)
 
 ---
 
@@ -197,34 +198,178 @@ Zookeeper는 Kafka 클러스터의 메타데이터(Broker 목록, Topic 설정, 
 전체 16GB 중 Phase 1 인프라가 사용하는 메모리:
 
 ```
-컴포넌트         Docker 제한    예상 실제 사용
+컴포넌트         Docker 제한    실제 측정값
 ─────────────────────────────────────────────
-MySQL            1GB            ~600MB
-Zookeeper        384MB          ~150MB
-Kafka Broker ×3  768MB × 3      ~400MB × 3
-Kafka UI         384MB          ~200MB
+MySQL            1GB            395MB
+Zookeeper        384MB          75MB
+Kafka Broker ×3  768MB × 3      305~312MB × 3
+Kafka UI         384MB          184MB
 ─────────────────────────────────────────────
-합계             ~4.7GB         ~2.5GB
+합계             ~4.7GB         ~1.58GB
 ```
 
-시스템 전체 16GB 중 약 2.5GB를 사용하고, Phase 2 이후 추가될 Debezium(512MB), Flink(1.5GB), ClickHouse(2GB), Grafana(256MB) 등을 고려하면 총 ~7GB 예상. **약 9GB의 여유**가 있어 OS 캐시와 예비 공간으로 충분하다.
+시스템 전체 16GB 중 약 1.58GB를 사용한다. Phase 2 이후 추가될 Debezium(512MB), Flink(1.5GB), ClickHouse(2GB), Grafana(256MB) 등을 고려하면 총 ~6~7GB 예상. 약 9~10GB의 여유가 있어 OS 캐시와 예비 공간으로 충분하다.
 
 ---
 
 ## 5. 검증 결과
 
-### 5.1 MySQL binlog 검증
+### 5.1 MySQL binlog 검증 (Day 1)
 
-(Day 1에서 수행)
+```
+log_bin          = ON
+binlog_format    = ROW
+binlog_row_image = FULL
+gtid_mode        = ON
+```
 
-### 5.2 Kafka 클러스터 검증
+debezium 유저 권한 확인 완료. orders 테이블 테스트 데이터 3건 정상 조회.
 
-(Day 2에서 수행 후 업데이트 예정)
+### 5.2 Kafka 클러스터 검증 (Day 2)
 
-### 5.3 통합 메모리 측정
+테스트 토픽 `test-phase1`을 생성하여 검증:
 
-(Day 3에서 수행 후 업데이트 예정)
+```
+Topic: test-phase1  Partitions: 3  Replication Factor: 3
+  Partition 0  Leader: 2  Replicas: 2,3,1  Isr: 2,3,1
+  Partition 1  Leader: 3  Replicas: 3,1,2  Isr: 3,1,2
+  Partition 2  Leader: 1  Replicas: 1,2,3  Isr: 1,2,3
+```
 
-### 5.4 Broker 장애 복구 테스트
+- 3개 Broker 모두 ISR(In-Sync Replica)에 포함 ✅
+- Leader가 Broker 1, 2, 3에 골고루 분산 ✅
+- `min.insync.replicas=2` 설정 적용 확인 ✅
+- Producer → Consumer 메시지 전달 정상 확인 ✅
 
-(Day 3에서 수행 후 업데이트 예정)
+### 5.3 재시작 복원 테스트 (Day 3)
+
+`docker compose down` → `docker compose up -d` 후:
+
+- 6개 컨테이너 전부 정상 기동 ✅
+- MySQL 볼륨 데이터 보존 확인 (orders 테이블 3건 유지) ✅
+
+### 5.4 Broker 장애 복구 테스트 (Day 3)
+
+**시나리오:** Broker 3을 강제 종료(`docker stop`)한 후 클러스터 동작을 확인하고, 이후 복구하여 ISR이 원래대로 돌아오는지 검증한다.
+
+**① 정상 상태 (장애 전)**
+```
+Partition 0  Leader: 2  Isr: 2,3,1
+Partition 1  Leader: 3  Isr: 3,1,2
+Partition 2  Leader: 1  Isr: 1,2,3
+```
+3개 Broker 모두 ISR에 포함. 모든 파티션이 완전 복제 상태.
+
+**② Broker 3 강제 종료 후**
+```
+Partition 0  Leader: 2  Isr: 2,1
+Partition 1  Leader: 1  Isr: 1,2     ← Leader가 3에서 1로 자동 전환
+Partition 2  Leader: 1  Isr: 1,2
+```
+
+확인된 사항:
+- ISR에서 Broker 3이 제거됨 → 정상 (죽은 Broker는 동기화 불가)
+- Partition 1의 Leader가 Broker 3 → Broker 1로 **자동 재선출** → 정상
+- 나머지 2대(Broker 1, 2)로 클러스터가 계속 동작
+
+**③ 장애 중 메시지 전달**
+
+Broker 다운 직후 Producer가 메시지를 전송하면, 리더 재선출 과도기(수 초)에 Producer가 새 리더를 찾지 못해 메시지 커밋이 실패할 수 있다. 이번 테스트에서 장애 직후 전송한 메시지는 커밋되지 않았다.
+
+이는 `acks=all` + `min.insync.replicas=2` 설정에서 예상 가능한 동작이다. 프로덕션 환경에서는 Producer 설정에 `retries`와 `retry.backoff.ms`를 추가하여 과도기를 넘기도록 한다.
+
+장애 상태가 안정된 후(리더 재선출 완료) 전송한 메시지는 정상적으로 전달되었다:
+```
+test-1
+test-2
+test-3
+Processed a total of 3 messages
+```
+
+**④ Broker 3 복구 후**
+```
+Partition 0  Leader: 2  Isr: 2,1,3
+Partition 1  Leader: 1  Isr: 1,2,3
+Partition 2  Leader: 1  Isr: 1,2,3
+```
+Broker 3이 ISR에 다시 합류. 약 60초 이내에 복구 완료.
+
+**⑤ 장애 테스트 결론**
+
+| 항목 | 결과 |
+|------|------|
+| Broker 1대 다운 시 클러스터 가용성 | 유지됨 ✅ |
+| Leader 자동 재선출 | 정상 동작 ✅ |
+| 장애 직후 과도기 메시지 전달 | 리더 재선출 중 일시적 실패 (예상된 동작) |
+| 장애 안정화 후 메시지 전달 | 정상 ✅ |
+| Broker 복구 후 ISR 재합류 | ~60초 이내 복구 ✅ |
+| 데이터 유실 | 없음 ✅ |
+
+---
+
+## 6. 트러블슈팅
+
+### 6.1 Kafka Cluster ID 불일치
+
+**증상:**
+```
+kafka.common.InconsistentClusterIdException: 
+The Cluster ID Gg0YLaCaRNmYWWnhG1sHQA doesn't match 
+stored clusterId Some(lKc4F836TxufcYSvvAOeVw) in meta.properties.
+```
+
+Kafka Broker가 재시작 루프에 빠지며 `Restarting` 상태가 반복됨.
+
+**원인:**
+
+`docker compose down`은 컨테이너를 삭제하지만 Docker Volume은 삭제하지 않는다. Zookeeper는 별도 볼륨을 지정하지 않았으므로 컨테이너와 함께 데이터가 사라져 새로운 Cluster ID를 생성했다. 반면 Kafka Broker 볼륨(`kafka1_data` 등)은 보존되어 이전 Cluster ID를 가지고 있었다. 새 Zookeeper의 Cluster ID와 기존 Kafka 볼륨의 Cluster ID가 달라서 Broker가 "잘못된 클러스터에 참여하려 한다"고 판단하고 종료한 것이다.
+
+**해결:**
+```bash
+docker compose down
+docker volume rm cdc-realtime-pipeline_kafka1_data \
+                 cdc-realtime-pipeline_kafka2_data \
+                 cdc-realtime-pipeline_kafka3_data
+docker compose up -d
+```
+
+**교훈:**
+
+Zookeeper와 Kafka 볼륨의 생명주기를 일치시켜야 한다. 향후 Zookeeper에도 명시적 볼륨을 지정하거나, 정리 시 전체 볼륨을 함께 삭제하는 스크립트를 사용해야 한다.
+
+### 6.2 Kafka UI 포트 충돌
+
+**증상:** `failed to bind host port 0.0.0.0:8080/tcp: address already in use`
+
+**원인:** 기존에 운영 중인 n8n이 8080 포트를 사용 중이었다.
+
+**해결:** Kafka UI 포트를 `8088:8080`으로 변경.
+
+### 6.3 kafka-console-consumer의 ERROR 로그
+
+**증상:**
+```
+ERROR Error processing message, terminating consumer process
+org.apache.kafka.common.errors.TimeoutException
+Processed a total of 3 messages
+```
+
+**원인:** `--timeout-ms 5000` 옵션으로 Consumer를 실행하면, 5초간 새 메시지가 없을 때 `TimeoutException`으로 종료된다. Kafka CLI 도구가 이 정상적인 종료를 `ERROR` 레벨로 출력하는 것은 CLI의 로깅 수준 문제이며, 클러스터 에러가 아니다.
+
+**판단 기준:** 마지막 줄의 `Processed a total of N messages`에서 N이 예상 값과 일치하면 정상 동작이다.
+
+---
+
+## 7. Phase 1 → Phase 2 연결점
+
+Phase 1이 완료되면 Phase 2에서 바로 연결할 수 있도록 다음이 준비된 상태다:
+
+| 준비 항목 | 상태 | Phase 2에서의 용도 |
+|-----------|------|-------------------|
+| MySQL binlog 활성화 | ✅ | Debezium Connector가 binlog 이벤트를 읽음 |
+| debezium 전용 유저 | ✅ | Debezium이 MySQL에 접속할 때 사용 |
+| Kafka 3-Broker 클러스터 | ✅ | Debezium이 CDC 이벤트를 발행할 토픽 자동 생성 |
+| Docker Network (cdc-network) | ✅ | Debezium 컨테이너를 같은 네트워크에 추가 |
+| orders/order_executions 테이블 | ✅ | INSERT/UPDATE/DELETE로 CDC 이벤트 생성 테스트 |
+
+Phase 2 첫 단계: `docker-compose.yml`에 Kafka Connect(Debezium) 컨테이너 추가 → Connector 등록 → orders 테이블에 INSERT → Kafka Topic에서 CDC 이벤트 확인
