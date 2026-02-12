@@ -1,0 +1,8 @@
+.env
+mysql_data/
+kafka*_data/
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.log

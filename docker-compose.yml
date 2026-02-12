@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: cdc-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./mysql/my.cnf:/etc/mysql/conf.d/custom.cnf
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    command: >
+      --server-id=1
+      --log-bin=mysql-bin
+      --binlog-format=ROW
+      --binlog-row-image=FULL
+      --expire-logs-days=3
+      --max-binlog-size=100M
+      --gtid-mode=ON
+      --enforce-gtid-consistency=ON
+    networks:
+      - cdc-network
+
+networks:
+  cdc-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
