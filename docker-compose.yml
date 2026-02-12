@@ -267,6 +267,59 @@ services:
     networks:
       - cdc-network
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1
+    container_name: cdc-clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    environment:
+      CLICKHOUSE_DB: cdc_pipeline
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - cdc-network
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: cdc-grafana
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: cdc_grafana_2025
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - cdc-network
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: cdc-kafka-ui
@@ -307,3 +360,5 @@ volumes:
   kafka3_data:
   flink_checkpoints:
   flink_savepoints:
+  clickhouse_data:
+  grafana_data:
