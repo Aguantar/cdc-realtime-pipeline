@@ -27,6 +27,12 @@ services:
       --max-binlog-size=100M
       --gtid-mode=ON
       --enforce-gtid-consistency=ON
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - cdc-network
 
@@ -40,6 +46,9 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
       KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
     deploy:
       resources:
         limits:
@@ -75,6 +84,12 @@ services:
           memory: 768M
     volumes:
       - kafka1_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka-1:29092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - cdc-network
 
@@ -106,6 +121,12 @@ services:
           memory: 768M
     volumes:
       - kafka2_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka-2:29093"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - cdc-network
 
@@ -137,6 +158,12 @@ services:
           memory: 768M
     volumes:
       - kafka3_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka-3:29094"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - cdc-network
 
@@ -145,10 +172,14 @@ services:
     container_name: cdc-kafka-connect
     restart: unless-stopped
     depends_on:
-      - kafka-1
-      - kafka-2
-      - kafka-3
-      - mysql
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
     ports:
       - "8083:8083"
     environment:
@@ -172,14 +203,81 @@ services:
     networks:
       - cdc-network
 
+  flink-jobmanager:
+    image: flink:1.18-java11
+    container_name: cdc-flink-jobmanager
+    restart: unless-stopped
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 768m
+        state.backend: rocksdb
+        state.checkpoints.dir: file:///opt/flink/checkpoints
+        state.savepoints.dir: file:///opt/flink/savepoints
+        execution.checkpointing.interval: 60000
+        execution.checkpointing.mode: EXACTLY_ONCE
+        restart-strategy: fixed-delay
+        restart-strategy.fixed-delay.attempts: 3
+        restart-strategy.fixed-delay.delay: 10s
+    user: "0"
+    volumes:
+      - flink_checkpoints:/opt/flink/checkpoints
+      - flink_savepoints:/opt/flink/savepoints
+      - ./flink/target:/opt/flink/usrlib
+    deploy:
+      resources:
+        limits:
+          memory: 896M
+    networks:
+      - cdc-network
+
+  flink-taskmanager:
+    image: flink:1.18-java11
+    container_name: cdc-flink-taskmanager
+    restart: unless-stopped
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.memory.process.size: 1g
+        taskmanager.numberOfTaskSlots: 2
+        state.backend: rocksdb
+        state.checkpoints.dir: file:///opt/flink/checkpoints
+        state.savepoints.dir: file:///opt/flink/savepoints
+    user: "0"
+    volumes:
+      - flink_checkpoints:/opt/flink/checkpoints
+      - flink_savepoints:/opt/flink/savepoints
+    deploy:
+      resources:
+        limits:
+          memory: 1280M
+    networks:
+      - cdc-network
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: cdc-kafka-ui
     restart: unless-stopped
     depends_on:
-      - kafka-1
-      - kafka-2
-      - kafka-3
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
     ports:
       - "8088:8080"
     environment:
@@ -202,6 +300,10 @@ networks:
 
 volumes:
   mysql_data:
+  zookeeper_data:
+  zookeeper_log:
   kafka1_data:
   kafka2_data:
   kafka3_data:
+  flink_checkpoints:
+  flink_savepoints:
