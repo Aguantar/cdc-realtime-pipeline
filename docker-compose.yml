@@ -81,7 +81,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1280M
     volumes:
       - kafka1_data:/var/lib/kafka/data
     healthcheck:
@@ -118,7 +118,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1280M
     volumes:
       - kafka2_data:/var/lib/kafka/data
     healthcheck:
@@ -155,7 +155,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1280M
     volumes:
       - kafka3_data:/var/lib/kafka/data
     healthcheck:
@@ -199,7 +199,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1280M
     networks:
       - cdc-network
 
@@ -283,7 +283,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1280M
     ulimits:
       nofile:
         soft: 262144

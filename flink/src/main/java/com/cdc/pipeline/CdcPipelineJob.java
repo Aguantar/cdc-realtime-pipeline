@@ -6,6 +6,7 @@ import com.cdc.pipeline.function.CdcEventParser;
 import com.cdc.pipeline.model.OrderEvent;
 import com.cdc.pipeline.model.OrderAggResult;
 import com.cdc.pipeline.model.AnomalyAlert;
+import com.cdc.pipeline.sink.ClickHouseSinks;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.connector.kafka.source.KafkaSource;
@@ -23,11 +24,9 @@ import org.slf4j.LoggerFactory;
  * CDC Pipeline Flink Job
  * 
  * Kafka CDC 토픽에서 Debezium 이벤트를 읽어:
- * 1. Raw 이벤트를 파싱하여 OrderEvent로 변환
- * 2. 종목별 5분 윈도우 집계 (주문 건수, 총 금액, 평균 가격)
- * 3. 이상 탐지 (대량 주문, 급격한 가격 변동)
- * 
- * 현재: stdout 출력 (Phase 4에서 ClickHouse Sink 추가)
+ * 1. Raw 이벤트를 파싱하여 OrderEvent로 변환 → ClickHouse raw_orders
+ * 2. 종목별 5분 윈도우 집계 → ClickHouse order_aggregations
+ * 3. 이상 탐지 → ClickHouse anomaly_alerts
  */
 public class CdcPipelineJob {
 
@@ -39,12 +38,17 @@ public class CdcPipelineJob {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(2);
 
-        // 2. Kafka Source 설정
+        // 2. 환경변수에서 설정 읽기
         String bootstrapServers = System.getenv().getOrDefault(
             "KAFKA_BOOTSTRAP_SERVERS", 
             "kafka-1:29092,kafka-2:29093,kafka-3:29094"
         );
+        String clickhouseUrl = System.getenv().getOrDefault(
+            "CLICKHOUSE_URL",
+            "jdbc:clickhouse://clickhouse:8123/cdc_pipeline"
+        );
 
+        // 3. Kafka Source 설정
         KafkaSource<String> kafkaSource = KafkaSource.<String>builder()
                 .setBootstrapServers(bootstrapServers)
                 .setTopics("cdc.orders_db.orders")
@@ -53,13 +57,13 @@ public class CdcPipelineJob {
                 .setValueOnlyDeserializer(new SimpleStringSchema())
                 .build();
 
-        // 3. Source → OrderEvent 파싱
+        // 4. Source → OrderEvent 파싱
         DataStream<OrderEvent> orderEvents = env
                 .fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), "Kafka CDC Source")
                 .flatMap(new CdcEventParser())
                 .name("CDC Event Parser");
 
-        // 4. Stream 1: 종목별 5분 윈도우 집계
+        // 5. Stream 1: 종목별 5분 윈도우 집계 → ClickHouse
         DataStream<OrderAggResult> aggregated = orderEvents
                 .filter(event -> event.getOp() != null)
                 .keyBy(OrderEvent::getSymbol)
@@ -68,8 +72,10 @@ public class CdcPipelineJob {
                 .name("5min Window Aggregation");
 
         aggregated.print("AGG");
+        aggregated.addSink(ClickHouseSinks.aggregationSink(clickhouseUrl))
+                .name("ClickHouse Aggregation Sink");
 
-        // 5. Stream 2: 이상 탐지
+        // 6. Stream 2: 이상 탐지 → ClickHouse
         DataStream<AnomalyAlert> anomalies = orderEvents
                 .filter(event -> "c".equals(event.getOp()) || "u".equals(event.getOp()))
                 .keyBy(OrderEvent::getSymbol)
@@ -77,12 +83,17 @@ public class CdcPipelineJob {
                 .name("Anomaly Detector");
 
         anomalies.print("ALERT");
+        anomalies.addSink(ClickHouseSinks.alertSink(clickhouseUrl))
+                .name("ClickHouse Alert Sink");
 
-        // 6. Stream 3: Raw 이벤트 (ClickHouse용 - Phase 4에서 Sink 추가)
+        // 7. Stream 3: Raw 이벤트 → ClickHouse
         orderEvents.print("RAW");
+        orderEvents.addSink(ClickHouseSinks.rawOrderSink(clickhouseUrl))
+                .name("ClickHouse Raw Order Sink");
 
         LOG.info("=== CDC Pipeline Flink Job Started ===");
         LOG.info("Kafka: {}", bootstrapServers);
+        LOG.info("ClickHouse: {}", clickhouseUrl);
         LOG.info("Topic: cdc.orders_db.orders");
         LOG.info("Parallelism: {}", env.getParallelism());
         LOG.info("Window: 5 minutes (tumbling)");
