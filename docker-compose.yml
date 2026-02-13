@@ -323,6 +323,28 @@ services:
     networks:
       - cdc-network
 
+  upbit-producer:
+    build: ./producer
+    container_name: cdc-upbit-producer
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: cdc-mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: crypto_db
+      BATCH_SIZE: "20"
+      BATCH_INTERVAL_SEC: "2"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks:
+      - cdc-network
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: cdc-kafka-ui

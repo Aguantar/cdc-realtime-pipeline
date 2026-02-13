@@ -1,10 +1,10 @@
 package com.cdc.pipeline;
 
 import com.cdc.pipeline.function.AnomalyDetector;
-import com.cdc.pipeline.function.OrderAggregator;
+import com.cdc.pipeline.function.TradeAggregator;
 import com.cdc.pipeline.function.CdcEventParser;
-import com.cdc.pipeline.model.OrderEvent;
-import com.cdc.pipeline.model.OrderAggResult;
+import com.cdc.pipeline.model.CryptoTradeEvent;
+import com.cdc.pipeline.model.TradeAggResult;
 import com.cdc.pipeline.model.AnomalyAlert;
 import com.cdc.pipeline.sink.ClickHouseSinks;
 
@@ -21,11 +21,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * CDC Pipeline Flink Job
+ * CDC Realtime Pipeline - 암호화폐 체결 데이터
  * 
- * Kafka CDC 토픽에서 Debezium 이벤트를 읽어:
- * 1. Raw 이벤트를 파싱하여 OrderEvent로 변환 → ClickHouse raw_orders
- * 2. 종목별 5분 윈도우 집계 → ClickHouse order_aggregations
+ * Kafka CDC 토픽(cdc.crypto_db.crypto_trades)에서 Debezium 이벤트를 읽어:
+ * 1. Raw 체결 이벤트 → ClickHouse crypto_trades
+ * 2. 마켓별 5분 윈도우 집계 → ClickHouse trade_aggregations
  * 3. 이상 탐지 → ClickHouse anomaly_alerts
  */
 public class CdcPipelineJob {
@@ -40,7 +40,7 @@ public class CdcPipelineJob {
 
         // 2. 환경변수에서 설정 읽기
         String bootstrapServers = System.getenv().getOrDefault(
-            "KAFKA_BOOTSTRAP_SERVERS", 
+            "KAFKA_BOOTSTRAP_SERVERS",
             "kafka-1:29092,kafka-2:29093,kafka-3:29094"
         );
         String clickhouseUrl = System.getenv().getOrDefault(
@@ -51,24 +51,24 @@ public class CdcPipelineJob {
         // 3. Kafka Source 설정
         KafkaSource<String> kafkaSource = KafkaSource.<String>builder()
                 .setBootstrapServers(bootstrapServers)
-                .setTopics("cdc.orders_db.orders")
+                .setTopics("cdc.crypto_db.crypto_trades")
                 .setGroupId("flink-cdc-consumer")
                 .setStartingOffsets(OffsetsInitializer.earliest())
                 .setValueOnlyDeserializer(new SimpleStringSchema())
                 .build();
 
-        // 4. Source → OrderEvent 파싱
-        DataStream<OrderEvent> orderEvents = env
+        // 4. Source → CryptoTradeEvent 파싱
+        DataStream<CryptoTradeEvent> tradeEvents = env
                 .fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), "Kafka CDC Source")
                 .flatMap(new CdcEventParser())
                 .name("CDC Event Parser");
 
-        // 5. Stream 1: 종목별 5분 윈도우 집계 → ClickHouse
-        DataStream<OrderAggResult> aggregated = orderEvents
+        // 5. Stream 1: 마켓별 5분 윈도우 집계 → ClickHouse
+        DataStream<TradeAggResult> aggregated = tradeEvents
                 .filter(event -> event.getOp() != null)
-                .keyBy(OrderEvent::getSymbol)
+                .keyBy(CryptoTradeEvent::getMarket)
                 .window(TumblingProcessingTimeWindows.of(Time.minutes(5)))
-                .aggregate(new OrderAggregator())
+                .aggregate(new TradeAggregator(), new TradeAggregator.WindowEnricher())
                 .name("5min Window Aggregation");
 
         aggregated.print("AGG");
@@ -76,9 +76,9 @@ public class CdcPipelineJob {
                 .name("ClickHouse Aggregation Sink");
 
         // 6. Stream 2: 이상 탐지 → ClickHouse
-        DataStream<AnomalyAlert> anomalies = orderEvents
-                .filter(event -> "c".equals(event.getOp()) || "u".equals(event.getOp()))
-                .keyBy(OrderEvent::getSymbol)
+        DataStream<AnomalyAlert> anomalies = tradeEvents
+                .filter(event -> "c".equals(event.getOp()))
+                .keyBy(CryptoTradeEvent::getMarket)
                 .process(new AnomalyDetector())
                 .name("Anomaly Detector");
 
@@ -86,15 +86,14 @@ public class CdcPipelineJob {
         anomalies.addSink(ClickHouseSinks.alertSink(clickhouseUrl))
                 .name("ClickHouse Alert Sink");
 
-        // 7. Stream 3: Raw 이벤트 → ClickHouse
-        orderEvents.print("RAW");
-        orderEvents.addSink(ClickHouseSinks.rawOrderSink(clickhouseUrl))
-                .name("ClickHouse Raw Order Sink");
+        // 7. Stream 3: Raw 체결 이벤트 → ClickHouse
+        tradeEvents.addSink(ClickHouseSinks.rawTradeSink(clickhouseUrl))
+                .name("ClickHouse Raw Trade Sink");
 
-        LOG.info("=== CDC Pipeline Flink Job Started ===");
+        LOG.info("=== CDC Crypto Pipeline Started ===");
         LOG.info("Kafka: {}", bootstrapServers);
         LOG.info("ClickHouse: {}", clickhouseUrl);
-        LOG.info("Topic: cdc.orders_db.orders");
+        LOG.info("Topic: cdc.crypto_db.crypto_trades");
         LOG.info("Parallelism: {}", env.getParallelism());
         LOG.info("Window: 5 minutes (tumbling)");
 
