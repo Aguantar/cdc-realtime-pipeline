@@ -114,13 +114,13 @@
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "PDEE91DDB90597936" },
       "targets": [{
-        "rawSql": "SELECT if(max(inserted_at) >= now() - INTERVAL 5 MINUTE, 'LIVE', 'STALE') as status FROM cdc_pipeline.crypto_trades",
+        "rawSql": "SELECT if(max(inserted_at) >= now() - INTERVAL 5 MINUTE, 1, 0) as status FROM cdc_pipeline.crypto_trades",
         "refId": "A",
         "format": 1
       }],
       "fieldConfig": {
         "defaults": {
-          "mappings": [{ "type": "value", "options": { "LIVE": { "color": "green", "text": "● LIVE" }, "STALE": { "color": "red", "text": "○ STALE" } } }]
+          "mappings": [{ "type": "value", "options": { "1": { "color": "green", "text": "● LIVE" }, "0": { "color": "red", "text": "○ STALE" } } }]
         }
       },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
