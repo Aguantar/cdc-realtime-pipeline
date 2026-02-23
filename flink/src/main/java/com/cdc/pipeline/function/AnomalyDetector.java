@@ -46,12 +46,12 @@ import org.slf4j.LoggerFactory;
  *    - DOGE 1원 변동(0.73%)은 정상 호가 단위이므로 제외됨
  *
  * 3. VOLUME_SURGE: 거래량 급증 (업비트: 체결관여 과다 대응)
- *    - EMA 대비 50배 이상, 최소 50건 학습 후 판단
+ *    - EMA 대비 150배 이상, 최소 50건 학습 후 판단 (v2: 50배→v3: 150배, p90 기반 조정)
  *    - 학술 근거: EWMA 기반 동적 임계값 (arXiv:2503.08692)
  *
  * 4. RAPID_TRADES: 단기간 다수 체결 (업비트: 단주매매/매매집중 대응)
  *    - 10초 내 같은 마켓에서 100건 이상
- *    - BTC는 정상적으로 50건/10초 가능하므로 100건으로 상향
+ *    - 비활성화: Upbit WebSocket API 전송한계가 ~100건/10초이므로 체결 빈도 기반 탐지 불가
  */
 public class AnomalyDetector
         extends KeyedProcessFunction<String, CryptoTradeEvent, AnomalyAlert> {
@@ -68,11 +68,11 @@ public class AnomalyDetector
     private static final double PRICE_SPIKE_DEFAULT = 0.03;       // 3%
 
     // === 3. VOLUME_SURGE 임계값 (EWMA 기반) ===
-    private static final double VOLUME_SURGE_MULTIPLIER = 50.0;   // EMA 대비 50배
+    private static final double VOLUME_SURGE_MULTIPLIER = 150.0;   // EMA 대비 50배
     private static final long VOLUME_MIN_SAMPLES = 50;            // 최소 50건 학습 후 판단
 
     // === 4. RAPID_TRADES 임계값 ===
-    private static final int RAPID_TRADE_COUNT = 100;             // 10초 내 100건
+    private static final int RAPID_TRADE_COUNT = Integer.MAX_VALUE; // 비활성화: Upbit API 전송한계(~100건/10초)로 의미없음             // 10초 내 100건
     private static final long RAPID_TRADE_WINDOW_MS = 10_000;     // 10초
 
     // Keyed State
