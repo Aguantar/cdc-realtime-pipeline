@@ -28,6 +28,8 @@
 
 > **🔗 Live Dashboard**: [Grafana 로 구현한 실시간 대시보드](https://grafana.calmee.store/d/cdc-pipeline-main/cdc-crypto-realtime-pipeline?orgId=1&refresh=10s)
 
+![Grafana Dashboard](docs/images/grafana-dashboard.png)
+
 ### 대시보드 레이아웃
 
 ```
@@ -182,6 +184,8 @@
 
 ## 🔔 n8n 자동 알림 시스템
 
+![n8n Workflow](docs/images/n8n-workflow.png)
+
 ### 아키텍처
 
 ```
@@ -221,6 +225,14 @@
 | **🔴 CDC 파이프라인 장애** | 최근 5분간 데이터 0건 | Slack + Gmail | 파이프라인 중단, 복구 가이드 포함 |
 
 ### 알림 메시지 예시
+
+**Slack 알림**
+
+![Slack Alert](docs/images/slack-alert.png)
+
+**Gmail 알림**
+
+![Gmail Alert](docs/images/gmail-alert.png)
 
 **FDS 이상거래 탐지 (Slack)**
 
