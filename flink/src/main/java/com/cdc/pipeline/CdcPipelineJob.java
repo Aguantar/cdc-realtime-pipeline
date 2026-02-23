@@ -53,7 +53,7 @@ public class CdcPipelineJob {
                 .setBootstrapServers(bootstrapServers)
                 .setTopics("cdc.crypto_db.crypto_trades")
                 .setGroupId("flink-cdc-consumer")
-                .setStartingOffsets(OffsetsInitializer.earliest())
+                .setStartingOffsets(OffsetsInitializer.latest())
                 .setValueOnlyDeserializer(new SimpleStringSchema())
                 .build();
 
