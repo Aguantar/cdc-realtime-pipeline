@@ -7,7 +7,7 @@
         "database.hostname": "cdc-mysql",
         "database.port": "3306",
         "database.user": "debezium",
-        "database.password": "dbz_pass_2025",
+        "database.password": "${MYSQL_PASSWORD}",
         "database.server.id": "184054",
 
         "topic.prefix": "cdc",

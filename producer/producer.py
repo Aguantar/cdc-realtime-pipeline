@@ -60,7 +60,7 @@ MYSQL_CONFIG = {
     'host': os.getenv('MYSQL_HOST', 'cdc-mysql'),
     'port': int(os.getenv('MYSQL_PORT', '3306')),
     'user': os.getenv('MYSQL_USER', 'root'),
-    'password': os.getenv('MYSQL_PASSWORD', 'cdc_root_2025'),
+    'password': os.getenv('MYSQL_PASSWORD'),
     'database': os.getenv('MYSQL_DATABASE', 'crypto_db'),
     'charset': 'utf8mb4',
     'autocommit': False,
