@@ -11,7 +11,7 @@ import com.cdc.pipeline.sink.ClickHouseSinks;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
-import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import com.cdc.pipeline.function.NullSafeStringSchema;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
@@ -54,12 +54,13 @@ public class CdcPipelineJob {
                 .setTopics("cdc.crypto_db.crypto_trades")
                 .setGroupId("flink-cdc-consumer")
                 .setStartingOffsets(OffsetsInitializer.latest())
-                .setValueOnlyDeserializer(new SimpleStringSchema())
+                .setValueOnlyDeserializer(new NullSafeStringSchema())
                 .build();
 
         // 4. Source → CryptoTradeEvent 파싱
         DataStream<CryptoTradeEvent> tradeEvents = env
                 .fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), "Kafka CDC Source")
+                .filter(msg -> msg != null)
                 .flatMap(new CdcEventParser())
                 .name("CDC Event Parser");
 

@@ -344,24 +344,19 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "currencyKRW",
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "drawStyle": "bars",
             "fillOpacity": 80,
-            "stacking": {
-              "mode": "normal"
-            }
-          }
-        }
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
+            "lineWidth": 1,
+            "gradientMode": "none"
+          },
+          "unit": "currencyKRW",
+          "decimals": 1
         },
-        "tooltip": {
-          "mode": "multi"
-        }
+        "overrides": []
       }
     },
     {
@@ -413,7 +408,39 @@
           "color": {
             "mode": "thresholds"
           }
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "avg_latency"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "max_latency"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -561,6 +588,30 @@
                 ]
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "value"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "threshold"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
           }
         ]
       },
@@ -601,32 +652,16 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "ask_bid"
+              "options": "trade_price"
             },
             "properties": [
               {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
+                "id": "unit",
+                "value": "currencyKRW"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "BID": {
-                        "color": "red",
-                        "text": "BID (\ub9e4\uc218)"
-                      },
-                      "ASK": {
-                        "color": "blue",
-                        "text": "ASK (\ub9e4\ub3c4)"
-                      }
-                    }
-                  }
-                ]
+                "id": "decimals",
+                "value": 0
               }
             ]
           },
@@ -639,18 +674,22 @@
               {
                 "id": "unit",
                 "value": "currencyKRW"
+              },
+              {
+                "id": "decimals",
+                "value": 1
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "cdc_latency_ms"
+              "options": "trade_volume"
             },
             "properties": [
               {
-                "id": "unit",
-                "value": "ms"
+                "id": "decimals",
+                "value": 6
               }
             ]
           }
@@ -672,16 +711,18 @@
   "annotations": {
     "list": [
       {
-        "name": "Anomaly Alerts",
+        "builtIn": 1,
         "datasource": {
-          "type": "grafana-clickhouse-datasource",
-          "uid": "PDEE91DDB90597936"
+          "type": "grafana",
+          "uid": "-- Grafana --"
         },
         "enable": true,
-        "iconColor": "red",
-        "rawQuery": "SELECT detected_at as time, concat(alert_type, ' | ', market, ': ', message) as text, alert_type as tags FROM cdc_pipeline.anomaly_alerts WHERE $__timeFilter(detected_at) ORDER BY detected_at",
+        "hide": false,
+        "iconColor": "#FF0000",
+        "name": "Anomaly Alerts",
         "type": "dashboard"
       }
     ]
-  }
+  },
+  "editable": true
 }
