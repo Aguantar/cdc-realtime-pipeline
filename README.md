@@ -2,7 +2,7 @@
 
 > **물리 서버 기반 암호화폐 실시간 변경 데이터 캡처 및 이상 탐지 플랫폼**
 >
-> 🔗 **Live Dashboard**: [grafana.calmee.store](https://grafana.calmee.store)
+> 🔗 **Live Dashboard**: [Grafana 로 구현한 실시간 대시보드](https://grafana.calmee.store/d/cdc-pipeline-main/cdc-crypto-realtime-pipeline?orgId=1&refresh=10s)
 
 ## 💡 이 프로젝트가 증명하는 것
 
@@ -26,7 +26,7 @@
 
 ## 📊 실시간 모니터링 대시보드
 
-> **🔗 Live Dashboard**: [grafana.calmee.store](https://grafana.calmee.store) — 면접관이 직접 실시간 접속 가능
+> **🔗 Live Dashboard**: [Grafana 로 구현한 실시간 대시보드](https://grafana.calmee.store/d/cdc-pipeline-main/cdc-crypto-realtime-pipeline?orgId=1&refresh=10s)
 
 ### 대시보드 패널 구성 (12개)
 
@@ -57,16 +57,162 @@
 | **Anomaly Alerts** | 이상 탐지 이력 (시간, 유형, 마켓, 상세 메시지) |
 | **Recent Trades (Live)** | 최근 30건 실시간 체결 내역 (₩ 포맷, 레이턴시 표시) |
 
-### 이상 탐지 규칙 (4가지)
+---
 
-> 임계값 근거: **업비트 이상거래 감시정책** (가상자산이용자보호법 7가지 유형) + **학술 논문** (arXiv:2503.08692, EWMA 기반 동적 임계값)
+## 🔍 FDS 이상 탐지 규칙
 
-| 규칙 | 임계값 | 업비트 대응 유형 | 설명 |
-|------|--------|----------------|------|
-| **LARGE_TRADE** | BTC ₩5억, ETH ₩3억, 기타 ₩1억 | 체결관여 과다 | 단일 체결 금액 기준 대량 거래 |
-| **PRICE_SPIKE** | BTC 2%, 기타 3% | 시세관여 과다 | 직전 체결 대비 급격한 가격 변동 |
-| **VOLUME_SURGE** | EMA×50배 (최소 50건 학습) | 체결관여 과다 | 지수이동평균 대비 거래량 급증 |
-| **RAPID_TRADES** | 100건/10초 | 특정종목 매매집중 | 단기간 동일 마켓 다수 체결 |
+### 설계 배경
+
+업비트는 **가상자산이용자보호법**에 따라 7가지 불공정거래 유형을 모니터링합니다. 우리 파이프라인은 체결(trade) 데이터만 수신하므로, 7가지 중 **체결 기반 4가지**를 구현했습니다.
+
+| # | 업비트 감시 유형 | 설명 | 파이프라인 매핑 | 구현 여부 |
+|---|-----------------|------|---------------|----------|
+| 1 | 가장·통정성 매매 | 자전거래, 권리이전 없는 가장매매 | - | ❌ 계좌 정보 없음 |
+| 2 | 허수성 매매 | 체결 불가능한 대량 호가 제출 | - | ❌ 호가 데이터 없음 |
+| 3 | 취소·정정 과다 | 체결률 극히 낮은 반복 주문 | - | ❌ 주문 데이터 없음 |
+| 4 | **특정종목 매매집중** | 과도한 매매로 시세 영향 | → **RAPID_TRADES** | ✅ |
+| 5 | **체결관여 과다** | 전체 체결 대비 과도 집중 | → **VOLUME_SURGE**, **LARGE_TRADE** | ✅ |
+| 6 | 주문관여 과다 | 전체 주문 대비 과도 제출 | - | ❌ 주문 데이터 없음 |
+| 7 | **시세관여 과다** | 시세 변동에 과도 관여 | → **PRICE_SPIKE** | ✅ |
+
+> 참고: 업비트는 AI/ML 기반 패턴 분석으로 구체적 수치를 비공개합니다. ([감시정책 문서](https://static.upbit.com/guide/market_surveillance_policy.pdf))
+
+### 임계값 설정 근거
+
+**학술 논문**: *"Detecting Crypto Pump-and-Dump Schemes"* (2025, arXiv:2503.08692)
+- 고정 임계값이 아닌 **EWMA(지수가중이동평균) + 변동성 기반 동적 임계값** 접근
+- 코인별 과거 패턴 대비 이상치를 탐지 → 우리 VOLUME_SURGE에 EMA 기반 동적 임계값 적용
+
+### 4가지 탐지 규칙 상세
+
+#### 1. LARGE_TRADE — 대량 체결 탐지
+
+| 마켓 | 임계값 | 설정 근거 |
+|------|--------|----------|
+| KRW-BTC | ₩5억 | 업비트 BTC 일 거래대금 ~1조원, 단일 체결 5억은 상위 0.01% 수준 |
+| KRW-ETH | ₩3억 | BTC 대비 거래대금 60% 수준 반영 |
+| 기타 (XRP, SOL, DOGE) | ₩1억 | 알트코인 일 거래대금 대비 유의미한 대량 거래 기준 |
+
+> 업비트 대응 유형: **체결관여 과다** — 전체 체결 대비 과도하게 집중된 거래
+
+#### 2. PRICE_SPIKE — 급격한 가격 변동
+
+| 마켓 | 임계값 | 설정 근거 |
+|------|--------|----------|
+| KRW-BTC | 2% | BTC 9,700만원 기준 2% = 194만원 변동, 정상 변동폭(0.1~0.5%) 대비 유의미 |
+| 기타 | 3% | DOGE 136→137원(0.73%)이 매번 발동하는 문제 해결, 호가 단위 고려 |
+
+> 업비트 대응 유형: **시세관여 과다** — 시세 변동에 과도하게 관여하는 거래
+
+> **v1 → v2 조정 이유**: 초기 0.5% 고정 임계값에서 DOGE 1원 변동(0.73%)이 매번 PRICE_SPIKE로 탐지됨. 코인별 호가 단위와 변동성 특성을 반영하여 마켓별 동적 임계값 적용
+
+#### 3. VOLUME_SURGE — 거래량 급증
+
+| 파라미터 | 값 | 설정 근거 |
+|---------|-----|----------|
+| 기준 | EMA × 50배 | 학술 논문(EWMA 기반)에서 이동평균 대비 이상치 탐지 접근 적용 |
+| EMA alpha | 0.05 | 최근 20건 가중 평균, 급격한 변화에 민감하되 노이즈 필터링 |
+| 최소 학습 | 50건 | 충분한 데이터 없이 오탐 방지 (파이프라인 시작 직후 알림 폭주 방지) |
+
+> 업비트 대응 유형: **체결관여 과다** — 전체 체결 대비 과도하게 집중된 거래량
+
+> **v1 → v2 조정 이유**: 초기 EMA×10배에서 시간당 512건(전체 알림의 74%) 발생. 암호화폐는 주식보다 거래량 변동폭이 크므로 50배로 상향
+
+#### 4. RAPID_TRADES — 단기간 다수 체결
+
+| 파라미터 | 값 | 설정 근거 |
+|---------|-----|----------|
+| 기준 | 10초 내 100건 | BTC는 정상적으로 50건/10초 가능, 100건 이상은 비정상적 빈도 |
+
+> 업비트 대응 유형: **특정종목 매매집중** — 과도한 매매로 시세에 영향을 미치는 행위
+
+### 임계값 최적화 결과
+
+| 지표 | v1 (초기) | v2 (최적화) | 개선율 |
+|------|----------|-----------|--------|
+| 시간당 총 알림 | 651건 | **72건** | **89% 감소** |
+| VOLUME_SURGE | 512건 (74%) | ~60건 | 88% 감소 |
+| PRICE_SPIKE | 131건 (19%) | ~0건 | DOGE 오탐 제거 |
+| RAPID_TRADES | 28건 (4%) | ~10건 | 정상 빈도 제외 |
+| LARGE_TRADE | 20건 (3%) | ~2건 | 소액 제외 |
+
+---
+
+## 🔔 n8n 자동 알림 시스템
+
+### 아키텍처
+
+```
+┌─────────────────┐
+│ Schedule Trigger │ (매 1분)
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│   ClickHouse    │  이상거래 건수 + 파이프라인 상태 + 알림 상세
+│   HTTP 쿼리     │  (Docker 네트워크로 직접 접근)
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│  Parse & Combine │  숫자 포맷 (콤마 구분) + 알림 분류
+└────────┬────────┘
+         │
+    ┌────┴────────┐
+    ▼             ▼
+┌────────┐   ┌────────┐
+│  IF    │   │  IF    │
+│이상거래│   │파이프  │
+│ >0건?  │   │라인    │
+│        │   │ 장애?  │
+└───┬────┘   └───┬────┘
+    │             │
+    ▼             ▼
+ [Slack]       [Slack]
+ [Gmail]       [Gmail]
+ FDS 알림     CDC 장애
+```
+
+### 알림 종류
+
+| 알림 | 조건 | 채널 | 의미 |
+|------|------|------|------|
+| **🚨 FDS 이상거래 탐지** | anomaly_count > 0 (최근 1분) | Slack + Gmail | 이상 탐지 룰 발동, 상세 내역 포함 |
+| **🔴 CDC 파이프라인 장애** | 최근 5분간 데이터 0건 | Slack + Gmail | 파이프라인 중단, 복구 가이드 포함 |
+
+### 알림 메시지 예시
+
+**FDS 이상거래 탐지 (Slack)**
+
+```
+🚨 FDS 이상거래 탐지!
+
+최근 1분간: 3건
+최근 5분 거래: 2,476건
+총 적재 건수: 6,764,002건
+시간: 2026-02-23 14:42:19
+
+상세 내역:
+• VOLUME_SURGE | KRW-BTC: 거래량 EMA 대비 52.3배 급증
+• VOLUME_SURGE | KRW-ETH: 거래량 EMA 대비 61.7배 급증
+
+📊 Grafana 대시보드 바로가기
+```
+
+**CDC 파이프라인 장애 (Gmail)**
+
+```
+🔴 CDC 파이프라인 장애 알림
+
+상태: 데이터 유입 중단
+최근 5분 거래: 0건
+총 적재 건수: 6,764,002건
+
+확인 사항:
+• Flink Job 상태 확인
+• Kafka LAG 확인
+• MySQL 접속 확인
+
+📊 Grafana 대시보드 바로가기
+```
 
 ---
 
@@ -79,6 +225,7 @@
 ### 파이프라인 흐름
 ```
 Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → ClickHouse → Grafana
+                                                                         └──→ n8n → Slack / Gmail
 ```
 
 ### 차별화 포인트
@@ -91,6 +238,7 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 | 무제한 리소스 | **16GB 메모리에서 12개 컨테이너 최적화** |
 | 시뮬레이션 데이터 | **Upbit 실시간 체결 데이터 (667만건+)** |
 | 고정 임계값 이상 탐지 | **업비트 정책 + 학술 논문 기반 동적 임계값** |
+| 탐지만 하고 끝 | **n8n 자동 알림 (Slack + Gmail)** |
 
 ---
 
@@ -154,17 +302,29 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
   │  crypto_trades (원본)     365일 TTL                           │
   │  trade_aggregations (집계) 365일 TTL                          │
   │  anomaly_alerts (이상탐지) 365일 TTL                          │
-  └──────────────────────┬───────────────────────────────────────┘
-                         │
-                         ▼
-  ┌──────────────┐   ┌──────────────────┐   ┌──────────────┐
-  │   Grafana    │──▶│  Caddy (Reverse  │──▶│  Cloudflare  │
-  │  Dashboard   │   │     Proxy)       │   │   Tunnel     │
-  │  12 Panels   │   │  Auto TLS        │   │ 외부 접근    │
-  └──────────────┘   └──────────────────┘   └──────────────┘
-                                                    │
-                                                    ▼
-                                          grafana.calmee.store
+  └──────────┬───────────────────────────┬───────────────────────┘
+             │                           │
+             ▼                           ▼
+  ┌──────────────┐                ┌──────────────┐
+  │   Grafana    │                │     n8n      │  매분 폴링
+  │  Dashboard   │                │  Monitoring  │  (Docker 네트워크)
+  │  12 Panels   │                └──────┬───────┘
+  └──────┬───────┘                       │
+         │                    ┌──────────┼──────────┐
+         ▼                    ▼          ▼          ▼
+  ┌──────────────┐     ┌──────────┐ ┌────────┐ ┌────────┐
+  │    Caddy     │     │  Slack   │ │ Slack  │ │ Gmail  │
+  │ (Reverse     │     │  FDS     │ │ CDC    │ │ FDS +  │
+  │   Proxy)     │     │ 이상거래 │ │ 장애   │ │ CDC    │
+  └──────┬───────┘     └──────────┘ └────────┘ └────────┘
+         ▼
+  ┌──────────────┐
+  │  Cloudflare  │
+  │   Tunnel     │
+  └──────────────┘
+         │
+         ▼
+  grafana.calmee.store
 ```
 
 ### 리소스 배분 (16GB RAM)
@@ -194,6 +354,7 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 | Stream Processing | Apache Flink | 1.18 | 실시간 집계 + 이상 탐지 |
 | OLAP | ClickHouse | 24.1 | 분석 쿼리 + 대시보드 백엔드 |
 | Dashboard | Grafana | 10.x | 실시간 시각화 (12 패널) |
+| Alerting | n8n | 2.8 | FDS 이상거래 + CDC 장애 알림 (Slack, Gmail) |
 | Data Source | Upbit WebSocket | - | 암호화폐 실시간 체결 |
 | Reverse Proxy | Caddy | 2.x | HTTPS + 자동 인증서 |
 | External Access | Cloudflare Tunnel | - | 외부 접근 (grafana.calmee.store) |
@@ -242,6 +403,12 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 - [x] MySQL cleanup → Flink crash 장애 복구 (tombstone NPE)
 - [x] Grafana annotation 자동 동기화 (cron 매분)
 - [x] 숫자 포맷 통일 (₩ 단위, 콤마 구분)
+
+### Phase 7: n8n 자동 알림 시스템 ✅
+- [x] n8n → ClickHouse 네트워크 연결 (Docker 외부 네트워크)
+- [x] FDS 이상거래 탐지 알림 (Slack + Gmail)
+- [x] CDC 파이프라인 장애 알림 (Slack + Gmail)
+- [x] 숫자 포맷 (콤마 구분) + 대시보드 바로가기 링크
 
 ---
 
@@ -298,6 +465,7 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 | 외부 접근 | ✅ | **grafana.calmee.store** ✅ |
 | 총 적재 | - | **667만건+ (10일)** |
 | 이상 탐지 | 의미 있는 알림 | **~72건/시간** ✅ |
+| 알림 발송 | 실시간 | **n8n 매분 Slack + Gmail** ✅ |
 
 ---
 
@@ -333,7 +501,7 @@ cdc-realtime-pipeline/
 │       │   └── CryptoTradeEvent.java    # 체결 이벤트 POJO
 │       ├── function/
 │       │   ├── CdcEventParser.java      # Debezium JSON 파싱 (null-safe)
-│       │   ├── AnomalyDetector.java     # 이상 탐지 4가지 룰
+│       │   ├── AnomalyDetector.java     # FDS 이상 탐지 4가지 룰
 │       │   ├── TradeAggregator.java     # 5분 윈도우 집계
 │       │   └── NullSafeStringSchema.java # Tombstone 방어 Deserializer
 │       └── sink/
@@ -366,10 +534,10 @@ cdc-realtime-pipeline/
 
 ---
 
-## 🎤 면접 예상 질문
+## 🎤 예상 질문
 
 ### Q1. 왜 On-Premise를 선택했나요?
-> "토스 JD에 'On-Premise 클러스터 구축'이 명시되어 있어서, 클라우드 관리형 서비스가 아닌 물리 서버에서 직접 구축하고 24시간 운영하며 실제 장애 대응까지 경험했습니다."
+> "AWS같은 클라우드 시스템이 아닌, On-Premise 클러스터 구축을 해보고 싶어서, 클라우드 관리형 서비스가 아닌 물리 서버에서 직접 구축하고 24시간 운영하며 실제 장애 대응까지 경험했습니다."
 
 ### Q2. 16GB 메모리에서 어떻게 최적화했나요?
 > "12개 컨테이너를 7.2GB 내에서 운영합니다. Kafka broker당 512MB, Flink TaskManager 1GB로 제한하고, MySQL은 7일 보존 + 매시간 분산 삭제, ClickHouse는 365일 TTL로 디스크 관리를 자동화했습니다."
@@ -385,6 +553,9 @@ cdc-realtime-pipeline/
 
 ### Q6. Kafka를 3-broker로 구성한 이유는?
 > "Replication Factor 3으로 1대 장애 시에도 데이터 유실 없이 자동 failover됩니다. 실제로 broker 1대 다운 시뮬레이션에서 파이프라인 중단 없이 정상 동작을 확인했습니다."
+
+### Q7. n8n 알림을 왜 추가했나요?
+> "탐지만 하고 끝나면 운영 의미가 없습니다. FDS 이상거래는 즉시 Slack + Gmail로 상세 내역을 발송하고, 파이프라인 장애는 별도 채널로 복구 가이드와 함께 알림합니다. 이전 FDS Pipeline Lab 프로젝트에서도 같은 패턴으로 SLA 모니터링을 구축한 경험이 있습니다."
 
 ---
 

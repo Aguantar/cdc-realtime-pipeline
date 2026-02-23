@@ -56,7 +56,9 @@
           },
           "color": {
             "mode": "thresholds"
-          }
+          },
+          "unit": "locale",
+          "decimals": 0
         }
       },
       "options": {
