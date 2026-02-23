@@ -17,7 +17,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Total Trades (총 체결 건수)",
+      "title": "Total Trades",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -73,7 +73,7 @@
     },
     {
       "id": 2,
-      "title": "Avg CDC Latency (평균 지연시간)",
+      "title": "Avg CDC Latency",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -128,7 +128,7 @@
     },
     {
       "id": 3,
-      "title": "Active Alerts (이상 탐지)",
+      "title": "Active Alerts",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -182,7 +182,7 @@
     },
     {
       "id": 4,
-      "title": "Total Volume (최근 1시간 거래금액)",
+      "title": "Total Volume (KRW)",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -229,7 +229,7 @@
     },
     {
       "id": 10,
-      "title": "Markets Tracked (모니터링 마켓)",
+      "title": "Markets Tracked",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -275,7 +275,7 @@
     },
     {
       "id": 11,
-      "title": "Pipeline Status (파이프라인 상태)",
+      "title": "Pipeline Status",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -302,11 +302,11 @@
               "options": {
                 "1": {
                   "color": "green",
-                  "text": "● LIVE"
+                  "text": "\u25cf LIVE"
                 },
                 "0": {
                   "color": "red",
-                  "text": "○ STALE"
+                  "text": "\u25cb STALE"
                 }
               }
             }
@@ -325,7 +325,7 @@
     },
     {
       "id": 5,
-      "title": "Trade Volume (5분 총 거래금액)",
+      "title": "Trade Volume by Market (5min)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -339,7 +339,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT \n    window_start as time,\n    sum(total_amount) as total_volume\nFROM cdc_pipeline.trade_aggregations \nWHERE window_start >= now() - INTERVAL 1 HOUR \nGROUP BY window_start\nORDER BY window_start",
+          "rawSql": "SELECT window_start as time, market, total_amount FROM cdc_pipeline.trade_aggregations WHERE window_start >= now() - INTERVAL 1 HOUR ORDER BY window_start",
           "refId": "A",
           "format": 1
         }
@@ -347,13 +347,13 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "fixed",
-            "fixedColor": "green"
+            "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15,
-            "lineWidth": 2,
-            "gradientMode": "scheme"
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "gradientMode": "none"
           },
           "unit": "currencyKRW",
           "decimals": 1
@@ -363,13 +363,13 @@
     },
     {
       "id": 6,
-      "title": "CDC Latency (CDC 지연시간)",
+      "title": "CDC Latency (ms)",
       "type": "timeseries",
       "gridPos": {
-        "x": 12,
-        "y": 12,
+        "h": 8,
         "w": 12,
-        "h": 8
+        "x": 12,
+        "y": 4
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -456,7 +456,7 @@
     },
     {
       "id": 12,
-      "title": "BTC Price (실시간 BTC 가격) | 🔴 빨간 점선 = 이상 탐지",
+      "title": "BTC Price (Realtime)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -497,13 +497,13 @@
     },
     {
       "id": 7,
-      "title": "Bid vs Ask (매수/매도 비율)",
+      "title": "Bid vs Ask by Market",
       "type": "barchart",
       "gridPos": {
-        "x": 12,
-        "y": 4,
+        "h": 8,
         "w": 12,
-        "h": 8
+        "x": 12,
+        "y": 12
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -511,7 +511,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT \n    market,\n    sum(bid_count) as bid,\n    sum(ask_count) as ask\nFROM cdc_pipeline.trade_aggregations \nWHERE window_start >= now() - INTERVAL 1 HOUR \nGROUP BY market \nORDER BY bid + ask DESC",
+          "rawSql": "SELECT market, sum(bid_count) as bid, sum(ask_count) as ask FROM cdc_pipeline.trade_aggregations WHERE window_start >= now() - INTERVAL 1 HOUR GROUP BY market ORDER BY bid + ask DESC",
           "refId": "A",
           "format": 1
         }
@@ -534,7 +534,7 @@
     },
     {
       "id": 8,
-      "title": "Anomaly Alerts (이상 탐지 내역)",
+      "title": "Anomaly Alerts",
       "type": "table",
       "gridPos": {
         "h": 8,
@@ -548,7 +548,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT \n    detected_at as time,\n    alert_type,\n    market,\n    replaceRegexpAll(message, '(\\d{4,})', '\\1') as message,\n    value,\n    threshold\nFROM cdc_pipeline.anomaly_alerts \nORDER BY detected_at DESC \nLIMIT 50",
+          "rawSql": "SELECT detected_at as time, alert_type, market, message, value, threshold FROM cdc_pipeline.anomaly_alerts ORDER BY detected_at DESC LIMIT 50",
           "refId": "A",
           "format": 1
         }
@@ -558,16 +558,48 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "alert_type"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "LARGE_TRADE": {
+                        "color": "orange"
+                      },
+                      "PRICE_SPIKE": {
+                        "color": "red"
+                      },
+                      "VOLUME_SURGE": {
+                        "color": "yellow"
+                      },
+                      "RAPID_TRADES": {
+                        "color": "purple"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "value"
             },
             "properties": [
               {
-                "id": "unit",
-                "value": "locale"
-              },
-              {
                 "id": "decimals",
-                "value": 0
+                "value": 2
               }
             ]
           },
@@ -578,12 +610,8 @@
             },
             "properties": [
               {
-                "id": "unit",
-                "value": "locale"
-              },
-              {
                 "id": "decimals",
-                "value": 0
+                "value": 2
               }
             ]
           }
@@ -601,7 +629,7 @@
     },
     {
       "id": 9,
-      "title": "Recent Trades (최근 체결 내역)",
+      "title": "Recent Trades (Live)",
       "type": "table",
       "gridPos": {
         "h": 8,
@@ -615,7 +643,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT \n    source_ts as time,\n    market,\n    ask_bid,\n    trade_price,\n    trade_volume,\n    trade_amount,\n    cdc_latency_ms\nFROM cdc_pipeline.crypto_trades \nWHERE op = 'c' AND source_ts >= now() - INTERVAL 5 MINUTE\nORDER BY source_ts DESC \nLIMIT 20",
+          "rawSql": "SELECT source_ts as time, market, ask_bid, trade_price, trade_volume, trade_amount, cdc_latency_ms FROM cdc_pipeline.crypto_trades WHERE op = 'c' ORDER BY source_ts DESC LIMIT 30",
           "refId": "A",
           "format": 1
         }
@@ -693,7 +721,7 @@
         "enable": true,
         "hide": false,
         "iconColor": "#FF0000",
-        "name": "🔴 이상 탐지 (Anomaly Alert)",
+        "name": "Anomaly Alerts",
         "type": "dashboard"
       }
     ]

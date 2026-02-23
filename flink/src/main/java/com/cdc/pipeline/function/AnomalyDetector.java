@@ -109,7 +109,7 @@ public class AnomalyDetector
         if (amount >= largeThreshold) {
             out.collect(new AnomalyAlert(
                 AlertType.LARGE_TRADE, market, event.getTradeId(),
-                String.format("대량 체결 감지: %.0f원 (임계값: %.0f원)", amount, largeThreshold),
+                String.format("대량 체결 감지: %,.0f원 (임계값: %,.0f원)", amount, largeThreshold),
                 amount, largeThreshold
             ));
         }
@@ -123,7 +123,7 @@ public class AnomalyDetector
                 String direction = price > prevPrice ? "급등" : "급락";
                 out.collect(new AnomalyAlert(
                     AlertType.PRICE_SPIKE, market, event.getTradeId(),
-                    String.format("가격 %s: %.2f → %.2f (%.2f%%)", direction, prevPrice, price, changeRate * 100),
+                    String.format("가격 %s: %,.0f → %,.0f (%.2f%%)", direction, prevPrice, price, changeRate * 100),
                     changeRate * 100, spikeThreshold * 100
                 ));
             }
