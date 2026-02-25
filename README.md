@@ -28,7 +28,8 @@
 
 > **🔗 Live Dashboard**: [Grafana 로 구현한 실시간 대시보드](https://grafana.calmee.store/d/cdc-pipeline-main/cdc-crypto-realtime-pipeline?orgId=1&refresh=10s)
 
-![Grafana Dashboard](<img width="2527" height="1235" alt="image" src="https://github.com/user-attachments/assets/d6c9e223-cfd0-4fd7-b9df-6015d8886ac8" />)
+<img width="2527" height="1235" alt="image" src="https://github.com/user-attachments/assets/edca902b-962a-4738-a538-f9ab973200a2" />
+
 
 ### 대시보드 레이아웃
 
