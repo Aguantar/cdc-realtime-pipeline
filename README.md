@@ -370,11 +370,6 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
   │ (Reverse     │     │  FDS     │ │ CDC    │ │ FDS +  │
   │   Proxy)     │     │ 이상거래 │ │ 장애   │ │ CDC    │
   └──────┬───────┘     └──────────┘ └────────┘ └────────┘
-         ▼
-  ┌──────────────┐
-  │  Cloudflare  │
-  │   Tunnel     │
-  └──────────────┘
          │
          ▼
   grafana.calmee.store
@@ -410,7 +405,7 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 | Alerting | n8n | 2.8 | FDS 이상거래 + CDC 장애 알림 (Slack, Gmail) |
 | Data Source | Upbit WebSocket | - | 암호화폐 실시간 체결 |
 | Reverse Proxy | Caddy | 2.x | HTTPS + 자동 인증서 |
-| External Access | Cloudflare Tunnel | - | 외부 접근 (grafana.calmee.store) |
+| External Access | gabia | - | 외부 접근 (grafana.calmee.store) |
 | Language | Java 17 | - | Flink DataStream Job |
 | Language | Python 3 | - | Upbit Producer |
 
@@ -442,7 +437,7 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 - [x] ClickHouse 테이블 설계 (MergeTree, 365일 TTL)
 - [x] Grafana 프로비저닝 (datasource + dashboard JSON)
 - [x] 12개 패널 대시보드 구성
-- [x] Caddy 리버스 프록시 + Cloudflare Tunnel 외부 접근
+- [x] Caddy 리버스 프록시 + gabia 외부 접근
 
 ### Phase 5: 암호화폐 실시간 수집 ✅
 - [x] Upbit WebSocket Producer (Python, 5개 마켓)
