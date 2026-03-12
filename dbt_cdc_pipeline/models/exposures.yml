@@ -1,0 +1,24 @@
+version: 2
+
+exposures:
+  - name: crypto_market_dashboard
+    type: dashboard
+    maturity: medium
+    url: https://grafana.calmee.store
+    description: "코인 시세 실시간 대시보드 — 일별 시세, 시간봉 캔들, 거래량 급등 알림"
+    depends_on:
+      - ref('mart_daily_summary')
+      - ref('int_ohlcv_1h')
+      - ref('mart_volume_spike')
+    owner:
+      name: 이준서
+
+  - name: pipeline_monitoring_dashboard
+    type: dashboard
+    maturity: low
+    url: https://grafana.calmee.store
+    description: "파이프라인 운영 모니터링 — 이상 탐지 알림 발생률, CDC 레이턴시"
+    depends_on:
+      - ref('mart_alert_rate')
+    owner:
+      name: 이준서

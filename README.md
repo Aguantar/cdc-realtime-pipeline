@@ -2,7 +2,7 @@
 
 > **물리 서버 기반 암호화폐 실시간 변경 데이터 캡처 및 이상 탐지 플랫폼**
 >
-> 🔗 **Live Dashboard**: [Grafana 로 구현한 실시간 대시보드](https://grafana.calmee.store/d/cdc-pipeline-main/cdc-crypto-realtime-pipeline?orgId=1&refresh=10s)
+> 🔗 **Live Dashboard**: [Grafana 실시간 대시보드](https://grafana.calmee.store/d/cdc-pipeline-main/cdc-crypto-realtime-pipeline?orgId=1&refresh=10s) | [Airflow 오케스트레이션](https://airflow.calmee.store)
 
 ## 💡 이 프로젝트가 증명하는 것
 
@@ -15,9 +15,11 @@
 
 **결국 이 프로젝트는:**
 - ✅ On-Premise 클러스터 **구축/운영** 경험
-- ✅ 제한된 리소스(16GB)에서 **최적화** 경험
+- ✅ 제한된 리소스(16GB)에서 **27개 컨테이너 최적화** 경험
 - ✅ 실시간 CDC 파이프라인 **설계/구현** 능력
-- ✅ 장애 대응 및 **모니터링** 체계 구축
+- ✅ Airflow 기반 **배치 오케스트레이션** (Custom Operator, Dynamic Task Mapping, XCom)
+- ✅ dbt 기반 **데이터 변환 계층** (staging → intermediate → marts 3계층)
+- ✅ 장애 대응 및 **다중 모니터링** 체계 (Grafana 2개 대시보드 + Slack + Gmail)
 - ✅ 도메인 기반 **이상 탐지** 룰 엔진 설계
 
 을 보여주기 위한 프로젝트입니다.
@@ -277,8 +279,17 @@
 
 ### 파이프라인 흐름
 ```
+[실시간 스트리밍]
 Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → ClickHouse → Grafana
-                                                                         └──→ n8n → Slack / Gmail
+                                                                          │
+[배치 오케스트레이션]                                                       │
+Airflow (Scheduler) → dbt (staging → intermediate → marts) ────────────────┘
+    │                                                                      │
+    └─ health_check (10분) ─→ 이상 시 Slack 알림                            │
+    └─ daily_pipeline (01:00 KST) ─→ 품질검증 + 일일 리포트 → Slack         │
+                                                                           │
+[실시간 알림]                                                               │
+n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack + Gmail
 ```
 
 ### 차별화 포인트
@@ -286,12 +297,13 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 | 일반 프로젝트 | 이 프로젝트 |
 |--------------|-------------|
 | AWS/GCP 관리형 서비스 | **On-Premise 물리 서버 직접 구축** |
-| 로컬에서 잠깐 테스트 | **24시간 상시 운영 (10일+ 가동)** |
-| 시연할 때만 실행 | **면접관이 실시간 접속 가능** (grafana.calmee.store) |
-| 무제한 리소스 | **16GB 메모리에서 12개 컨테이너 최적화** |
-| 시뮬레이션 데이터 | **Upbit 실시간 체결 데이터 (667만건+)** |
+| 로컬에서 잠깐 테스트 | **24시간 상시 운영 (27일+ 가동, 1,730만건+ 적재)** |
+| 시연할 때만 실행 | **면접관이 실시간 접속 가능** (grafana.calmee.store, airflow.calmee.store) |
+| 무제한 리소스 | **16GB 메모리에서 27개 컨테이너 최적화** |
+| 시뮬레이션 데이터 | **Upbit 실시간 체결 데이터 (1,730만건+)** |
 | 고정 임계값 이상 탐지 | **업비트 정책 + 학술 논문 + 실측 분포 분석 기반 동적 임계값** |
-| 탐지만 하고 끝 | **n8n 자동 알림 (Slack + Gmail)** |
+| cron으로 dbt 실행 | **Airflow 오케스트레이션 (Custom Operator + Dynamic Task Mapping + Slack 리포트)** |
+| 탐지만 하고 끝 | **다중 알림 (n8n 실시간 + Airflow 일일 리포트)** |
 
 ---
 
@@ -355,40 +367,55 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
   │  crypto_trades (원본)     365일 TTL                           │
   │  trade_aggregations (집계) 365일 TTL                          │
   │  anomaly_alerts (이상탐지) 365일 TTL                          │
-  └──────────┬───────────────────────────┬───────────────────────┘
-             │                           │
-             ▼                           ▼
-  ┌──────────────┐                ┌──────────────┐
-  │   Grafana    │                │     n8n      │  매분 폴링
-  │  Dashboard   │                │  Monitoring  │  (Docker 네트워크)
-  │  12 Panels   │                └──────┬───────┘
-  └──────┬───────┘                       │
-         │                    ┌──────────┼──────────┐
-         ▼                    ▼          ▼          ▼
-  ┌──────────────┐     ┌──────────┐ ┌────────┐ ┌────────┐
-  │    Caddy     │     │  Slack   │ │ Slack  │ │ Gmail  │
-  │ (Reverse     │     │  FDS     │ │ CDC    │ │ FDS +  │
-  │   Proxy)     │     │ 이상거래 │ │ 장애   │ │ CDC    │
-  └──────┬───────┘     └──────────┘ └────────┘ └────────┘
+  │  + dbt marts (daily_summary, volume_spike, alert_rate)       │
+  └──────┬──────────────────────┬───────────────┬───────────────┘
+         │                      │               │
+         ▼                      ▼               ▼
+  ┌──────────────┐    ┌──────────────┐   ┌──────────────┐
+  │   Grafana    │    │   Airflow    │   │     n8n      │  매분 폴링
+  │  2 Dashboard │    │ Orchestrator │   │  Monitoring  │
+  │  (CDC +      │    │              │   └──────┬───────┘
+  │   Airflow)   │    │ ┌──────────┐ │          │
+  └──────┬───────┘    │ │health_   │ │   ┌──────┼──────────┐
+         │            │ │check     │ │   ▼      ▼          ▼
+         │            │ │(*/10min) │ │ [Slack] [Slack]  [Gmail]
+         │            │ └──────────┘ │  FDS     CDC     FDS+CDC
+         │            │ ┌──────────┐ │
+         │            │ │daily_    │ │
+         │            │ │pipeline  │──→ dbt run/test
+         │            │ │(01:00KST)│      → Dynamic 코인별 품질검증
+         │            │ └──────────┘      → 일일 리포트 → Slack
+         │            └──────────────┘
+         ▼                    │
+  ┌──────────────┐    StatsD → Prometheus
+  │    Caddy     │
+  │ (Reverse     │
+  │   Proxy)     │
+  └──────┬───────┘
          │
          ▼
   grafana.calmee.store
+  airflow.calmee.store
 ```
 
-### 리소스 배분 (16GB RAM)
+### 리소스 배분 (16GB RAM, 27개 컨테이너)
 
-| 컴포넌트 | 메모리 | 비고 |
-|----------|--------|------|
+| 컴포넌트 | 메모리 Limit | 비고 |
+|----------|-------------|------|
 | MySQL | 1GB | CDC Source DB |
-| Kafka × 3 | 1.5GB | 512MB per broker |
-| Zookeeper | 256MB | Kafka coordination |
-| Debezium Connect | 512MB | CDC connector |
-| Flink (JM + TM) | 1.5GB | Stream processing |
-| ClickHouse | 2GB | OLAP storage |
-| Grafana | 256MB | Dashboard |
+| Kafka × 3 | 3.75GB | 1.25GB per broker |
+| Zookeeper | 384MB | Kafka coordination |
+| Debezium Connect | 1.25GB | CDC connector |
+| Flink (JM + TM) | 2.15GB | Stream processing |
+| ClickHouse | 1.25GB | OLAP storage |
+| Grafana | 256MB | 2개 대시보드 (CDC + Airflow) |
+| Airflow (Webserver + Scheduler) | 1.28GB | 640MB each |
+| Airflow PostgreSQL | 256MB | Airflow 메타 DB |
+| StatsD Exporter | 128MB | Airflow 메트릭 변환 |
+| Prometheus | 256MB | 메트릭 수집/저장 |
 | Producer | 128MB | Upbit WebSocket |
-| Caddy | 64MB | Reverse proxy |
-| **합계** | **~7.2GB** | **여유: ~8.8GB** |
+| Kafka UI | 384MB | 클러스터 모니터링 |
+| **합계** | **~11.5GB** | **Available: ~5.3GB** |
 
 ---
 
@@ -401,13 +428,16 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 | Message Queue | Apache Kafka | 3.6 | 이벤트 스트리밍 (3-broker) |
 | Stream Processing | Apache Flink | 1.18 | 실시간 집계 + 이상 탐지 |
 | OLAP | ClickHouse | 24.1 | 분석 쿼리 + 대시보드 백엔드 |
-| Dashboard | Grafana | 10.x | 실시간 시각화 (12 패널) |
-| Alerting | n8n | 2.8 | FDS 이상거래 + CDC 장애 알림 (Slack, Gmail) |
+| Orchestration | Apache Airflow | 2.8.1 | 배치 오케스트레이션 (2 DAGs, Custom Operator) |
+| Data Transform | dbt | 1.7.9 | ClickHouse 데이터 변환 (3계층: staging → intermediate → marts) |
+| Dashboard | Grafana | 11.0 | 실시간 시각화 (CDC 12패널 + Airflow 12패널) |
+| Metrics | Prometheus | 2.50 | Airflow 메트릭 수집 (StatsD → Prometheus → Grafana) |
+| Realtime Alerting | n8n | latest | FDS 이상거래 + CDC 장애 알림 (Slack, Gmail) |
+| Daily Report | Airflow + Slack | - | 일일 파이프라인 리포트 (품질검증 + CDC 지연 + 이상탐지 요약) |
 | Data Source | Upbit WebSocket | - | 암호화폐 실시간 체결 |
-| Reverse Proxy | Caddy | 2.x | HTTPS + 자동 인증서 |
-| External Access | gabia | - | 외부 접근 (grafana.calmee.store) |
+| Reverse Proxy | Caddy | 2.10 | HTTPS + 자동 인증서 |
 | Language | Java 17 | - | Flink DataStream Job |
-| Language | Python 3 | - | Upbit Producer |
+| Language | Python 3.10 | - | Upbit Producer, Airflow DAGs |
 
 ---
 
@@ -437,7 +467,7 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 - [x] ClickHouse 테이블 설계 (MergeTree, 365일 TTL)
 - [x] Grafana 프로비저닝 (datasource + dashboard JSON)
 - [x] 12개 패널 대시보드 구성
-- [x] Caddy 리버스 프록시 + gabia 외부 접근
+- [x] Caddy 리버스 프록시 + HTTPS 자동 인증서 외부 접근
 
 ### Phase 5: 암호화폐 실시간 수집 ✅
 - [x] Upbit WebSocket Producer (Python, 5개 마켓)
@@ -458,6 +488,20 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 - [x] FDS 이상거래 탐지 알림 (Slack + Gmail)
 - [x] CDC 파이프라인 장애 알림 (Slack + Gmail)
 - [x] 숫자 포맷 (콤마 구분) + 대시보드 바로가기 링크
+
+### Phase 8: Airflow 오케스트레이션 + dbt ✅
+- [x] Airflow 2.8.1 Docker 구축 (LocalExecutor, PostgreSQL 메타 DB)
+- [x] Custom Operator 개발 (ClickHouseOperator — HTTP API, FlinkHealthOperator — REST API)
+- [x] Custom Hook 개발 (ClickHouseHook — HTTP 인터페이스, 추가 드라이버 불필요)
+- [x] DAG 1: `health_check` (10분 간격) — 5개 컴포넌트 병렬 체크 → XCom 수집 → 이상 시 Slack
+- [x] DAG 2: `daily_pipeline` (매일 01:00 KST) — dbt run/test → Dynamic Task Mapping 코인별 품질검증 → quality gate → 일일 Slack 리포트
+- [x] dbt 3계층 모델 (staging: stg_trades → intermediate: int_ohlcv_1h, int_ohlcv_daily → marts: mart_daily_summary, mart_volume_spike, mart_alert_rate)
+- [x] Airflow 메트릭 모니터링 (StatsD → Prometheus → Grafana Airflow Operations 대시보드 12패널)
+- [x] Fernet Key 암호화 (Slack Webhook URL 등 시크릿 보호)
+- [x] Caddy reverse proxy (airflow.calmee.store) + 비로그인 Viewer 접근
+- [x] 과거 25일치 일일 리포트 Slack 백필
+- [x] DAG 테스트 9/9 통과 (pytest)
+- [x] 기존 dbt cron 비활성화 → Airflow 완전 이관
 
 ---
 
@@ -505,16 +549,18 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → Cl
 
 | 지표 | 목표 | 실측 |
 |------|------|------|
-| E2E CDC Latency | < 10ms | **평균 3.3ms** ✅ |
+| E2E CDC Latency | < 10ms | **p50: 3ms, p95: 5ms, p99: 7ms** ✅ |
 | Throughput | > 100 TPS | **초당 ~8건 (Upbit 제공량)** ✅ |
-| 데이터 정합성 | 100% | **MySQL ↔ ClickHouse 일치** ✅ |
+| 데이터 정합성 | 100% | **MySQL ↔ ClickHouse 일치, 중복 0.006% 이하** ✅ |
 | 장애 복구 시간 | < 5분 | **Flink restart 30초 이내** ✅ |
-| 메모리 사용 | < 14GB | **~7.2GB (여유 8.8GB)** ✅ |
-| 24시간 운영 | ✅ | **10일+ 연속 가동** ✅ |
-| 외부 접근 | ✅ | **grafana.calmee.store** ✅ |
-| 총 적재 | - | **667만건+ (10일)** |
+| 메모리 사용 | < 14GB | **~10GB 사용 (Available 5.3GB)** ✅ |
+| 24시간 운영 | ✅ | **27일+ 연속 가동** ✅ |
+| 외부 접근 | ✅ | **grafana.calmee.store + airflow.calmee.store** ✅ |
+| 총 적재 | - | **1,730만건+ (27일)** |
 | 이상 탐지 | 의미 있는 알림 | **~24건/시간 (v1 대비 96% 감소)** ✅ |
-| 알림 발송 | 실시간 | **n8n 매분 Slack + Gmail** ✅ |
+| 실시간 알림 | 매분 | **n8n → Slack + Gmail** ✅ |
+| 일일 리포트 | 매일 01:00 KST | **Airflow → 품질검증 + CDC 지연 + 이상탐지 요약 → Slack** ✅ |
+| dbt 품질검증 | 코인별 자동 | **Dynamic Task Mapping 5개 코인 병렬, 100% 통과** ✅ |
 
 ---
 
@@ -563,22 +609,53 @@ cdc-realtime-pipeline/
 │
 ├── grafana/
 │   └── provisioning/
-│       ├── datasources/         # ClickHouse datasource
-│       └── dashboards/
-│           └── json/cdc-pipeline.json  # 12개 패널 대시보드
+│       ├── datasources/                # ClickHouse + Prometheus
+│       └── dashboards/json/
+│           ├── cdc-pipeline.json       # CDC 실시간 대시보드 (12 패널)
+│           └── airflow-operations.json # Airflow 운영 대시보드 (12 패널)
+│
+├── airflow/
+│   ├── Dockerfile                      # Custom image (dbt + statsd)
+│   ├── webserver_config.py             # 비로그인 Viewer 설정
+│   ├── dbt_profiles/profiles.yml       # Docker 네트워크용 dbt 프로필
+│   ├── dags/
+│   │   ├── health_check.py             # DAG 1: 10분 헬스체크
+│   │   └── daily_pipeline.py           # DAG 2: 일일 배치 + Slack 리포트
+│   ├── plugins/
+│   │   ├── hooks/clickhouse_hook.py    # ClickHouse HTTP API Hook
+│   │   ├── operators/
+│   │   │   ├── clickhouse_operator.py  # ClickHouse 쿼리 Operator
+│   │   │   └── flink_health_operator.py # Flink REST API Operator
+│   │   └── callbacks/slack_callbacks.py # Slack 알림 (실패/SLA/일일리포트)
+│   └── tests/test_dags.py              # DAG 구조 테스트 (9개)
+│
+├── dbt_cdc_pipeline/
+│   ├── models/
+│   │   ├── staging/stg_trades.sql      # VIEW: 원본 정제
+│   │   ├── intermediate/
+│   │   │   ├── int_ohlcv_1h.sql        # TABLE: 시간별 OHLCV
+│   │   │   └── int_ohlcv_daily.sql     # TABLE: 일별 OHLCV
+│   │   └── marts/
+│   │       ├── mart_daily_summary.sql  # TABLE: 일일 요약 (리포트용)
+│   │       ├── mart_volume_spike.sql   # TABLE: 거래량 급등
+│   │       └── mart_alert_rate.sql     # TABLE: 이상탐지 비율
+│   └── tests/                          # dbt 데이터 테스트
+│
+├── monitoring/
+│   ├── prometheus.yml                  # Prometheus 스크래핑 설정
+│   └── statsd_mapping.yml             # Airflow StatsD → Prometheus 매핑
 │
 ├── scripts/
-│   ├── startup.sh               # 전체 파이프라인 기동
-│   ├── build-flink-job.sh       # Flink Job 빌드 + 배포
-│   ├── check-health.sh          # 헬스체크
-│   └── sync-annotations.sh     # Grafana annotation 자동 동기화
+│   ├── startup.sh                      # 전체 파이프라인 기동
+│   ├── build-flink-job.sh              # Flink Job 빌드 + 배포
+│   └── sync-annotations.sh            # Grafana annotation 자동 동기화
 │
 └── docs/
-    ├── 02-infrastructure.md     # Phase 1-2 인프라 + CDC
-    ├── 03-cdc-pipeline.md       # Debezium 설정 상세
-    ├── 04-flink-streaming.md    # Flink Job 설계
-    ├── 05-clickhouse-grafana.md # ClickHouse + Grafana
-    └── 06-phase6-record.md      # 이상탐지 고도화 + 장애복구
+    ├── 02-infrastructure.md
+    ├── 03-cdc-pipeline.md
+    ├── 04-flink-streaming.md
+    ├── 05-clickhouse-grafana.md
+    └── 06-phase6-record.md
 ```
 
 ---
@@ -589,7 +666,7 @@ cdc-realtime-pipeline/
 > "AWS같은 클라우드 시스템이 아닌, On-Premise 클러스터 구축을 해보고 싶어서, 클라우드 관리형 서비스가 아닌 물리 서버에서 직접 구축하고 24시간 운영하며 실제 장애 대응까지 경험했습니다."
 
 ### Q2. 16GB 메모리에서 어떻게 최적화했나요?
-> "12개 컨테이너를 7.2GB 내에서 운영합니다. Kafka broker당 512MB, Flink TaskManager 1GB로 제한하고, MySQL은 7일 보존 + 매시간 분산 삭제, ClickHouse는 365일 TTL로 디스크 관리를 자동화했습니다."
+> "27개 컨테이너를 ~11.5GB 내에서 운영합니다. Kafka broker당 512MB, Flink TaskManager 1GB, Airflow Webserver/Scheduler 각 640MB로 제한하고, MySQL은 7일 보존 + 매시간 분산 삭제, ClickHouse는 365일 TTL로 디스크 관리를 자동화했습니다."
 
 ### Q3. CDC 파이프라인에서 가장 어려웠던 장애는?
 > "MySQL의 정기 cleanup DELETE가 Debezium tombstone 메시지를 대량 생성하여 Flink Job이 죽은 사례입니다. NullSafeStringSchema 구현, DELETE 이벤트 스킵, cleanup 시간 분산으로 해결했고, 이를 통해 CDC 파이프라인에서 대량 DML의 위험성을 체감했습니다."
@@ -609,6 +686,15 @@ cdc-realtime-pipeline/
 ### Q8. RAPID_TRADES를 왜 비활성화했나요?
 > "데이터 분석 결과입니다. 24시간 동안 73건이 탐지됐는데 전부 정확히 100건이었고, 101건 이상은 단 한 건도 없었습니다. ClickHouse에서 10초 윈도우 분석을 해보니 BTC도 최대 100건이 천장이었고, 이는 Upbit WebSocket API의 전송 한계였습니다. 이상거래가 아니라 API 제약이므로 비활성화했고, 코드 구조는 유지하여 추후 거래소 내부 데이터 연동 시 재활성화할 수 있도록 했습니다."
 
+### Q9. Airflow를 왜 도입했고, cron 대비 장점은?
+> "dbt를 cron으로 돌리면 실패 여부를 알 수 없고, 코인별 품질검증이나 후속 작업 연동이 불가능합니다. Airflow 도입으로 dbt run → dbt test → 코인별 품질검증(Dynamic Task Mapping) → quality gate → Slack 리포트까지 하나의 DAG으로 오케스트레이션하고, 실패 시 자동 재시도 + Slack 알림까지 처리됩니다. Custom Operator(ClickHouseOperator, FlinkHealthOperator)를 직접 개발하여 추가 드라이버 없이 HTTP API로 ClickHouse에 접근합니다."
+
+### Q10. dbt 3계층 모델 구조는 어떤 기준으로 설계했나요?
+> "staging(stg_trades)은 원본 정제 VIEW, intermediate(int_ohlcv_1h, int_ohlcv_daily)는 시간/일별 OHLCV 집계 TABLE, marts(mart_daily_summary, mart_volume_spike, mart_alert_rate)는 리포트/대시보드용 최종 테이블입니다. Flink가 실시간 적재한 raw 데이터를 dbt가 배치로 가공하여, 실시간 스트리밍과 배치 분석을 분리합니다."
+
+### Q11. 알림 체계가 n8n과 Airflow 두 개인 이유는?
+> "역할이 다릅니다. n8n은 매분 ClickHouse를 폴링하여 FDS 이상거래와 CDC 장애를 **즉시** Slack + Gmail로 알립니다. Airflow는 매일 01:00 KST에 전날 데이터를 **일일 리포트**로 종합합니다 — CDC 지연 percentile, 코인별 품질검증, 이상탐지 요약, 거래량 급등 등. health_check DAG은 10분 간격으로 파이프라인 컴포넌트 상태를 점검하되, 이상 시에만 알림을 보내 alert fatigue를 방지합니다."
+
 ---
 
 ## 🔗 관련 프로젝트
@@ -626,4 +712,4 @@ cdc-realtime-pipeline/
 | RAM | 16GB |
 | Disk | 500GB SSD |
 | OS | Ubuntu 24.04 |
-| 운영 | 24시간 상시 (10일+ 가동 중) |
+| 운영 | 24시간 상시 (27일+ 가동 중) |

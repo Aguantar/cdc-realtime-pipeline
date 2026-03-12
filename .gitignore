@@ -6,3 +6,22 @@ kafka*_data/
 .vscode/
 *.swp
 *.log
+
+# 진행기록 / 블로그 / 임시 파일
+airflow0*.md
+airflow_integration_plan.md
+blog-post-*.md
+airflow_grafana.png
+cdc-dbt-analytics-dashboard.json
+dbt_cdc_pipeline.tar.gz
+
+# 빌드 산출물
+flink/target/
+
+# Python / dbt 캐시
+__pycache__/
+*.pyc
+dbt_cdc_pipeline/target/
+dbt_cdc_pipeline/logs/
+dbt_cdc_pipeline/.user.yml
+airflow/logs/

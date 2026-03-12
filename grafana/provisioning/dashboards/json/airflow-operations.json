@@ -1,0 +1,393 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Airflow DAG 오케스트레이션 모니터링",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "Scheduler Heartbeat (스케줄러 생존)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "rate(airflow_scheduler_heartbeat[5m]) > 0",
+          "legendFormat": "Heartbeat",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "colorMode": "background"
+      }
+    },
+    {
+      "title": "DAG Bag Size (로드된 DAG 수)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "airflow_dagbag_size",
+          "legendFormat": "DAGs",
+          "refId": "A"
+        }
+      ],
+      "options": { "graphMode": "none", "colorMode": "background" }
+    },
+    {
+      "title": "Executor - Open Slots (여유 실행 슬롯)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "green", "value": 20 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "airflow_executor_open_slots",
+          "legendFormat": "Open",
+          "refId": "A"
+        }
+      ],
+      "options": { "graphMode": "area", "colorMode": "background" }
+    },
+    {
+      "title": "Running Tasks (실행 중 태스크)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 25 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "airflow_executor_running_tasks",
+          "legendFormat": "Running",
+          "refId": "A"
+        }
+      ],
+      "options": { "graphMode": "area", "colorMode": "background" }
+    },
+    {
+      "title": "Queued Tasks (대기 중 태스크)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 15 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "airflow_executor_queued_tasks",
+          "legendFormat": "Queued",
+          "refId": "A"
+        }
+      ],
+      "options": { "graphMode": "area", "colorMode": "background" }
+    },
+    {
+      "title": "DAG Import Errors (DAG 로드 에러)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "airflow_dag_processing_import_errors",
+          "legendFormat": "Errors",
+          "refId": "A"
+        }
+      ],
+      "options": { "graphMode": "none", "colorMode": "background" }
+    },
+    {
+      "title": "Task Finished (태스크 성공/실패 추이)",
+      "description": "5분 단위 태스크 완료 건수 (전체 DAG 합산)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 0,
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "성공" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "실패" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(airflow_ti_finish{state=\"success\"}[5m]))",
+          "legendFormat": "성공",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(increase(airflow_ti_finish{state=\"failed\"}[5m]))",
+          "legendFormat": "실패",
+          "refId": "B"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "DAG Run Duration (DAG 실행 소요시간)",
+      "description": "DAG 1회 실행에 걸린 시간 (초)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "fillOpacity": 0,
+            "lineWidth": 0,
+            "showPoints": "always"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "health_check" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "daily_pipeline" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "airflow_dagrun_duration{dag_id=\"health_check\",status=\"success\",quantile=\"0.5\"}",
+          "legendFormat": "health_check",
+          "refId": "A"
+        },
+        {
+          "expr": "airflow_dagrun_duration{dag_id=\"daily_pipeline\",status=\"success\",quantile=\"0.5\"}",
+          "legendFormat": "daily_pipeline",
+          "refId": "B"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "DAG Parse Time (DAG 파싱 소요시간)",
+      "description": "스케줄러가 DAG 파일을 읽는 데 걸리는 시간",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "airflow_dag_processing_last_duration_health_check",
+          "legendFormat": "health_check",
+          "refId": "A"
+        },
+        {
+          "expr": "airflow_dag_processing_last_duration_daily_pipeline",
+          "legendFormat": "daily_pipeline",
+          "refId": "B"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "title": "Task Duration (태스크별 평균 소요시간)",
+      "description": "daily_pipeline의 각 태스크가 평균적으로 걸리는 시간",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 60 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "airflow_dag_task_duration_sum{dag_id=\"daily_pipeline\"} / airflow_dag_task_duration_count{dag_id=\"daily_pipeline\"} > 0",
+          "legendFormat": "{{task_id}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        }
+      }
+    },
+    {
+      "title": "Last DAG Run (마지막 실행 경과시간)",
+      "description": "각 DAG이 마지막으로 실행된 후 경과한 시간 (초)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 900 },
+              { "color": "red", "value": 1800 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "airflow_dag_processing_last_run_seconds_ago_health_check",
+          "legendFormat": "health_check",
+          "refId": "A"
+        },
+        {
+          "expr": "airflow_dag_processing_last_run_seconds_ago_daily_pipeline",
+          "legendFormat": "daily_pipeline",
+          "refId": "B"
+        }
+      ],
+      "options": {
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        }
+      }
+    },
+    {
+      "title": "DAG Processing Total Parse Time (전체 DAG 파싱 총 소요시간)",
+      "description": "모든 DAG 파일의 파싱 시간 합계",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "airflow_dag_processing_total_parse_time",
+          "legendFormat": "Total Parse Time",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["airflow", "operations"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Asia/Seoul",
+  "title": "Airflow Operations",
+  "uid": "airflow-operations",
+  "version": 2
+}

@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: stg_trades
+    description: >
+      Upbit 코인 체결 raw 데이터 정제.
+      upbit_timestamp(Int64 Unix ms)를 KST DateTime으로 변환하고,
+      INSERT 이벤트(op='c')만 필터링하여 중복 방지.
+    columns:
+      - name: trade_id
+        description: "MySQL AUTO_INCREMENT PK"
+        tests:
+          - not_null
+      - name: market
+        description: "마켓 코드 (KRW-BTC 등)"
+        tests:
+          - not_null
+      - name: trade_price
+        description: "체결 가격 (KRW)"
+        tests:
+          - not_null
+      - name: trade_time_kst
+        description: "Upbit 체결 시각 (Asia/Seoul 변환)"

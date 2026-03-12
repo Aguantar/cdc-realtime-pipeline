@@ -1,0 +1,63 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Flink가 적재한 ClickHouse raw 데이터"
+    database: cdc_pipeline
+    schema: cdc_pipeline
+    tables:
+      - name: crypto_trades
+        description: "Upbit 코인 실시간 체결 데이터 (Flink raw sink)"
+        columns:
+          - name: trade_id
+            description: "MySQL AUTO_INCREMENT PK"
+            tests:
+              - not_null
+          - name: market
+            description: "마켓 코드 (KRW-BTC, KRW-ETH 등)"
+            tests:
+              - not_null
+          - name: trade_price
+            description: "체결 가격 (KRW)"
+          - name: trade_volume
+            description: "체결 수량"
+          - name: trade_amount
+            description: "체결 금액 (price × volume)"
+          - name: ask_bid
+            description: "ASK(매도) / BID(매수)"
+          - name: upbit_timestamp
+            description: "Upbit 체결 시각 (Unix ms, Int64)"
+          - name: sequential_id
+            description: "Upbit 체결 고유 ID"
+          - name: source_ts
+            description: "MySQL INSERT 시각"
+          - name: cdc_ts
+            description: "Debezium 처리 시각"
+          - name: cdc_latency_ms
+            description: "CDC 레이턴시 (ms)"
+          - name: flink_ts
+            description: "Flink 처리 시각"
+          - name: inserted_at
+            description: "ClickHouse 적재 시각"
+
+      - name: trade_aggregations
+        description: "Flink 5분 윈도우 집계 결과 (Flink이 실시간 관리, DBT는 읽기만)"
+        columns:
+          - name: market
+            description: "마켓 코드"
+          - name: window_start
+            description: "윈도우 시작 시각"
+          - name: window_end
+            description: "윈도우 종료 시각"
+          - name: vwap
+            description: "거래량 가중 평균 가격"
+
+      - name: anomaly_alerts
+        description: "Flink 이상 탐지 알림 (4가지 룰: LARGE_TRADE, PRICE_SPIKE, VOLUME_SURGE, RAPID_TRADES)"
+        columns:
+          - name: alert_type
+            description: "알림 유형 (LARGE_TRADE | PRICE_SPIKE | VOLUME_SURGE | RAPID_TRADES)"
+          - name: market
+            description: "마켓 코드"
+          - name: detected_at
+            description: "탐지 시각"

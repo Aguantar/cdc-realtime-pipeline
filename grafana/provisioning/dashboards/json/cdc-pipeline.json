@@ -16,14 +16,85 @@
   },
   "panels": [
     {
+      "id": 11,
+      "title": "",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 21,
+        "y": 14
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT if(max(inserted_at) >= now() - INTERVAL 5 MINUTE, 1, 0) as status FROM cdc_pipeline.crypto_trades",
+          "refId": "A",
+          "format": 1
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "🔴 STALE",
+                  "index": 0
+                },
+                "1": {
+                  "text": "🟢 LIVE",
+                  "index": 1
+                }
+              },
+              "type": "value"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
       "id": 1,
       "title": "Total Trades (총 체결 건수)",
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 0
+        "w": 5,
+        "x": 5,
+        "y": 2
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -41,16 +112,8 @@
           "thresholds": {
             "steps": [
               {
-                "color": "green",
+                "color": "dark-blue",
                 "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 10000
-              },
-              {
-                "color": "red",
-                "value": 100000
               }
             ]
           },
@@ -78,8 +141,8 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 4,
-        "y": 0
+        "x": 10,
+        "y": 2
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -98,16 +161,8 @@
           "thresholds": {
             "steps": [
               {
-                "color": "green",
+                "color": "dark-blue",
                 "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 100
-              },
-              {
-                "color": "red",
-                "value": 1000
               }
             ]
           },
@@ -128,13 +183,13 @@
     },
     {
       "id": 3,
-      "title": "Active Alerts (이상 탐지)",
+      "title": "⚠ Active Alerts (이상 탐지 / 최근 1시간 기준)",
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 8,
-        "y": 0
+        "w": 5,
+        "x": 0,
+        "y": 2
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -152,16 +207,16 @@
           "thresholds": {
             "steps": [
               {
-                "color": "green",
+                "color": "semi-dark-blue",
                 "value": null
               },
               {
                 "color": "orange",
-                "value": 5
+                "value": 1
               },
               {
                 "color": "red",
-                "value": 20
+                "value": 10
               }
             ]
           },
@@ -186,9 +241,9 @@
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 12,
-        "y": 0
+        "w": 5,
+        "x": 14,
+        "y": 2
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -207,7 +262,7 @@
           "thresholds": {
             "steps": [
               {
-                "color": "blue",
+                "color": "dark-blue",
                 "value": null
               }
             ]
@@ -233,9 +288,9 @@
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 16,
-        "y": 0
+        "w": 5,
+        "x": 19,
+        "y": 2
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -253,7 +308,7 @@
           "thresholds": {
             "steps": [
               {
-                "color": "purple",
+                "color": "dark-blue",
                 "value": null
               }
             ]
@@ -274,14 +329,14 @@
       }
     },
     {
-      "id": 11,
-      "title": "Pipeline Status (파이프라인 상태)",
-      "type": "stat",
+      "id": 12,
+      "title": "BTC Price (실시간 BTC 가격) | 🔴 빨간 점선 = 이상 탐지",
+      "type": "timeseries",
       "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 20,
-        "y": 0
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -289,38 +344,106 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT if(max(inserted_at) >= now() - INTERVAL 5 MINUTE, 1, 0) as status FROM cdc_pipeline.crypto_trades",
+          "rawSql": "SELECT toStartOfMinute(source_ts) as time, avg(trade_price) as price, min(trade_price) as low, max(trade_price) as high FROM cdc_pipeline.crypto_trades WHERE market = 'KRW-BTC' AND op = 'c' AND source_ts >= now() - INTERVAL 1 HOUR GROUP BY time ORDER BY time",
           "refId": "A",
           "format": 1
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "1": {
-                  "color": "green",
-                  "text": "● LIVE"
-                },
-                "0": {
-                  "color": "red",
-                  "text": "○ STALE"
-                }
-              }
-            }
-          ]
+          "unit": "currencyKRW",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         }
       },
       "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
         },
-        "colorMode": "background",
-        "graphMode": "none"
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Bid vs Ask (매수/매도 비율)",
+      "type": "barchart",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT \n    market,\n    sum(bid_count) as bid,\n    sum(ask_count) as ask\nFROM cdc_pipeline.trade_aggregations \nWHERE window_start >= now() - INTERVAL 1 HOUR \nGROUP BY market \nORDER BY bid + ask DESC",
+          "refId": "A",
+          "format": 1
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 80
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bid"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3274D9"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "매수 (BID)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ask"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#E02F44"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "매도 (ASK)"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "market",
+        "stacking": "normal",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
       }
     },
     {
@@ -331,7 +454,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 14
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -367,8 +490,8 @@
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 12,
-        "w": 12,
+        "y": 14,
+        "w": 9,
         "h": 8
       },
       "datasource": {
@@ -389,26 +512,6 @@
             "drawStyle": "line",
             "lineWidth": 2,
             "fillOpacity": 20
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 50
-              },
-              {
-                "color": "red",
-                "value": 200
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
           }
         },
         "overrides": [
@@ -455,84 +558,6 @@
       }
     },
     {
-      "id": 12,
-      "title": "BTC Price (실시간 BTC 가격) | 🔴 빨간 점선 = 이상 탐지",
-      "type": "timeseries",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 12
-      },
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "targets": [
-        {
-          "rawSql": "SELECT toStartOfMinute(source_ts) as time, avg(trade_price) as price, min(trade_price) as low, max(trade_price) as high FROM cdc_pipeline.crypto_trades WHERE market = 'KRW-BTC' AND op = 'c' AND source_ts >= now() - INTERVAL 1 HOUR GROUP BY time ORDER BY time",
-          "refId": "A",
-          "format": 1
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyKRW",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        }
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "id": 7,
-      "title": "Bid vs Ask (매수/매도 비율)",
-      "type": "barchart",
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 12,
-        "h": 8
-      },
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "targets": [
-        {
-          "rawSql": "SELECT \n    market,\n    sum(bid_count) as bid,\n    sum(ask_count) as ask\nFROM cdc_pipeline.trade_aggregations \nWHERE window_start >= now() - INTERVAL 1 HOUR \nGROUP BY market \nORDER BY bid + ask DESC",
-          "refId": "A",
-          "format": 1
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "fillOpacity": 80
-          }
-        }
-      },
-      "options": {
-        "xField": "market",
-        "stacking": "normal",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      }
-    },
-    {
       "id": 8,
       "title": "Anomaly Alerts (이상 탐지 내역)",
       "type": "table",
@@ -540,7 +565,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 22
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -554,7 +579,39 @@
         }
       ],
       "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#FF4444"
+          },
+          "custom": {
+            "cellOptions": {
+              "type": "color-text"
+            }
+          }
+        },
         "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alert_type"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-red"
+                }
+              }
+            ]
+          },
           {
             "matcher": {
               "id": "byName",
@@ -568,6 +625,19 @@
               {
                 "id": "decimals",
                 "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
               }
             ]
           },
@@ -584,6 +654,27 @@
               {
                 "id": "decimals",
                 "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "market"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF6666"
+                }
               }
             ]
           }
@@ -607,7 +698,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 30
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -681,20 +772,33 @@
     }
   ],
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "annotations": {
     "list": [
       {
-        "builtIn": 1,
         "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
+          "type": "grafana-clickhouse-datasource",
+          "uid": "PDEE91DDB90597936"
         },
         "enable": true,
         "hide": false,
         "iconColor": "#FF0000",
         "name": "🔴 이상 탐지 (Anomaly Alert)",
-        "type": "dashboard"
+        "target": {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT detected_at as time, concat(alert_type, ' | ', market, ': ', message) as text FROM cdc_pipeline.anomaly_alerts WHERE $__timeFilter(detected_at) ORDER BY detected_at",
+          "refId": "Anno"
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            12
+          ]
+        }
       }
     ]
   },

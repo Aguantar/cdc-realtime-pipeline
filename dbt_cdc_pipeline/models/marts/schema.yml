@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: mart_volume_spike
+    description: >
+      직전 시간 대비 거래량 3배 이상 급등 감지.
+      Flink VOLUME_SURGE(틱 단위, EWMA 150배)와 역할 분리:
+      DBT는 시간봉 단위 추세 분석, Grafana 알림 패널 연동.
+    columns:
+      - name: market
+        tests:
+          - not_null
+      - name: volume_ratio
+        description: "직전 시간 대비 거래량 비율"
+
+  - name: mart_daily_summary
+    description: >
+      일별 종합 리포트. 종목별 OHLCV + 전일 대비 변동률.
+      Grafana 일별 코인 시세 대시보드 데이터소스.
+    columns:
+      - name: market
+        tests:
+          - not_null
+      - name: trade_date
+        tests:
+          - not_null
+      - name: close_change_pct
+        description: "전일 대비 종가 변동률 (%)"
+      - name: bid_ratio_pct
+        description: "매수 비율 (%)"
+
+  - name: mart_alert_rate
+    description: >
+      Flink 이상 탐지 알림 발생률 집계 (룰별/마켓별).
+      운영 KPI — Grafana 시간대별 알림 히트맵 연동.
+      ※ 데이터 볼륨이 일평균 50건 이상일 때 의미 있음.
+    columns:
+      - name: alert_type
+        description: "알림 유형 (LARGE_TRADE | PRICE_SPIKE | VOLUME_SURGE | RAPID_TRADES)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['LARGE_TRADE', 'PRICE_SPIKE', 'VOLUME_SURGE', 'RAPID_TRADES']
+      - name: alert_count
+        description: "시간당 알림 발생 건수"
