@@ -62,12 +62,12 @@ CREATE TABLE raw_orders (
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(source_ts)
 ORDER BY (symbol, source_ts, order_id)
-TTL toDateTime(source_ts) + INTERVAL 90 DAY;
+TTL toDateTime(source_ts) + INTERVAL 365 DAY;
 ```
 
 ORDER BY를 `(symbol, source_ts, order_id)`로 설정한 이유: Grafana에서 가장 빈번한 쿼리가 "특정 종목의 특정 시간대 주문 조회"이기 때문이다. ClickHouse는 ORDER BY 키 순서대로 데이터를 물리적으로 정렬 저장하므로, `WHERE symbol = '005930' AND source_ts >= ...` 쿼리 시 스캔 범위가 크게 줄어든다.
 
-TTL 90일: 16GB 서버에서 디스크 관리를 위해 설정. 90일이 지난 데이터는 자동 삭제된다.
+TTL 365일: 16GB 서버에서 디스크 관리를 위해 설정. 365일이 지난 데이터는 자동 삭제된다.
 
 ### 3.2 order_aggregations — 5분 윈도우 집계
 

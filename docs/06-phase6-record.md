@@ -73,7 +73,7 @@
 2026-02-21 04:00:33 — Flink CdcEventParser에서 NullPointerException
 2026-02-21 04:00:35 — Flink Job restart 3회 실패 → FAILED
 2026-02-21 04:00:36 — 모든 Task CANCELED, JobManager connection 해제
-2026-02-23 02:21:00 — 장애 발견 (2일 2시간 동안 ClickHouse 적재 중단)
+2026-02-23 02:21:00 — 장애 발견 (약 46시간 동안 ClickHouse 적재 중단)
 ```
 
 ### 근본 원인 분석 (3가지 동시 문제)
