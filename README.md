@@ -2,7 +2,7 @@
 
 > **물리 서버 기반 암호화폐 실시간 변경 데이터 캡처 및 이상 탐지 플랫폼**
 >
-> 🔗 **Live Dashboard**: [Grafana 실시간 대시보드](https://grafana.calmee.store/d/cdc-pipeline-main/cdc-crypto-realtime-pipeline?orgId=1&refresh=10s) | [Airflow 오케스트레이션](https://airflow.calmee.store)
+> 🔗 **Live 운영**: 24시간 상시 가동 (Grafana·Airflow는 인증 뒤 운영 — 요청 시 통제된 라이브 데모 제공)
 
 ## 💡 이 프로젝트가 증명하는 것
 
@@ -28,7 +28,7 @@
 
 ## 📊 실시간 모니터링 대시보드
 
-> **🔗 Live Dashboard**: [Grafana 로 구현한 실시간 대시보드](https://grafana.calmee.store/d/cdc-pipeline-main/cdc-crypto-realtime-pipeline?orgId=1&refresh=10s)
+> **🔗 실시간 대시보드**: Grafana 12패널 (아래 캡처 · 라이브 데모는 요청 시 제공)
 
 <img width="2527" height="1235" alt="image" src="https://github.com/user-attachments/assets/edca902b-962a-4738-a538-f9ab973200a2" />
 
@@ -298,7 +298,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 |--------------|-------------|
 | AWS/GCP 관리형 서비스 | **On-Premise 물리 서버 직접 구축** |
 | 로컬에서 잠깐 테스트 | **24시간 상시 운영 (45일+ 가동, 6,800만+건 적재)** |
-| 시연할 때만 실행 | **면접관이 실시간 접속 가능** (grafana.calmee.store, airflow.calmee.store) |
+| 시연할 때만 실행 | **24시간 실제 운영** (요청 시 통제된 라이브 데모) |
 | 무제한 리소스 | **16GB 메모리에서 29개 컨테이너 최적화** |
 | 시뮬레이션 데이터 | **Upbit 실시간 체결 데이터 (6,800만+건)** |
 | 고정 임계값 이상 탐지 | **업비트 정책 + 학술 논문 + 실측 분포 분석 기반 동적 임계값** |
@@ -394,8 +394,8 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
   └──────┬───────┘
          │
          ▼
-  grafana.calmee.store
-  airflow.calmee.store
+  Grafana (대시보드)
+  Airflow (오케스트레이션)
 ```
 
 ### 리소스 배분 (16GB RAM, 29개 컨테이너)
@@ -498,7 +498,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] dbt 3계층 모델 (staging: stg_trades → intermediate: int_ohlcv_1h, int_ohlcv_daily → marts: mart_daily_summary, mart_volume_spike, mart_alert_rate)
 - [x] Airflow 메트릭 모니터링 (StatsD → Prometheus → Grafana Airflow Operations 대시보드 12패널)
 - [x] Fernet Key 암호화 (Slack Webhook URL 등 시크릿 보호)
-- [x] Caddy reverse proxy (airflow.calmee.store) + 비로그인 Viewer 접근
+- [x] Caddy reverse proxy (HTTPS 자동 인증서)
 - [x] 과거 25일치 일일 리포트 Slack 백필
 - [x] DAG 테스트 9/9 통과 (pytest)
 - [x] 기존 dbt cron 비활성화 → Airflow 완전 이관
@@ -555,7 +555,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 | 장애 복구 시간 | < 5분 | **Flink restart 30초 이내** ✅ |
 | 메모리 사용 | < 14GB | **~10GB 사용 (Available 5.3GB)** ✅ |
 | 24시간 운영 | ✅ | **45일+ 연속 가동** ✅ |
-| 외부 접근 | ✅ | **grafana.calmee.store + airflow.calmee.store** ✅ |
+| 외부 접근 | ✅ | **인증 뒤 운영 · 요청 시 라이브 데모** ✅ |
 | 총 적재 | - | **6,800만+건 (누적)** |
 | 이상 탐지 | 의미 있는 알림 | **~13건/시간 (v1 대비 98% 감소, 31일 실측)** ✅ |
 | 실시간 알림 | 매분 | **n8n → Slack + Gmail** ✅ |

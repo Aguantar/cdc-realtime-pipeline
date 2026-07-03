@@ -33,7 +33,7 @@
 | 기술 | 버전 | 역할 |
 |------|------|------|
 | Docker / Docker Compose | - | 27개 컨테이너 오케스트레이션 |
-| Caddy | 2.10 | 리버스 프록시 + HTTPS 자동 인증서 (grafana/airflow.calmee.store) |
+| Caddy | 2.10 | 리버스 프록시 + HTTPS 자동 인증서 |
 | Zookeeper | 7.5.3 | Kafka 클러스터 코디네이션 |
 | Kafka UI | latest | Kafka 클러스터 웹 모니터링 |
 
