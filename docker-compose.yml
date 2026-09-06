@@ -195,6 +195,7 @@ services:
       VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       KEY_CONVERTER_SCHEMAS_ENABLE: "false"
       VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_PRODUCER_ENABLE_IDEMPOTENCE: "true"
       HEAP_OPTS: "-Xmx512m -Xms256m"
     deploy:
       resources:
@@ -341,7 +342,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 256M
     networks:
       - cdc-network
 
@@ -448,6 +449,9 @@ services:
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./airflow/webserver_config.py:/opt/airflow/webserver_config.py
+      # IcePush (외부 프로젝트 마운트 — DAE 트랙)
+      - /home/calme/icepush/airflow/dags:/opt/airflow/dags/icepush
+      - /home/calme/icepush:/opt/airflow/icepush
     deploy:
       resources:
         limits:
@@ -484,6 +488,9 @@ services:
       - ./airflow/plugins:/opt/airflow/plugins
       - ./dbt_cdc_pipeline:/opt/airflow/dbt
       - ./airflow/dbt_profiles:/opt/airflow/dbt_profiles
+      # IcePush (외부 프로젝트 마운트 — DAE 트랙)
+      - /home/calme/icepush/airflow/dags:/opt/airflow/dags/icepush
+      - /home/calme/icepush:/opt/airflow/icepush
     deploy:
       resources:
         limits:
