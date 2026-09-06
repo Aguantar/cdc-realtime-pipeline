@@ -10,6 +10,9 @@ dbt 실행 → 동적 코인별 품질검증 → quality gate → 일일 리포�
 - Dataset: dbt 완료 시 후속 품질검증 트리거
 - SLA: dbt가 2시간 이내 완료되지 않으면 알림
 - Callback: 실패 시 컨텍스트 포함 Slack 알림
+
+중복 게이트 FAIL 대응: 상시 유입원이 sink 재시도(월 수십 건 수준, 07-dedup-audit.md)이므로
+간헐적 소량 FAIL은 정상 동작 — 건수만 기록하고 무시. 배치 크기(200건) 이상이 반복되면 조사.
 """
 
 from __future__ import annotations
@@ -191,6 +194,20 @@ with DAG(
             else 0,
         }
 
+        # 중복 적재 검사 결과를 게이트에 반영 (0건 아니면 FAIL 항목 추가)
+        dup_rows = ti.xcom_pull(task_ids="check_duplicates")
+        dup_rows = int(dup_rows or 0)
+        gate_result["duplicate_rows"] = dup_rows
+        if dup_rows > 0:
+            gate_result["failed"] += 1
+            gate_result["total"] += 1
+            gate_result["failed_coins"].append(
+                {"coin": "DEDUP", "issues": [f"중복 {dup_rows}건 (source_ts, trade_id)"]}
+            )
+            gate_result["pass_rate"] = round(
+                gate_result["passed"] / gate_result["total"] * 100, 1
+            )
+
         ti.log.info(
             "Quality Gate: %d/%d passed (%.1f%%)",
             gate_result["passed"],
@@ -209,22 +226,27 @@ with DAG(
     )
 
     # ── Step 6: 중복 체크 ────────────────────────────────────
-    def _check_duplicates(**context) -> list:
-        """trade_id 중복 건수를 확인합니다."""
+    def _check_duplicates(**context) -> int:
+        """당일 중복 적재 건수를 확인합니다.
+
+        키는 (source_ts, trade_id) 조합 — trade_id는 MySQL auto_increment
+        리셋으로 재사용된 이력이 있어 단독으로는 유니크하지 않음 (07-dedup-audit.md).
+        """
         from hooks.clickhouse_hook import ClickHouseHook
 
         target_date = _get_target_date(context)
         hook = ClickHouseHook()
-        return hook.get_records(
+        result = hook.get_scalar(
             f"""
-            SELECT trade_id, count() AS cnt
+            SELECT count() - uniqExact(source_ts, trade_id) AS dup_rows
             FROM cdc_pipeline.crypto_trades
             WHERE toDate(source_ts) = '{target_date}'
-            GROUP BY trade_id
-            HAVING cnt > 1
-            LIMIT 10
+            SETTINGS max_memory_usage = 500000000, max_threads = 2
             """
         )
+        dup_rows = int(result or 0)
+        context["ti"].log.info("Duplicate rows [%s]: %d", target_date, dup_rows)
+        return dup_rows
 
     check_duplicates = PythonOperator(
         task_id="check_duplicates",
@@ -320,7 +342,7 @@ with DAG(
         ti = context["ti"]
         quality = ti.xcom_pull(task_ids="quality_gate")
         report = ti.xcom_pull(task_ids="generate_report")
-        duplicates = ti.xcom_pull(task_ids="check_duplicates")
+        dup_rows = int(ti.xcom_pull(task_ids="check_duplicates") or 0)
 
         # 파이프라인 실행 시간 계산
         dag_run = context.get("dag_run")
@@ -338,7 +360,7 @@ with DAG(
             "volume_spikes": report.get("volume_spikes", []) if report else [],
             "latency_stats": report.get("latency_stats", {}) if report else {},
             "anomaly_counts": report.get("anomaly_counts", {}) if report else {},
-            "duplicates_found": len(duplicates) if duplicates else 0,
+            "duplicates_found": dup_rows,
             "execution_seconds": exec_seconds,
         }
 
@@ -352,6 +374,5 @@ with DAG(
 
     # ── DAG 의존성 ───────────────────────────────────────────
     dbt_run >> dbt_test >> get_coins >> validate_coins >> quality_gate
-    dbt_test >> check_duplicates
+    dbt_test >> check_duplicates >> quality_gate
     quality_gate >> generate_report >> slack_report
-    check_duplicates >> slack_report

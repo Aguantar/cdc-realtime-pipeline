@@ -306,9 +306,9 @@ def send_daily_report(report_data: dict[str, Any]) -> None:
     # 중복 + 푸터
     footer_parts = []
     if duplicates > 0:
-        footer_parts.append(f":warning: 중복 trade_id: {duplicates}건")
+        footer_parts.append(f":warning: 중복 적재: {duplicates}건 (source_ts, trade_id)")
     else:
-        footer_parts.append(":white_check_mark: 중복 없음")
+        footer_parts.append(":white_check_mark: 중복 0건")
 
     blocks.append({
         "type": "context",
