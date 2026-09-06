@@ -6,6 +6,9 @@ models:
       Upbit 코인 체결 raw 데이터 정제.
       upbit_timestamp(Int64 Unix ms)를 KST DateTime으로 변환하고,
       INSERT 이벤트(op='c')만 필터링하여 중복 방지.
+      주의 — 2026-02 지표는 장애 복구 재소비로 인한 중복(~15.4%)이 포함된
+      과대집계 상태 (07-dedup-audit.md). 분석 시 (source_ts, trade_id)
+      dedup 서브쿼리 필요. 파티션 백필은 ReplacingMergeTree 전환과 함께 예정.
     columns:
       - name: trade_id
         description: "MySQL AUTO_INCREMENT PK"
