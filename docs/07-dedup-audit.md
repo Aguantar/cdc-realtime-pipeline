@@ -82,6 +82,37 @@ trade_id=2가 서로 다른 두 실제 이벤트(02-13, 02-21)로 존재. MySQL 
 - **Phase 3-B — 연기 (코테 이후)**: ReplacingMergeTree(cdc_ts) 전환. 키는 현행 유지 가능(2-3 참조). 91M 재작성은 파티션 분할 필수, 조회부(FINAL/argMax) 영향 검토 필요. 2026-02 파티션 dedup 백필과 마트 재계산도 이때 함께.
 - **수치 표기 정리 — 완료 (2026-09-06)**: README 총 적재를 "누적 91.06M행, 고유 89.42M" 형식으로 갱신, 정합성 행의 "중복 0.006% 이하" 표기를 실측값으로 교체, stg_trades 모델 description에 2026-02 과대집계 주석 추가.
 
+## 5. 검증 및 클로즈 (2026-09-08)
+
+배포 후 정기 실행 2회로 감시 게이트의 두 경로가 모두 실전 검증됨.
+
+| 실행 (01:00 KST) | 대상일 | 결과 | 게이트 판정 |
+|---|---|---|---|
+| 2026-09-07 | 09-05 | success | 중복 0건 → PASS, Slack에 "중복 0건" 라인 |
+| 2026-09-08 | 09-06 | success | 중복 13건 검출 → DEDUP FAIL 항목 + Slack 경고 라인 |
+
+09-06의 13건은 감사 당일 uniqExact 쿼리의 메모리 압박으로 sink가 재시도하며
+유입된 건(2-2 참조) — 게이트가 실제 유입을 놓치지 않고 잡는 것까지 확인.
+이로써 완료 기준 전 항목 충족, 중복 감사 건 클로즈.
+
+### 상태 요약 (클로즈 시점)
+
+- 차단됨: 프로듀서 세션 내 재시도 중복 (idempotent producer)
+- 감시됨: sink 재시도 등 잔여 경로 — 매일 (source_ts, trade_id) 게이트 + Slack
+- 남아 있음: 과거 중복 1,641,600건(2026-02 집중)은 테이블에 그대로 존재.
+  제거는 Phase 3-B(ReplacingMergeTree 전환 + 2월 dedup 백필 + 마트 재계산)에서 —
+  코테 이후 착수 예정
+
+### 커밋 기록
+
+| 커밋 | 내용 |
+|---|---|
+| 3c75376 | feat(connect): enable idempotent producer on connect worker |
+| 5ee2937 | feat(airflow): dedup gate on (source_ts, trade_id) with slack reporting |
+| 3107e62 | docs: update metrics to audited figures (91.06M loaded / 89.42M unique) |
+
+3건 모두 origin/main 푸시 완료. icepush 정비분(e6111fb)은 icepush 리포에 로컬 커밋.
+
 ## 부록: 실행 환경 메모
 
 - 모든 쿼리는 `SETTINGS max_memory_usage=500000000~700000000, max_threads=1~2`로 캡을 걸고 실행.
