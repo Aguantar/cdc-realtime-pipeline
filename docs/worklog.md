@@ -3,6 +3,15 @@
 > 목적: 모든 판단의 근거(실측 명령·시각·수치)를 시간순으로 남긴다. 시각은 UTC(호스트 시계) 기준, KST = +9h.
 > 산출 문서: `docs/08-ingest-lag-incident.md`(적재 지연 사고), `docs/09-orderbook-phase1-execution.md`(1차 실행), `docs/10-phase2-flink-producer-upgrade.md`(2차 실행). 사전 검증 원문·프로브 스크립트·측정 JSON은 `~/cdc-orderbook-probe/`.
 
+## 현재 상태 (최신화 2026-09-09 08:00 UTC / 17:00 KST)
+
+- **7일 무변경 관찰 진행 중** (09-09 06:10 UTC ~ 09-16 06:10 UTC). 기준 커밋 feb959b, 태그 `obs-week1-start`. 이후 문서 커밋 53685c5(README), 5a8cf85(일일 요약).
+- 운영 중: 체결 CDC 경로 287마켓(producer → MySQL → Debezium → Kafka → Flink → ClickHouse), 호가 직접 경로 287마켓(collector → Kafka → Flink → ClickHouse), Flink 잡 3개(hashmap, TM 2g, 슬롯 4/4), ClickHouse 1.75G, health_check 10분(잡 3개·적재 지연 알림), n8n 알림은 Oracle만, 5분 지표 cron + 06:20 UTC 일일 요약 cron(worklog에 자동 한 줄).
+- 오늘 남은 자동 작업: 13:00 UTC 야간 프로브 1회(WS만, 파이프라인 무접촉) → 용량표 갱신.
+- 관찰 뒤 순서(확정): 분석(docs/13) → 튜닝 → 재생 증폭 실험(브로커 장애 시나리오) → 브로커 3→1 + KRaft → CDC 유의미화 A(가상 매매 원장)+B(이상탐지 케이스 관리) · MySQL DROP PARTITION 전환 · ReplacingMergeTree + 2월 백필.
+- 실험 도구: `~/pipeline-load-lab`(로컬 git, GitHub 미생성) recorder/replayer/measure 3종 dry-run 검증 완료. 코퍼스는 관찰 종료 시 고정.
+- 미커밋 잔여: `dbt_cdc_pipeline/tests/assert_no_long_gaps.sql`(이전 세션 diff), png 3개, 일일 요약이 추가하는 worklog 줄(관찰 종료 시 일괄 커밋).
+
 ## 결정 사항 (확정, 재논의 불필요)
 
 | 일시 | 결정 | 근거 |
@@ -30,6 +39,44 @@
 | 09-09 05:20 | **관찰 뒤 CDC 유의미화 방향(제안, 관찰 뒤 확정)**: A) 가상 매매 서비스 원장(orders/positions/balances, 체결 판정은 실시간 호가·체결 기준, "가상 주문" 명시) = 규모·원장 CDC·상태 upsert·스트림-상태 조인·실시간 손익. B) 이상탐지 케이스 관리 테이블(open→확인/오탐/종료를 규칙으로 갱신) → CDC → ClickHouse 정밀도 이력 → 임계값 재조정 순환. C) Airflow/n8n 메타 DB CDC는 보너스. **실주문(myOrder) 혼합은 제외** | 업비트 공개 API에 타인 주문·취소·청산 데이터 없음(문서 확인: 공개 WS ticker/trade/orderbook/candle, 인증 WS myOrder/myAsset 본인 한정, 선물·청산 없음). 실주문 반복은 허수성·취소 과다 감시 대상, 돈·키 관리 위험. 순서: 관찰 → 재생 실험 → A+B |
 | 09-09 05:30 | **호가 데이터의 성격과 활용 근거**: 업비트 호가는 주문 단위(L3)가 아니라 가격대별 잔량 합계 스냅샷(L2). 취소는 잔량 감소로 반영되며 "누구의 주문"만 없음. 체결 스트림과 대조하면 "체결 없이 사라진 잔량 = 취소·정정"으로 추론 가능 → 2월(docs/06)에 "호가 없어 불가"로 남긴 감시 유형 2(허수성 매매)·3(취소·정정 과다) 탐지를 확장 항목으로 등록. 원본 7일 보관 이유 = 이 추론 계산의 입력 | 실측: 15단 전체 스냅샷 258 msg/s, 스냅샷 간 diff로 이벤트 복원 가능. L2는 스프레드·깊이·불균형 분석의 업계 표준 형태 |
 | 09-09 05:30 | **실무자 관점 자체 평가(면접 대비)** — 강점: 200일+ 실운영, 사고 3건(46h 중단·37h 적재 지연·24분 알림 중단)의 원인·수치 문서화, 결정마다 실측 근거, 지연·유실·중복 각각 해결, 규모 하루 약 2,600만 이벤트(체결 400만+호가 2,200만, 초당 ~300). 약점(인정하고 답할 것): 단일 호스트 HA 아님(→3→1 결정), 체결 CDC 소스 인위적(→A+B), 싱크 at-least-once·멱등 upsert 미적용(→RMT 관찰 뒤), 스키마 계약·CI·IaC·SLO 없음, Iceberg 미구현. "왜 아직 안 했나" 답: 먼저 측정(중복 감사·7일 관찰)하고 게이트를 세운 뒤 전환하는 순서 | 약점을 먼저 말할 수 있는 것이 신뢰 요소 |
+| 09-09 04:40 | n8n 이중 실행 해소: **미니PC 워크플로우만 비활성화**(컨테이너·자동 업데이트 cron 유지) | 실행 이력 대조로 이중 실행 실증. 워크플로우 비활성은 롤백이 가장 쉬움. Oracle이 6월 컷오버본 |
+| 09-09 06:09 | 재생 실험 도구는 별도 리포(`pipeline-load-lab`, 로컬), 재생기는 `load_test.` 외 토픽 거부 | 프로덕션 토픽 오발행 방지 안전장치. 관찰 중엔 읽기·dry-run만 |
+| 09-09 06:20 | README에 단일 호스트 HA 아님·체결 CDC 인위성·타협점을 명시 | 면접에서 약점을 먼저 말하는 것이 신뢰 요소(자체 평가 결정 참조) |
+| 09-09 07:40 | 관찰 일일 요약을 cron(06:20 UTC)으로 자동화해 worklog에 자동 기록 | 세션이 없어도 docs/12 §2 "매일 확인"이 수행되도록 |
+
+## 설정값 근거 표 ("왜 그 값인가")
+
+| 설정 | 값 | 왜 | 근거(실측·문서) |
+|---|---|---|---|
+| Flink `state.backend` | hashmap (RocksDB에서 전환) | 키드 상태가 수십 KB인데 RocksDB 네이티브 풀 체크포인트가 MANIFEST(352MB)를 매번 복사 | TM 로컬 db 디렉터리 실측(SST 합 15KB, MANIFEST 352.7MB), canonical savepoint 20KB, 전환 후 17.8KB (docs/09 작업5, docs/10) |
+| Flink TM `process.size` | 2g (1g→) | 1g에서 task heap 25.6MiB, Metaspace 230/256MB(90%) → 잡 추가 시 OOM 위험. 2g·managed 0.25에서 task heap 692M | Flink 1.18 메모리 모델 계산(`~/cdc-orderbook-probe/out/flink_memory_model.txt`) |
+| Flink `jvm-metaspace.size` | 384m (256→) | 잡 3개 클래스로더. 전환 후 실측 81/384MB | REST 메트릭 |
+| Flink `managed.fraction` | 0.25 (0.4→) | hashmap이라 RocksDB용 managed 메모리 불필요, heap으로 돌림 | 동일 |
+| Flink 슬롯 | 4 (3→) | CDC 2 + circuit 1 + orderbook 1 | 슬롯 여유 0 실측(docs/09) |
+| Flink 재시작 전략 | fixed-delay 20회×30초 (클러스터 기본 3×10s 대신, 잡 코드) | ClickHouse 재시작 실측 24초 > 3×10s 창이면 FAILED로 멈춤. 분 단위 장애를 넘기도록 | 04:23 ClickHouse 재시작 실측 |
+| Flink Kafka 시작 오프셋 | committedOffsets(LATEST) (`latest()`→) | savepoint 없이 재시작하면 latest로 점프 → 유실 | 46h 장애 문서(docs/06 이슈2) |
+| Flink checkpoint retention | RETAIN_ON_CANCELLATION | 취소 후 복구 가능성 확보(이전엔 삭제) | docs/09 작업5 |
+| producer `BATCH_SIZE` | 100 (20→) | MySQL 왕복 횟수 감소. 100은 executemany 1회 부담이 작으면서 초당 수십 건 유입을 1~2회로 처리 | flush 단위테스트 5,000행 1.2ms |
+| producer `MAX_BATCHES_PER_FLUSH` | 50 | 1회 flush 상한 5,000행 = 2초 창당 2,500 rows/s. 피크 실측 72.75 msg/s의 34배 여유, 수신 루프 응답성 보호 | docs/08 |
+| producer `BUFFER_WARN_ROWS` | 5,000 | 정상 buffer 0~63(dry-run). 5,000이면 약 2분치 피크 적체 = 명백한 포화 신호 | dry-run 실측 |
+| producer `MARKETS` | ALL_KRW (REST 조회) | 하드코딩 5개 → 상장 변화 자동 반영 | 사전 검증 287마켓 |
+| MySQL EVENT | EVERY 10 MINUTE, LIMIT 40000 (매시 25K→) | 전 코인 유입 약 400만/일 = 시간당 16.7만 > 기존 정리 2.5만/시 → 무한 증가. 10분×40K = 시간당 24만(용량 1.4배). 1회 40K는 2월 사고(50K 일괄) 이하이며 파서 NPE는 수정됨 | dry-run: 2,634,793→2,563,267행 감소 확인, 예외 0 |
+| Debezium `tombstones.on.delete` | false | 토픽이 compact가 아니라 tombstone 무용. 삭제 1건당 메시지 2→1 | 체결 토픽 84% delete+tombstone 실측; 적용 후 3,000건 중 tombstone 0 |
+| Kafka trade `retention.bytes` | 4GB/파티션 (1GB→) | 전 코인 53 msg/s×658B ≈ 3GB/일, 72h 보존 유지 | 사전 검증 §4 |
+| Kafka orderbook 토픽 | 6 파티션, RF2, 24h, 6GB/파티션, min.isr 1, segment 256MB | 파티션 6 = 슬롯 여유·향후 병렬도 2~3 대비. RF2 = 브로커 3에서 단일 장애 허용하되 RF3의 3배 쓰기 회피(호가는 재수집 가능한 스트림). 24h = A안(원본 7일은 ClickHouse가 담당). 6GB = 23GB/일 raw 추정의 파티션 몫 + 여유(zstd 실측 후 실제 ~3GB/일/파티션). min.isr 1 = RF2에서 브로커 1대 다운 시 쓰기 지속 | docs/11 |
+| collector 프로듀서 | idempotent, acks=all, zstd, linger 50ms, batch 2000 | 중복 방지, 압축률(실측 2.5배), 50ms는 e2e 예산(2초 배치 창) 대비 무시 가능 | docs/11 |
+| collector 재연결 백오프 | 1→30초 지수 | WS 연결 한도 5/s/IP(429 실측) 준수 | 사전 검증 §1-3 |
+| Flink orderbook JDBC 배치 | 500건 / 2초 | 258 rows/s에서 파트 생성 분당 ~30개 유지. 1초로 줄이면 파트 2배(머지 부담) — e2e p95 1.9s의 대부분이 이 창, 사용자 결정으로 유지 | docs/11 §4 |
+| Flink orderbook 워터마크 | out-of-orderness 5s, idleness 30s | 파티션 6개·키 해시로 항상 유입되나 저유동 파티션 정체 대비 | 코드 주석 |
+| ClickHouse `orderbook_raw` | Array(Float64)×4, PARTITION BY toDate(ts), ORDER BY (market, ts), TTL 7일 | 배열이 열 압축에 유리(실측 가격 70배·잔량 15~18배), 일 파티션 = TTL 만료가 파트 드롭으로 끝남, 7일 = A안 | docs/11 |
+| ClickHouse `orderbook_1m` 지표 | mid open/close/min/max, spread avg/bp/max, imbalance 1/5/15단, depth15, total, recv lag | 스프레드·깊이·불균형이 L2 분석 표준 지표. 1/5/15단은 count .15 구조 그대로. recv lag는 수집 지연 감시용 | docs/11 |
+| ClickHouse 메모리 | 1.75G (1.25→) | 호가 인서트 후 87% 도달. max_server_memory_usage 자동 1.13→1.57GiB. 2G가 아닌 이유: 호스트 swap 4~6GB 사용 중이라 여유 최소화 | 04:19·04:55 실측 |
+| ClickHouse system.* TTL | 14일 | 로그 15.9GiB(80%) 점유. 14일이면 사고 분석 창 확보하며 ~1GB 수준 | 정리 후 2.41GiB |
+| health_check 적재 지연 임계 | p50 > 60초 (10분 창) | 정상 p50 1.2s, 8월 사고 초기(08-19 18:00)에 p50 3,565s. 60s면 포화 시작 수십 분 내 감지, 정상 변동(max 2.8s)의 20배로 오탐 여유 | docs/08 §2 |
+| mem_limit 규칙 | 재기동 후 실사용의 1.5배, 최소 128M, Node 앱은 NODE_OPTIONS 병행 | 스왑 상태 RSS 기준 1.5배는 과소산정(n8n 24분 크래시) | docs/09 작업4 |
+| 관찰 지표 수단 | cron + CSV (Prometheus 대신) | Prometheus는 Airflow StatsD만 수집 중. 7일 안에 exporter 구축은 범위 초과, 관찰 뒤 정식 지표계로 승격 | 사전 검증 §2-12 |
+| 관찰 기간 | 7일 | 피크(KST 09/22~24시)·주말 저거래 1사이클. 10분 확인은 스모크 테스트 | docs/12 |
+| 커밋 규칙 | 트레일러 없음, 비밀값 스캔 후 | 포트폴리오 리포(본인 작업으로 보여야), 공개 리포 | — |
 
 ## 사전 검증 요약 (09-08 22:25 ~ 09-09 00:20 UTC) — 상세 `~/cdc-orderbook-probe/REPORT.md`
 
