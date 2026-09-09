@@ -15,8 +15,9 @@
 
 **결국 이 프로젝트는:**
 - ✅ On-Premise 클러스터 **구축/운영** 경험
-- ✅ 제한된 리소스(16GB)에서 **29개 컨테이너 최적화** 경험
-- ✅ 실시간 CDC 파이프라인 **설계/구현** 능력
+- ✅ 제한된 리소스(16GB)에서 **30개 컨테이너 최적화** 경험
+- ✅ 실시간 CDC 파이프라인 **설계/구현** 능력 + 호가 직접 발행 경로(2026-09)
+- ✅ **지연·유실·중복을 직접 찾아 고친 기록** — 중복 감사(docs/07), 적재 지연 사고(docs/08), 체크포인트 비대(docs/10), 결정 근거 전부 docs/worklog.md
 - ✅ Airflow 기반 **배치 오케스트레이션** (Custom Operator, Dynamic Task Mapping, XCom)
 - ✅ dbt 기반 **데이터 변환 계층** (staging → intermediate → marts 3계층)
 - ✅ 장애 대응 및 **다중 모니터링** 체계 (Grafana 2개 대시보드 + Slack + Gmail)
@@ -101,8 +102,8 @@
 | # | 업비트 감시 유형 | 설명 | 파이프라인 매핑 | 구현 여부 |
 |---|-----------------|------|---------------|----------|
 | 1 | 가장·통정성 매매 | 자전거래, 권리이전 없는 가장매매 | - | ❌ 계좌 정보 없음 |
-| 2 | 허수성 매매 | 체결 불가능한 대량 호가 제출 | - | ❌ 호가 데이터 없음 |
-| 3 | 취소·정정 과다 | 체결률 극히 낮은 반복 주문 | - | ❌ 주문 데이터 없음 |
+| 2 | 허수성 매매 | 체결 불가능한 대량 호가 제출 | - | 🔜 2026-09 호가(L2 스냅샷) 수집 시작 — "체결 없이 사라진 잔량" 추론으로 확장 예정 |
+| 3 | 취소·정정 과다 | 체결률 극히 낮은 반복 주문 | - | 🔜 호가 잔량 감소 × 체결 대조로 부분 추론 예정 (주문 단위 데이터는 공개 API에 없음) |
 | 4 | **특정종목 매매집중** | 과도한 매매로 시세 영향 | → ~~RAPID_TRADES~~ | ⚠️ 비활성화 (아래 참고) |
 | 5 | **체결관여 과다** | 전체 체결 대비 과도 집중 | → **VOLUME_SURGE**, **LARGE_TRADE** | ✅ |
 | 6 | 주문관여 과다 | 전체 주문 대비 과도 제출 | - | ❌ 주문 데이터 없음 |
@@ -274,13 +275,18 @@
 ## 📋 프로젝트 개요
 
 ### 데이터 소스
-- **Upbit WebSocket API**: 5개 암호화폐 마켓(KRW-BTC, KRW-ETH, KRW-XRP, KRW-SOL, KRW-DOGE) 실시간 체결 데이터
-- 초당 ~5-8건, 일 ~450,000-680,000건 수집 (시기에 따라 변동)
+- **체결(trade)**: Upbit WebSocket, KRW 전 마켓 **287개** (2026-09-09 확장. 그 전 7개월은 BTC/ETH/XRP/SOL/DOGE 5개)
+  - 287마켓 실측: 평균 25~30 rows/s, 오전 피크 53.6 msg/s, 일 약 400만 건 (5개 마켓 시절: 4.17 rows/s, 일 36만 건)
+- **호가(orderbook)**: Upbit WebSocket `orderbook.15`, KRW 287마켓 전체 스냅샷 (2026-09-09 신설)
+  - 실측: 154~262 msg/s(시간대별), payload 158~273 KB/s, 일 약 2,200만 건
 
 ### 파이프라인 흐름
 ```
-[실시간 스트리밍]
+[실시간 스트리밍 — 체결: CDC 경로]
 Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → ClickHouse → Grafana
+                                                                          │
+[실시간 스트리밍 — 호가: 직접 발행 경로 (2026-09)]                            │
+Upbit WebSocket → orderbook-collector → Kafka upbit.orderbook.v1 → Flink → ClickHouse (raw 7일 / 1분 파생 365일)
                                                                           │
 [배치 오케스트레이션]                                                       │
 Airflow (Scheduler) → dbt (staging → intermediate → marts) ────────────────┘
@@ -297,10 +303,11 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 | 일반 프로젝트 | 이 프로젝트 |
 |--------------|-------------|
 | AWS/GCP 관리형 서비스 | **On-Premise 물리 서버 직접 구축** |
-| 로컬에서 잠깐 테스트 | **24시간 상시 운영 (45일+ 가동, 6,800만+건 적재)** |
+| 로컬에서 잠깐 테스트 | **24시간 상시 운영 (2026-02부터 200일+, 체결 9,200만건 적재)** |
 | 시연할 때만 실행 | **24시간 실제 운영** (요청 시 통제된 라이브 데모) |
-| 무제한 리소스 | **16GB 메모리에서 29개 컨테이너 최적화** |
-| 시뮬레이션 데이터 | **Upbit 실시간 체결 데이터 (6,800만+건)** |
+| 무제한 리소스 | **16GB 메모리에서 30개 컨테이너 공존 (메모리 제한·실측 기반 배분)** |
+| 시뮬레이션 데이터 | **Upbit 실시간 체결(287마켓) + 호가(287마켓) 실데이터** |
+| 감으로 튜닝 | **사고 분석과 실측으로 결정** — 37시간 적재 지연 사고 분석(docs/08), 체크포인트 625MB→18KB(docs/10), 호가 압축률 14배 실측(docs/11), 모든 결정 근거는 docs/worklog.md |
 | 고정 임계값 이상 탐지 | **업비트 정책 + 학술 논문 + 실측 분포 분석 기반 동적 임계값** |
 | cron으로 dbt 실행 | **Airflow 오케스트레이션 (Custom Operator + Dynamic Task Mapping + Slack 리포트)** |
 | 탐지만 하고 끝 | **다중 알림 (n8n 실시간 + Airflow 일일 리포트)** |
@@ -398,24 +405,54 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
   Airflow (오케스트레이션)
 ```
 
-### 리소스 배분 (16GB RAM, 29개 컨테이너)
+### 2026-09 확장: 호가 경로 + Flink 재구성
+
+위 다이어그램은 체결(CDC) 경로다. 2026-09-09에 아래가 추가·변경됐다(상세 `docs/10`, `docs/11`).
+
+```
+  Upbit WS orderbook.15 (287마켓, 단일 커넥션)
+        │  154~262 msg/s
+        ▼
+  orderbook-collector (Python, confluent-kafka)   key=market, zstd, idempotent producer
+        │
+        ▼
+  Kafka upbit.orderbook.v1   6 파티션 · RF2 · 24h / 6GB·파티션   (zstd 후 415 B/msg → RF2 약 18.5GB/일)
+        │
+        ▼
+  Flink OrderbookJob (슬롯 1, 이벤트타임 1분 윈도우)   ─┐  같은 TaskManager (2g, 슬롯 4, state.backend=hashmap)
+        │                                              │  잡 3개: CDC(2슬롯) + Orderbook(1) + Circuit Connect(1)
+        ├─▶ orderbook_raw  (15단 Array(Float64)×4, TTL 7일, 39.7 B/행 on-disk = JSON 대비 26배 압축)
+        └─▶ orderbook_1m   (mid·spread·depth imbalance 1/5/15단·recv lag, TTL 365일)
+```
+
+| 변경 | 전 | 후 | 근거 |
+|---|---|---|---|
+| Flink 상태 백엔드 | RocksDB, 체크포인트 625MB(MANIFEST 비대) | hashmap, **17.8KB**, e2e 1.4s → 51ms | 키드 상태가 수십 KB뿐임을 로컬 db 디렉터리로 실측 |
+| Flink TaskManager | 1g, task heap 25.6MiB, Metaspace 90% | 2g, task heap 692MiB, 슬롯 4 | Flink 메모리 모델 계산 |
+| producer flush | 2초당 1배치(20행) = 최대 10 rows/s | 버퍼 소진까지 반복, 상한 2,500 rows/s, `buffer=` 지표 | 8월 37시간 적재 지연 사고 원인 |
+| Kafka 시작 오프셋 | `latest()` (재시작 시 유실) | `committedOffsets(LATEST)` | 재시작 유실 방지 |
+| 체결 이벤트 | 6필드 | + best bid/ask 4필드 (Upbit 신규 필드) | 호가 없이도 스프레드 확보 |
+| MySQL 정리 | 매시 25K DELETE | 10분 40K DELETE, Debezium tombstone 비활성 | 전 코인 유입 400만/일 대응. 관찰 뒤 DROP PARTITION 전환 예정 |
+
+### 리소스 배분 (16GB RAM, 30개 컨테이너)
 
 | 컴포넌트 | 메모리 Limit | 비고 |
 |----------|-------------|------|
 | MySQL | 1GB | CDC Source DB |
-| Kafka × 3 | 3.75GB | 1.25GB per broker |
-| Zookeeper | 384MB | Kafka coordination |
+| Kafka × 3 | 3.75GB | 1.25GB per broker (단일 호스트라 HA 아님 — 복제 의미론·장애 실험용, 실험 뒤 1브로커 축소 예정) |
+| Zookeeper | 384MB | Kafka coordination (실험 뒤 KRaft 전환 예정) |
 | Debezium Connect | 1.25GB | CDC connector |
-| Flink (JM + TM) | 2.15GB | Stream processing |
-| ClickHouse | 1.25GB | OLAP storage |
+| Flink (JM 896M + TM 2304M) | 3.2GB | 잡 3개, 슬롯 4, hashmap |
+| ClickHouse | 1.75GB | OLAP storage (호가 인서트 추가 후 1.25→1.75GB) |
 | Grafana | 256MB | 2개 대시보드 (CDC + Airflow) |
 | Airflow (Webserver + Scheduler) | 1.28GB | 640MB each |
 | Airflow PostgreSQL | 256MB | Airflow 메타 DB |
 | StatsD Exporter | 128MB | Airflow 메트릭 변환 |
 | Prometheus | 256MB | 메트릭 수집/저장 |
-| Producer | 128MB | Upbit WebSocket |
+| Producer | 256MB | Upbit WebSocket 체결 (287마켓) |
+| Orderbook Collector | 256MB | Upbit WebSocket 호가 (287마켓) |
 | Kafka UI | 384MB | 클러스터 모니터링 |
-| **합계** | **~11.5GB** | **Available: ~5.3GB** |
+| **제한 합계** | **~14.3GB** | **실사용 합 약 7.5GB (2026-09-09 실측), 비CDC 컨테이너 11개는 별도 mem_limit** |
 
 ---
 
@@ -434,7 +471,9 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 | Metrics | Prometheus | 2.50 | Airflow 메트릭 수집 (StatsD → Prometheus → Grafana) |
 | Realtime Alerting | n8n | latest | FDS 이상거래 + CDC 장애 알림 (Slack, Gmail) |
 | Daily Report | Airflow + Slack | - | 일일 파이프라인 리포트 (품질검증 + CDC 지연 + 이상탐지 요약) |
-| Data Source | Upbit WebSocket | - | 암호화폐 실시간 체결 |
+| Data Source | Upbit WebSocket | - | 암호화폐 실시간 체결 + 호가(orderbook.15), KRW 287마켓 |
+| Orderbook Collector | Python + confluent-kafka | 2.15 | 호가 스냅샷 → Kafka 직접 발행 (zstd, idempotent) |
+| Observability | cron + ClickHouse SQL | - | 5분 간격 87개 파이프라인 지표 (`scripts/observe/`), 적재 지연 알림(health_check) |
 | Reverse Proxy | Caddy | 2.10 | HTTPS + 자동 인증서 |
 | Language | Java 17 | - | Flink DataStream Job |
 | Language | Python 3.10 | - | Upbit Producer, Airflow DAGs |
@@ -503,6 +542,18 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] DAG 테스트 9/9 통과 (pytest)
 - [x] 기존 dbt cron 비활성화 → Airflow 완전 이관
 
+### Phase 9: 적재 지연 사고 분석 + Flink 재구성 + 전 코인·호가 확장 (2026-09-09) ✅
+- [x] 중복 감사 마감 (`docs/07`): 91.06M 적재 / 89.42M 고유, idempotent producer + 일일 (source_ts, trade_id) 게이트
+- [x] 8/29 "건수 반토막" 판별 → 유실 아님, producer 10 rows/s 상한 포화로 **최대 36.9시간 적재 지연** (`docs/08`)
+- [x] 호가 확장 사전 검증: Upbit WS 한도(5연결/s, 429), 287마켓 단일 커넥션, count별 크기, 압축, Oracle vs 미니PC 수신 지연 비교 (`~/cdc-orderbook-probe/REPORT.md`, `docs/09`)
+- [x] Flink RocksDB → hashmap (체크포인트 625MB → 17.8KB), TM 1g → 2g, savepoint 복원으로 유실 0·중복 0 (`docs/10`)
+- [x] producer flush 상한 제거(10 → 2,500 rows/s) + best bid/ask 4필드 ClickHouse까지 통과
+- [x] 호가 경로 신설: collector → Kafka → Flink OrderbookJob → orderbook_raw / orderbook_1m (`docs/11`)
+- [x] 체결 287마켓 확장 + MySQL 정리 상향 + Kafka retention 상향 + tombstone 비활성, 1시간 dry-run 통과
+- [x] health_check: 잡 3개 감시, 적재 지연(source_ts − upbit_timestamp) 알림 추가
+- [x] 7일 무변경 관찰 시작 (2026-09-09 06:10 UTC, 태그 `obs-week1-start`, 계획 `docs/12`)
+- [ ] 관찰 뒤: 튜닝 → 녹화-재생 증폭 실험(브로커 장애 시나리오) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
+
 ---
 
 ## 🔧 운영 이슈 & 트러블슈팅
@@ -516,6 +567,27 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 | **근본 원인** | `SimpleStringSchema`가 null 바이트 처리 불가 + CdcEventParser DELETE 미처리 |
 | **해결** | NullSafeStringSchema 구현, DELETE 스킵, 매시간 25K건 분산 삭제로 전환 |
 | **교훈** | CDC 파이프라인에서 대량 DML은 반드시 시간 분산 처리 |
+| **2026-09 후속** | 체결 토픽 메시지의 84%가 delete+tombstone임을 실측 → `tombstones.on.delete=false`(compact 토픽이 아니라 무용), 전 코인 확장으로 정리 10분×40K. 근본 해결은 관찰 뒤 일 단위 파티션 + DROP PARTITION(행 단위 이벤트가 생기지 않음) |
+
+### 이슈 5: 적재 지연 36.9시간 — 유실로 오인될 뻔한 사고 (2026-08-19 ~ 08-30)
+
+| 항목 | 내용 |
+|------|------|
+| **현상** | 08-29를 경계로 일별 적재 건수 690K → 364K 급감. 재연결 직후라 "부분 구독 실패 = 유실" 의심 |
+| **판별** | 업비트 일봉(외부 기준)과 대조: 적재시각(`source_ts`) 기준 비율은 41~322% 요동, **체결시각(`upbit_timestamp`) 기준은 전 기간 97.5~99.9% 일치 → 유실 아님** |
+| **원인** | producer `flush()`가 2초당 1배치(20행)만 INSERT → 최대 10 rows/s. 08-22 시간당 72.75 msg/s 버스트에 큐 108만 행 적체, 8일간 8 rows/s로 배수(포화 서명: 시간당 처리량 CV 0.047) |
+| **왜 못 봤나** | health_check·Grafana·Flink 지표가 전부 `source_ts` 이후 구간만 측정. 거래소 체결시각 기준 지연 지표가 없었음 |
+| **해결** | flush를 버퍼 소진까지 반복(상한 2,500 rows/s), `buffer=` 지표·경고, health_check에 `source_ts − upbit_timestamp` p50 > 60초 알림 |
+| **교훈** | "유실"과 "지연"은 외부 기준(거래소 시각)과 대조해야 구분된다. 지연 지표는 소스 이벤트 시각 기준이어야 한다. 상세 `docs/08-ingest-lag-incident.md` |
+
+### 이슈 6: mem_limit로 n8n 크래시 루프 24분 (2026-09-09)
+
+| 항목 | 내용 |
+|------|------|
+| **현상** | 비CDC 컨테이너에 mem_limit 적용 후 n8n이 exit 134(`JavaScript heap out of memory`) 23초 간격 57회 재시작, CDC 알림 24분 중단 |
+| **원인** | cgroup 제한을 V8가 힙 상한으로 환산(576M → 312MB). 스왑 상태 RSS(270MiB) 기준 1.5배 규칙이 실제 워킹셋을 과소산정 |
+| **해결** | n8n 제한 제거(compose 재생성). Node 앱은 `NODE_OPTIONS=--max-old-space-size`와 함께 정해야 함 |
+| **교훈** | 스왑이 많은 호스트에서 `docker stats` RSS는 메모리 산정 근거로 부적합 |
 
 ### 이슈 2: Flink Checkpoint Offset 복원 문제
 
@@ -549,14 +621,19 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 
 | 지표 | 목표 | 실측 |
 |------|------|------|
-| E2E CDC Latency | < 10ms | **p50: 3ms, p95: 5ms, p99: 7ms** ✅ |
-| Throughput | > 100 TPS | **초당 ~5-8건 (Upbit 제공량)** ✅ |
-| 데이터 정합성 | 중복 0% | **실측 중복 1.80% — 지배 원인은 46시간 장애 복구 재소비, 상시 유입은 0.0005% (07-dedup-audit.md). (source_ts, trade_id) 일일 감시 게이트 운영** |
-| 장애 복구 시간 | < 5분 | **Flink restart 30초 이내** ✅ |
-| 메모리 사용 | < 14GB | **~10GB 사용 (Available 5.3GB)** ✅ |
-| 24시간 운영 | ✅ | **45일+ 연속 가동** ✅ |
+| CDC Latency (binlog → Debezium) | < 10ms | **p50: 3ms, p95: 5ms, p99: 7ms** ✅ (단, 이 구간만 재면 producer 앞단 지연을 못 봄 — 이슈 5) |
+| 적재 지연 (거래소 체결시각 → MySQL) | p95 < 5s | **287마켓 실측 p50 1.1~1.2s / p95 2.1s / max 2.8s** (2026-09-09 dry-run 1h). 개선 전 최대 36.9시간 |
+| 호가 e2e (거래소 → ClickHouse) | p95 < 3s | **p50 849ms / p95 1.9s** (JDBC 배치 2초 창이 대부분) |
+| Throughput (체결) | > 100 TPS | **287마켓 25~30 rows/s, 피크 53.6 msg/s (Upbit 제공량이 상한)**; producer 처리 상한 2,500 rows/s |
+| Throughput (호가) | - | **154~262 msg/s, 273 KB/s** |
+| 데이터 정합성 | 중복 0% | **실측 중복 1.80% — 지배 원인은 46시간 장애 복구 재소비, 상시 유입은 0.0005% (07-dedup-audit.md). (source_ts, trade_id) 일일 감시 게이트 운영. 2026-09-09 재제출 3회 모두 유실 0·중복 0(savepoint)** |
+| Flink 체크포인트 | - | **17.8KB / e2e avg 51ms** (RocksDB 시절 625MB / 1,388ms) |
+| 장애 복구 시간 | < 5분 | **Flink restart 30초 이내**, 재시작 전략 20회×30초 |
+| 메모리 사용 | < 14GB | **used 약 9GB + swap 4GB (30개 컨테이너, 2026-09-09)** |
+| 24시간 운영 | ✅ | **2026-02-13 가동 시작, 200일+** ✅ |
 | 외부 접근 | ✅ | **인증 뒤 운영 · 요청 시 라이브 데모** ✅ |
-| 총 적재 | - | **누적 91.06M행, 중복 감사로 고유 이벤트 89.42M 확인 (중복 1.80%는 장애 복구 재소비가 지배 원인)** |
+| 총 적재 | - | **체결 누적 91.97M행(2026-09-09), 고유 이벤트 기준 89.42M+ (중복 1.80%는 장애 복구 재소비가 지배 원인)** |
+| 호가 저장 효율 | - | **on-disk 39.7 B/스냅샷 (압축 전 562B, JSON 1,050B)** → 원본 7일 약 6GB |
 | 이상 탐지 | 의미 있는 알림 | **~13건/시간 (v1 대비 98% 감소, 31일 실측)** ✅ |
 | 실시간 알림 | 매분 | **n8n → Slack + Gmail** ✅ |
 | 일일 리포트 | 매일 01:00 KST | **Airflow → 품질검증 + CDC 지연 + 이상탐지 요약 → Slack** ✅ |
@@ -572,8 +649,13 @@ cdc-realtime-pipeline/
 ├── docker-compose.yml
 ├── .env / .env.example
 │
-├── producer/                    # Upbit WebSocket Producer
-│   ├── producer.py              # 실시간 체결 데이터 수집
+├── producer/                    # Upbit WebSocket Producer (체결 → MySQL, CDC 경로)
+│   ├── producer.py              # 287마켓 체결 수집, 버퍼 소진 flush, best bid/ask
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── orderbook-collector/         # Upbit WebSocket 호가 → Kafka 직접 발행 (2026-09)
+│   ├── collector.py             # orderbook.15 287마켓, zstd, idempotent, STATS(lag p50/p95, queue)
 │   ├── Dockerfile
 │   └── requirements.txt
 │
@@ -599,13 +681,18 @@ cdc-realtime-pipeline/
 │       │   ├── AnomalyDetector.java     # FDS 이상 탐지 3가지 룰 (RAPID_TRADES 비활성화)
 │       │   ├── TradeAggregator.java     # 5분 윈도우 집계
 │       │   └── NullSafeStringSchema.java # Tombstone 방어 Deserializer
-│       └── sink/
-│           ├── ClickHouseRawSink.java   # 원본 체결 Sink
-│           ├── ClickHouseAggSink.java   # 집계 Sink
-│           └── ClickHouseAlertSink.java # 이상탐지 Sink
+│       ├── sink/
+│       │   └── ClickHouseSinks.java     # 원본/집계/이상탐지 JDBC Sink (best bid/ask 포함)
+│       └── orderbook/                   # 호가 잡 (2026-09, 같은 JAR의 별도 메인)
+│           ├── OrderbookJob.java        # Kafka → raw sink + 1분 이벤트타임 윈도우
+│           ├── OrderbookParser.java / OrderbookEvent.java
+│           ├── OrderbookAggregator.java / OrderbookMinute.java
+│           └── OrderbookSinks.java      # Array(Float64) 바인딩
 │
 ├── clickhouse/
-│   └── init.sql                 # 3개 테이블 (trades, aggregations, alerts)
+│   ├── init.sql                 # 3개 테이블 (trades, aggregations, alerts)
+│   ├── orderbook.sql            # orderbook_raw (TTL 7d) / orderbook_1m (TTL 365d)
+│   └── config.d/system-logs-ttl.xml  # system.* 로그 14일 TTL
 │
 ├── grafana/
 │   └── provisioning/
@@ -648,15 +735,25 @@ cdc-realtime-pipeline/
 ├── scripts/
 │   ├── startup.sh                      # 전체 파이프라인 기동
 │   ├── build-flink-job.sh              # Flink Job 빌드 + 배포
-│   └── sync-annotations.sh            # Grafana annotation 자동 동기화
+│   ├── sync-annotations.sh            # Grafana annotation 자동 동기화
+│   └── observe/collect_metrics.sh      # 7일 관찰용 5분 지표 스냅샷 (87컬럼, crontab)
 │
 └── docs/
     ├── 02-infrastructure.md
     ├── 03-cdc-pipeline.md
     ├── 04-flink-streaming.md
     ├── 05-clickhouse-grafana.md
-    └── 06-phase6-record.md
+    ├── 06-phase6-record.md             # 이상탐지 임계값 + 46시간 장애 복구
+    ├── 07-dedup-audit.md               # 중복 적재 감사 (91.06M / 89.42M)
+    ├── 08-ingest-lag-incident.md       # 적재 지연 36.9시간 사고 분석 (유실 아님)
+    ├── 09-orderbook-phase1-execution.md
+    ├── 10-phase2-flink-producer-upgrade.md
+    ├── 11-orderbook-launch.md
+    ├── 12-observation-plan.md          # 7일 관찰 가설·임계값
+    └── worklog.md                      # 결정 표(근거 포함) + 시간순 작업 기록
 ```
+
+관련 리포: 녹화-재생 증폭 실험 도구와 관찰 데이터 분석은 별도 리포(`pipeline-load-lab`, 준비 중)에 둔다.
 
 ---
 
@@ -666,19 +763,19 @@ cdc-realtime-pipeline/
 > "AWS같은 클라우드 시스템이 아닌, On-Premise 클러스터 구축을 해보고 싶어서, 클라우드 관리형 서비스가 아닌 물리 서버에서 직접 구축하고 24시간 운영하며 실제 장애 대응까지 경험했습니다."
 
 ### Q2. 16GB 메모리에서 어떻게 최적화했나요?
-> "29개 컨테이너를 ~11.5GB 내에서 운영합니다. Kafka broker당 512MB, Flink TaskManager 1GB, Airflow Webserver/Scheduler 각 640MB로 제한하고, MySQL은 7일 보존 + 매시간 분산 삭제, ClickHouse는 365일 TTL로 디스크 관리를 자동화했습니다."
+> "30개 컨테이너에 전부 메모리 제한을 걸고 실측으로 배분합니다. 2026-09 기준 Kafka broker당 1.25GB, Flink TaskManager 2GB(메모리 모델로 task heap 692MiB 확보), ClickHouse 1.75GB, 실사용 합은 약 7.5GB입니다. MySQL은 7일 보존 + 10분 단위 분산 삭제, ClickHouse는 체결 365일·호가 원본 7일 TTL, system 로그 14일 TTL로 디스크를 자동 관리합니다. 한 번은 스왑 상태의 RSS 기준으로 제한을 잡았다가 n8n이 24분간 크래시 루프에 빠진 적이 있어, 지금은 재기동 후 실사용을 다시 재서 정합니다."
 
 ### Q3. CDC 파이프라인에서 가장 어려웠던 장애는?
-> "MySQL의 정기 cleanup DELETE가 Debezium tombstone 메시지를 대량 생성하여 Flink Job이 죽은 사례입니다. NullSafeStringSchema 구현, DELETE 이벤트 스킵, cleanup 시간 분산으로 해결했고, 이를 통해 CDC 파이프라인에서 대량 DML의 위험성을 체감했습니다."
+> "두 가지입니다. 하나는 MySQL cleanup DELETE 5만 건이 Debezium delete+tombstone 10만 메시지를 만들고 파서의 NPE로 Flink가 46시간 멈춘 사고입니다. NullSafeStringSchema, DELETE 스킵, 삭제 분산으로 해결했습니다. 다른 하나는 더 교묘했는데, 8월에 일별 적재 건수가 반토막 나서 유실을 의심했지만 업비트 일봉과 체결시각 기준으로 대조하니 유실은 0이었고, producer가 2초당 20행만 쓰는 구조라 최대 36.9시간 적재 지연이 났던 겁니다. 기존 지표가 전부 적재 이후 구간만 재고 있어서 못 본 거였고, 거래소 체결시각 기준 지연 지표와 알림을 추가했습니다."
 
 ### Q4. 이상 탐지 임계값은 어떻게 설정했나요?
 > "3단계 반복 조정을 거쳤습니다. 먼저 업비트 감시정책과 학술 논문(EWMA 기반)으로 초기 설계하고, 실시간 데이터로 검증하며 조정했습니다. v1(651건/시간) → v2(72건) → v3(~13건, 31일 실측)으로, 최종적으로 ClickHouse에 적재된 24시간 알림 분포의 percentile 분석으로 p90 기준 임계값을 확정했습니다. RAPID_TRADES는 데이터 분석 결과 Upbit API 전송한계(100건/10초)에 의한 오탐임을 확인하고 비활성화했습니다."
 
-### Q5. 왜 Debezium CDC를 선택했나요?
-> "직접 binlog 파싱 대비, Debezium이 스키마 변경 추적, exactly-once 전달, Kafka Connect 통합을 제공합니다. 다만 tombstone 메시지 처리는 별도 방어 코드가 필요하다는 점도 경험했습니다."
+### Q5. 왜 Debezium CDC를 선택했나요? 체결은 CDC가 꼭 필요한가요?
+> "솔직히 체결 피드 자체는 실무라면 호가처럼 Kafka에 직접 넣는 게 정답입니다. CDC는 이미 업무용으로 존재하는 DB의 변경을 서비스 코드를 건드리지 않고 뽑을 때 쓰는 기술이고, 이 프로젝트에서는 그 운영 경험을 끝까지 겪어 보려고 체결을 MySQL 경유로 두었습니다. 그 대가로 스키마 변경 추적(온라인 ADD COLUMN을 Debezium이 추적), 대량 삭제 폭주로 인한 46시간 장애, 봉투 오버헤드 +34%, 삭제 부산물이 토픽 트래픽의 84%라는 비용을 전부 실측했고, 그래서 신규 데이터인 호가는 직접 발행으로 갔습니다. 관찰이 끝나면 CDC가 진짜 필요한 자리(가상 매매 원장, 이상탐지 케이스 관리 같은 상태 테이블)로 옮길 계획입니다."
 
 ### Q6. Kafka를 3-broker로 구성한 이유는?
-> "Replication Factor 3으로 1대 장애 시에도 데이터 유실 없이 자동 failover됩니다. 실제로 broker 1대 다운 시뮬레이션에서 파이프라인 중단 없이 정상 동작을 확인했습니다."
+> "단일 호스트라 진짜 고가용성은 아닙니다. 디스크가 하나라 내구성 이득도 없습니다. 그래도 복제·ISR·min.insync.replicas·리더 선출·컨슈머 페일오버가 실제로 동작하는 환경이 필요했고, 재생 증폭 실험에서 브로커 1대를 죽였을 때의 동작을 실측하려고 유지합니다. 비용은 브로커 3개 RAM 약 1.9GB와 RF3 디스크 쓰기 3배로 재 두었고, 실험이 끝나면 1브로커 KRaft combined 모드로 축소할 계획입니다."
 
 ### Q7. n8n 알림을 왜 추가했나요?
 > "탐지만 하고 끝나면 운영 의미가 없습니다. FDS 이상거래는 즉시 Slack + Gmail로 상세 내역을 발송하고, 파이프라인 장애는 별도 채널로 복구 가이드와 함께 알림합니다. 이전 FDS Pipeline Lab 프로젝트에서도 같은 패턴으로 SLA 모니터링을 구축한 경험이 있습니다."
@@ -691,6 +788,15 @@ cdc-realtime-pipeline/
 
 ### Q10. dbt 3계층 모델 구조는 어떤 기준으로 설계했나요?
 > "staging(stg_trades)은 원본 정제 VIEW, intermediate(int_ohlcv_1h, int_ohlcv_daily)는 시간/일별 OHLCV 집계 TABLE, marts(mart_daily_summary, mart_volume_spike, mart_alert_rate)는 리포트/대시보드용 최종 테이블입니다. Flink가 실시간 적재한 raw 데이터를 dbt가 배치로 가공하여, 실시간 스트리밍과 배치 분석을 분리합니다."
+
+### Q12. Flink 상태 백엔드를 RocksDB에서 hashmap으로 바꾼 이유는?
+> "체크포인트가 625MB였는데 TaskManager 로컬 db 디렉터리를 열어 보니 SST 파일 합계는 15KB이고 352MB짜리 MANIFEST 파일이 크기의 대부분이었습니다. 5마켓×5개 ValueState라 실제 상태는 수십 KB인데 네이티브 풀 체크포인트가 RocksDB의 버전 기록 파일을 매번 통째로 복사한 겁니다. canonical savepoint를 떠 보니 20KB로 확인됐고, hashmap으로 바꾸자 체크포인트 17.8KB, e2e 1.4초→51ms가 됐습니다. 상태가 메모리에 들어가는 규모면 RocksDB의 오버헤드를 낼 이유가 없습니다."
+
+### Q13. 호가는 왜 체결과 다른 경로로 수집하나요?
+> "실측 결과 호가는 체결의 14배 건수, 48배 바이트였습니다. MySQL과 binlog를 거치면 하루 13~23GB를 DB에 쓰고 Debezium 봉투로 34%가 더 붙습니다. 호가는 초당 수백 번 갱신되는 스냅샷이라 원장에 남길 이유도 없습니다. 그래서 수집기가 Kafka에 직접 발행하고, 장애 격리 차원에서도 호가 폭주가 체결 적재를 밀어내지 않게 프로세스를 분리했습니다."
+
+### Q14. 왜 7일 동안 아무것도 바꾸지 않고 관찰하나요?
+> "10분 확인은 '깨지지 않았다'만 알려 줍니다. 8월 지연 사고도 하루 단위 데이터를 봐야 보였습니다. 피크 시간대(KST 09시, 22~24시)와 주말 저거래 구간을 한 사이클 겪어야 언제 밀리는지 알 수 있어서, 가설 12개와 임계값을 먼저 적어 두고 5분마다 87개 지표를 쌓습니다. 관찰 결과로 튜닝 순서를 정하고, 그 뒤에 같은 실데이터를 배속 재생하는 부하 실험으로 개선 전후를 비교합니다."
 
 ### Q11. 알림 체계가 n8n과 Airflow 두 개인 이유는?
 > "역할이 다릅니다. n8n은 매분 ClickHouse를 폴링하여 FDS 이상거래와 CDC 장애를 **즉시** Slack + Gmail로 알립니다. Airflow는 매일 01:00 KST에 전날 데이터를 **일일 리포트**로 종합합니다 — CDC 지연 percentile, 코인별 품질검증, 이상탐지 요약, 거래량 급등 등. health_check DAG은 10분 간격으로 파이프라인 컴포넌트 상태를 점검하되, 이상 시에만 알림을 보내 alert fatigue를 방지합니다."
@@ -712,4 +818,4 @@ cdc-realtime-pipeline/
 | RAM | 16GB |
 | Disk | 500GB SSD |
 | OS | Ubuntu 24.04 |
-| 운영 | 24시간 상시 (45일+ 가동 중) |
+| 운영 | 24시간 상시 (2026-02-13 시작, 200일+ 가동 중) |

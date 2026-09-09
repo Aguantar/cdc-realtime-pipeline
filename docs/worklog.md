@@ -163,3 +163,19 @@
 - 05:57:46 dry-run 1시간 종료 **통과**: received 96,545 / inserted 94,325 / duplicates 2,210(2.3%, INSERT IGNORE) / errors 0 / buffer 0~38 / 경고 0. 처리율 25.5~31.2 rows/s(5코인 3.6/s의 7~9배). Flink CDC 체크포인트 93/93, 백프레셔 0ms/s, e2e 27~49ms. ingest lag p50 1.1~1.2s / p95 2.1s / max ≤2.8s(10분 창 6회 모두). ClickHouse 10분당 11.0~19.7K행·239~254마켓. anomaly_alerts 1시간 20건(PRICE_SPIKE 6, LARGE_TRADE 5, VOLUME_SURGE 9; 상위 BTC 6·USDT 5·INJ 3) → 폭주 없음, 임계값 유지. MySQL 2,634,793 → 2,563,267행(10분×40K 정리가 유입을 따라감). health_check 04:50~05:40 6회 success. 메모리 producer 23MiB·mysql 744MiB·connect 734MiB·TM 1,000MiB·ClickHouse 737MiB
 - 05:58:25 Debezium `tombstones.on.delete=false` PUT(원본 backup/phase3/connector-config-before.json). 커넥터·태스크 RUNNING 복귀 5초 내. Connect 로그 ERROR 1건 "Exception while closing JDBC connection"은 태스크 재시작 시 MySQL 커넥션 종료 예외(무해, 이후 정상)
 - 05:58:53 health_check pause → 3잡 savepoint 정지(circuit a8c89c-d1a92a6c0bdf, orderbook 7d75f2-b78cca6fc6b4, CDC b8a55e-53eaa760d1e7) → 05:59:04 재시작 전략 포함 JAR로 재제출(CDC e1dac99d…, orderbook d9f4786e…, circuit 3e6ee790… 기존 JAR) → 3잡 RUNNING → 05:59:20 unpause. REST 확인: CDC·orderbook "fixed delay 30000ms, #20 attempts", circuit은 클러스터 기본(10s×3, 타 프로젝트 잡이라 미변경)
+- 06:0x 커밋 **feb959b** "feat: orderbook pipeline, all-market trades, Flink hashmap/2g TM, producer drain loop, 7-day observation tooling" (26파일 +1,513/−45), 태그 `obs-week1-start`. 커밋 전 스캔: 비밀값·IP·이메일 없음(.env gitignore, 환경변수 참조만). 트레일러 없음(포트폴리오 리포 규칙). 첫 시도는 `flink/target` gitignore 규칙에 add가 막혀 실패·태그 오지정 → 태그 삭제 후 재커밋. 미커밋 잔여: dbt tests/assert_no_long_gaps.sql(기존 diff, 본 작업 아님), png 3개(기존 untracked)
+- 06:07:09 재제출 검증: CDC·orderbook 체크포인트 8/8, 예외 0, state 58KB/56KB(287마켓 키). 연속성: 정지 전 max trade_id 96,137,856 → 정지 후 첫 행 96,137,857, 10,516행 = 고유 10,516(중복 0). orderbook_raw 68,143 = 고유 68,143, 분당 11.7~15.7K 연속(05:58~06:01). **tombstone 효과**: 06:05:31 정리 실행 후 p0 최근 3,000건 = create 2,097 / delete 903 / tombstone 0. health_check 05:40·05:50 success. producer buffer 10, errors 0. 지표 CSV 06:05 행: lag p50 1.35s / p95 2.18s, best NULL 0, 호가 e2e p95 1.9s 근방
+- 06:10 `git push origin main` + 태그 push
+- **06:10 UTC (15:10 KST) — 7일 무변경 관찰 시작.** 종료 예정 09-16 06:10 UTC. 기준 커밋 feb959b(obs-week1-start). 예외 조치는 시각·이유와 함께 이 파일에 기록
+
+## 관찰 중 병행 작업 1: 재생 실험 도구 준비 (06:09 UTC ~, 실험 리포 `~/pipeline-load-lab`, 로컬 git)
+- 원칙: 읽기·dry-run만. 프로덕션 토픽·테이블·잡 무접촉. 재생기는 목표 토픽이 `load_test.`로 시작하지 않으면 거부
+- `replay/recorder.py`: 시각/오프셋 구간 → JSONL.gz(파티션·오프셋·Kafka ts·key·value 보존, `_meta` 라인). 임시 컨슈머 그룹·미커밋. 스모크: 체결 create 3,000건 0.3초(2.87MB raw), 호가 2,000건 0.4초. 잔여 컨슈머 그룹 0
+- `replay/replayer.py`: 고정 속도 / 계단(예 50:300,100:300,200:300) / 원본 간격×배속, loop, 타임스탬프를 현재 기준으로 이동(원본은 `_orig_*` 보존), idempotent+zstd 프로듀서, `--dry-run`
+- `replay/measure.py`: 5초 간격 토픽 end-offset·컨슈머 lag·Flink 백프레셔/busy/체크포인트·ClickHouse 적재율·e2e p50/p95/max·컨테이너 자원 → CSV
+- `docs/experiment-plan.md`(초안): 격리(load_test.* 토픽·테이블, 실험 전용 TM, CdcPipelineJob 파라미터화 필요), 시나리오 S1 계단/S2 호가/S3 브로커 장애/S4 개선 후, 판정 기준, 코퍼스는 관찰 종료 시 고정
+- 리포 커밋 356605c(로컬). GitHub 생성은 미정
+
+## 관찰 중 병행 작업 2: README 갱신 (06:20 UTC ~)
+- 갱신 범위: 데이터 소스(287마켓 체결·호가 실측치), 파이프라인 흐름(호가 직접 발행 경로), "2026-09 확장" 절(호가 경로 다이어그램 + 전/후 표), 리소스 배분(30컨테이너, 제한 합 14.3GB·실사용 7.5GB, 브로커·ZK에 3→1·KRaft 예정 명시), 기술 스택(collector·관찰 지표), Phase 9 체크리스트, 이슈 5(적재 지연 36.9h)·이슈 6(n8n 크래시 루프)·이슈 1 후속, 성능 지표(적재 지연·호가 e2e·처리량·체크포인트·200일+·91.97M), 프로젝트 구조(orderbook-collector, orderbook 패키지, orderbook.sql, config.d, observe, docs 07~12·worklog), 감시 유형 2·3 "호가로 확장 예정", 예상 질문 Q2·Q3·Q5·Q6 수정 + Q12(hashmap)·Q13(호가 경로)·Q14(7일 관찰) 추가, 서버 환경
+- 원칙: 이 세션에서 실측·문서화된 수치만 사용. 단일 호스트 HA 아님·CDC 소스 인위성은 README에도 명시(면접 답변 프레임과 일치)
