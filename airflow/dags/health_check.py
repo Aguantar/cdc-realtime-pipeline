@@ -54,7 +54,7 @@ with DAG(
     check_flink_jobs = FlinkHealthOperator(
         task_id="check_flink_jobs",
         flink_base_url="http://flink-jobmanager:8081",
-        expected_jobs=2,
+        expected_jobs=3,  # 2026-09-09: CDC + Circuit + Orderbook
     )
 
     # ── Kafka 브로커 상태 확인 (ClickHouse 기반 간접 확인) ───
@@ -79,6 +79,23 @@ with DAG(
                 uniqExact(market) AS active_markets
             FROM cdc_pipeline.crypto_trades
             WHERE source_ts >= now() - INTERVAL 1 MINUTE
+        """,
+        result_type="first",
+    )
+
+    # ── 적재 지연 확인 (2026-09-09 추가) ─────────────────────
+    # source_ts(MySQL 적재 시각) - upbit_timestamp(거래소 체결 시각).
+    # 2026-08-19~30 producer 상한 포화로 최대 36.9시간 지연이 났으나 기존 체크는
+    # 전부 source_ts 이후 구간만 봐서 감지 못했음 (docs/08-ingest-lag-incident.md).
+    check_ingest_lag = ClickHouseOperator(
+        task_id="check_ingest_lag",
+        sql="""
+            SELECT
+                round(quantile(0.5)(toUnixTimestamp64Milli(source_ts) - upbit_timestamp) / 1000, 1) AS lag_p50_s,
+                round(max(toUnixTimestamp64Milli(source_ts) - upbit_timestamp) / 1000, 1) AS lag_max_s,
+                count() AS rows_10min
+            FROM cdc_pipeline.crypto_trades
+            WHERE source_ts >= now() - INTERVAL 10 MINUTE
         """,
         result_type="first",
     )
@@ -141,8 +158,21 @@ with DAG(
         kafka_result = ti.xcom_pull(task_ids="check_kafka_health")
         producer_result = ti.xcom_pull(task_ids="check_producer_activity")
         connect_result = ti.xcom_pull(task_ids="check_kafka_connect")
+        lag_result = ti.xcom_pull(task_ids="check_ingest_lag")
 
         unhealthy = []
+
+        # 적재 지연: 최근 10분 p50 > 60초면 producer 포화 (max는 참고 표기)
+        if lag_result and int(lag_result.get("rows_10min", 0)) > 0:
+            lag_p50 = float(lag_result.get("lag_p50_s", 0))
+            lag_max = float(lag_result.get("lag_max_s", 0))
+            if lag_p50 > 60:
+                unhealthy.append(
+                    {
+                        "name": "Ingest Lag",
+                        "message": f"source_ts - upbit_ts p50 {lag_p50}s (max {lag_max}s) in last 10min — producer backlog",
+                    }
+                )
 
         # ClickHouse: 최근 10분간 데이터 없으면 이상
         if ch_result:
@@ -228,6 +258,7 @@ with DAG(
             check_kafka_health,
             check_producer_activity,
             check_connect,
+            check_ingest_lag,
         ]
         >> evaluate_health
     )

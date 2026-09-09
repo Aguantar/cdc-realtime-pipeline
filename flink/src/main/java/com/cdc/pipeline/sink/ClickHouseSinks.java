@@ -25,7 +25,7 @@ public class ClickHouseSinks {
      */
     public static SinkFunction<CryptoTradeEvent> rawTradeSink(String clickhouseUrl) {
         return JdbcSink.sink(
-            "INSERT INTO crypto_trades (op, trade_id, market, trade_price, trade_volume, trade_amount, ask_bid, upbit_timestamp, sequential_id, source_ts, cdc_ts, cdc_latency_ms, flink_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO crypto_trades (op, trade_id, market, trade_price, trade_volume, trade_amount, ask_bid, upbit_timestamp, sequential_id, source_ts, cdc_ts, cdc_latency_ms, flink_ts, best_ask_price, best_ask_size, best_bid_price, best_bid_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ps, event) -> {
                 ps.setString(1, event.getOp());
                 ps.setLong(2, event.getTradeId());
@@ -40,10 +40,18 @@ public class ClickHouseSinks {
                 ps.setTimestamp(11, new Timestamp(event.getCdcTimestamp()));
                 ps.setLong(12, event.getCdcLatencyMs());
                 ps.setTimestamp(13, new Timestamp(System.currentTimeMillis()));
+                setNullableDouble(ps, 14, event.getBestAskPrice());
+                setNullableDouble(ps, 15, event.getBestAskSize());
+                setNullableDouble(ps, 16, event.getBestBidPrice());
+                setNullableDouble(ps, 17, event.getBestBidSize());
             },
             executionOptions(),
             connectionOptions(clickhouseUrl)
         );
+    }
+
+    private static void setNullableDouble(java.sql.PreparedStatement ps, int idx, Double v) throws java.sql.SQLException {
+        if (v == null) ps.setNull(idx, java.sql.Types.DOUBLE); else ps.setDouble(idx, v);
     }
 
     /**

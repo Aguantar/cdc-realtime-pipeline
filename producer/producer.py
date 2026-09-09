@@ -69,6 +69,8 @@ MYSQL_CONFIG = {
 # 배치 INSERT 설정
 BATCH_SIZE = int(os.getenv('BATCH_SIZE', '20'))
 BATCH_INTERVAL_SEC = float(os.getenv('BATCH_INTERVAL_SEC', '2.0'))
+MAX_BATCHES_PER_FLUSH = int(os.getenv('MAX_BATCHES_PER_FLUSH', '50'))   # flush 1회당 최대 배치 수 (수신 루프 응답성 보호)
+BUFFER_WARN_ROWS = int(os.getenv('BUFFER_WARN_ROWS', '5000'))          # 버퍼 적체 경고 임계 (행)
 
 # WebSocket 재연결 설정
 WS_RECONNECT_DELAY = 5       # 초
@@ -86,6 +88,8 @@ class Stats:
         self.errors = 0         # 에러 건수
         self.start_time = time.time()
         self.last_report = time.time()
+        self.last_buffer_warn = 0.0
+        self.buffer_depth = 0   # report 시점 버퍼 잔량 (적재 지연 지표)
 
     def report(self):
         now = time.time()
@@ -94,7 +98,7 @@ class Stats:
         logger.info(
             f"[STATS] received={self.received}, inserted={self.inserted}, "
             f"duplicates={self.duplicates}, errors={self.errors}, "
-            f"rate={rate:.1f}/sec, uptime={elapsed:.0f}s"
+            f"buffer={self.buffer_depth}, rate={rate:.1f}/sec, uptime={elapsed:.0f}s"
         )
         self.last_report = now
 
@@ -103,9 +107,10 @@ class Stats:
 # ============================================
 INSERT_SQL = """
     INSERT IGNORE INTO crypto_trades
-        (market, trade_price, trade_volume, trade_amount, ask_bid, upbit_timestamp, sequential_id)
+        (market, trade_price, trade_volume, trade_amount, ask_bid, upbit_timestamp, sequential_id,
+         best_ask_price, best_ask_size, best_bid_price, best_bid_size)
     VALUES
-        (%s, %s, %s, %s, %s, %s, %s)
+        (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 class MySQLWriter:
@@ -155,39 +160,48 @@ class MySQLWriter:
         self.buffer.append(trade)
 
     def flush(self):
-        """버퍼의 데이터를 MySQL에 배치 INSERT."""
-        if not self.buffer:
-            return 0
+        """버퍼의 데이터를 MySQL에 배치 INSERT.
 
-        batch = []
-        while self.buffer and len(batch) < BATCH_SIZE:
-            batch.append(self.buffer.popleft())
+        2026-09-09 변경: 호출 1회에 1배치(BATCH_SIZE행)만 쓰던 구조는 최대 10 rows/s 상한이 되어
+        2026-08-19~30 최대 36.9시간 적재 지연을 일으켰다(docs/08-ingest-lag-incident.md).
+        버퍼가 빌 때까지 반복하되, 수신 루프 응답성을 위해 1회당 MAX_BATCHES_PER_FLUSH 배치까지만 처리한다.
+        """
+        total = 0
+        batches = 0
+        while self.buffer and batches < MAX_BATCHES_PER_FLUSH:
+            batch = []
+            while self.buffer and len(batch) < BATCH_SIZE:
+                batch.append(self.buffer.popleft())
 
-        try:
-            self.cursor.executemany(INSERT_SQL, batch)
-            affected = self.cursor.rowcount
-            self.conn.commit()
+            try:
+                self.cursor.executemany(INSERT_SQL, batch)
+                affected = self.cursor.rowcount
+                self.conn.commit()
 
-            duplicates = len(batch) - affected
-            self.stats.inserted += affected
-            self.stats.duplicates += duplicates
+                duplicates = len(batch) - affected
+                self.stats.inserted += affected
+                self.stats.duplicates += duplicates
+                total += affected
+                batches += 1
 
-            if affected > 0:
-                logger.debug(f"INSERT {affected}건 (중복 {duplicates}건)")
-            return affected
+            except mysql.connector.Error as e:
+                logger.error(f"INSERT 실패: {e}")
+                self.stats.errors += 1
+                self.conn.rollback()
 
-        except mysql.connector.Error as e:
-            logger.error(f"INSERT 실패: {e}")
-            self.stats.errors += 1
-            self.conn.rollback()
-
-            # 연결 끊김이면 재연결
-            if not self.conn.is_connected():
-                logger.info("MySQL 재연결 시도...")
-                self.reconnect()
-                # 실패한 배치를 버퍼 앞에 다시 넣기
+                # 연결 끊김이면 재연결
+                if not self.conn.is_connected():
+                    logger.info("MySQL 재연결 시도...")
+                    self.reconnect()
+                # 실패한 배치를 버퍼 앞에 다시 넣고 이번 flush는 중단
                 self.buffer.extendleft(reversed(batch))
-            return 0
+                break
+
+        depth = len(self.buffer)
+        if depth > BUFFER_WARN_ROWS and time.time() - self.stats.last_buffer_warn >= 60:
+            logger.warning(f"버퍼 적체: {depth}행 (INSERT 처리량이 유입을 따라가지 못함)")
+            self.stats.last_buffer_warn = time.time()
+        return total
 
     def close(self):
         """남은 버퍼 flush 후 연결 종료."""
@@ -215,6 +229,7 @@ def parse_trade(data):
     - ab (ask_bid): ASK(매도) / BID(매수)
     - ttms (trade_timestamp): 체결 시각 (Unix ms)
     - sid (sequential_id): 체결 고유 ID (문자열)
+    - bap/bas/bbp/bbs (best_ask_price/size, best_bid_price/size): 체결 시점 최우선 호가 (2026-09 추가, 없으면 NULL)
     """
     market = data['cd']
     price = Decimal(str(data['tp']))
@@ -224,6 +239,10 @@ def parse_trade(data):
     timestamp = data['ttms']
     seq_id = int(data['sid'])
 
+    def _opt(key):
+        v = data.get(key)
+        return float(v) if v is not None else None
+
     return (
         market,
         float(price),
@@ -232,6 +251,10 @@ def parse_trade(data):
         ask_bid,
         timestamp,
         seq_id,
+        _opt('bap'),
+        _opt('bas'),
+        _opt('bbp'),
+        _opt('bbs'),
     )
 
 async def subscribe_upbit(markets, writer, stats, shutdown_event):
@@ -255,7 +278,7 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event):
 
     while not shutdown_event.is_set():
         try:
-            logger.info(f"Upbit WebSocket 연결 중... (마켓: {', '.join(markets)})")
+            logger.info(f"Upbit WebSocket 연결 중... (마켓 {len(markets)}개)")
 
             async with websockets.connect(
                 UPBIT_WS_URL,
@@ -300,6 +323,7 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event):
 
                     # 30초마다 통계 출력
                     if now - stats.last_report >= 30:
+                        stats.buffer_depth = len(writer.buffer)
                         stats.report()
 
         except websockets.exceptions.ConnectionClosed as e:
@@ -323,12 +347,30 @@ async def main():
                         help='배치 INSERT 크기 (기본: 20)')
     args = parser.parse_args()
 
+    # 2026-09-09: MARKETS=ALL_KRW 이면 REST로 KRW 전 마켓을 조회해 구독 (전 코인 체결 확장)
+    markets_env = os.getenv('MARKETS', '').strip()
+    if markets_env == 'ALL_KRW':
+        import urllib.request
+        for attempt in range(1, 11):
+            try:
+                req = urllib.request.Request('https://api.upbit.com/v1/market/all?is_details=false',
+                                             headers={'Accept': 'application/json'})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    args.markets = sorted(m['market'] for m in json.load(r) if m['market'].startswith('KRW-'))
+                break
+            except Exception as e:
+                logger.warning(f"마켓 목록 조회 실패 (시도 {attempt}/10): {e}")
+                time.sleep(3)
+        else:
+            raise RuntimeError("KRW 마켓 목록 조회 불가")
+    elif markets_env:
+        args.markets = [m.strip() for m in markets_env.split(',') if m.strip()]
 
     # batch_size는 환경변수로 설정
 
     logger.info("=" * 50)
     logger.info("  Upbit → MySQL Producer")
-    logger.info(f"  마켓: {', '.join(args.markets)}")
+    logger.info(f"  마켓: {len(args.markets)}개 ({', '.join(args.markets[:5])}{' ...' if len(args.markets) > 5 else ''})")
     logger.info(f"  배치 크기: {BATCH_SIZE}")
     logger.info(f"  배치 간격: {BATCH_INTERVAL_SEC}초")
     logger.info(f"  MySQL: {MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}")

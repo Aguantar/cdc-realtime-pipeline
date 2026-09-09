@@ -222,11 +222,12 @@ services:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         jobmanager.memory.process.size: 768m
-        state.backend: rocksdb
+        state.backend: hashmap
         state.checkpoints.dir: file:///opt/flink/checkpoints
         state.savepoints.dir: file:///opt/flink/savepoints
         execution.checkpointing.interval: 60000
         execution.checkpointing.mode: EXACTLY_ONCE
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
         restart-strategy: fixed-delay
         restart-strategy.fixed-delay.attempts: 3
         restart-strategy.fixed-delay.delay: 10s
@@ -252,9 +253,11 @@ services:
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
-        taskmanager.memory.process.size: 1g
-        taskmanager.numberOfTaskSlots: 3
-        state.backend: rocksdb
+        taskmanager.memory.process.size: 2g
+        taskmanager.memory.jvm-metaspace.size: 384m
+        taskmanager.memory.managed.fraction: 0.25
+        taskmanager.numberOfTaskSlots: 4
+        state.backend: hashmap
         state.checkpoints.dir: file:///opt/flink/checkpoints
         state.savepoints.dir: file:///opt/flink/savepoints
     user: "0"
@@ -264,7 +267,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1280M
+          memory: 2304M
     networks:
       - cdc-network
 
@@ -281,10 +284,11 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./clickhouse/config.d/system-logs-ttl.xml:/etc/clickhouse-server/config.d/system-logs-ttl.xml:ro
     deploy:
       resources:
         limits:
-          memory: 1280M
+          memory: 1792M
     ulimits:
       nofile:
         soft: 262144
@@ -337,8 +341,33 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: crypto_db
-      BATCH_SIZE: "20"
+      BATCH_SIZE: "100"
+      MARKETS: ALL_KRW
       BATCH_INTERVAL_SEC: "2"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - cdc-network
+
+  orderbook-collector:
+    build: ./orderbook-collector
+    container_name: cdc-orderbook-collector
+    restart: unless-stopped
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka-1:29092,kafka-2:29093,kafka-3:29094
+      ORDERBOOK_TOPIC: upbit.orderbook.v1
+      ORDERBOOK_COUNT: "15"
+      QUOTE_CURRENCY: KRW
+      STATS_INTERVAL_SEC: "30"
     deploy:
       resources:
         limits:
@@ -403,6 +432,10 @@ services:
     build: ./airflow
     image: cdc-airflow:2.8.1
     container_name: cdc-airflow-init
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     depends_on:
       airflow-postgres:
         condition: service_healthy

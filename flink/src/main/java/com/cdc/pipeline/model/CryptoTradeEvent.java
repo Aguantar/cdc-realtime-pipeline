@@ -23,6 +23,10 @@ public class CryptoTradeEvent implements Serializable {
     private long sourceTimestamp;   // MySQL INSERT 시각 (ms)
     private long cdcTimestamp;      // Debezium 처리 시각 (ms)
     private long cdcLatencyMs;      // CDC 레이턴시 (cdcTimestamp - sourceTimestamp)
+    private Double bestAskPrice;    // 체결 시점 최우선 매도호가 (2026-09-09 추가, 이전 행은 null)
+    private Double bestAskSize;     // 최우선 매도 잔량
+    private Double bestBidPrice;    // 체결 시점 최우선 매수호가
+    private Double bestBidSize;     // 최우선 매수 잔량
 
     // --- Getters & Setters ---
 
@@ -61,6 +65,18 @@ public class CryptoTradeEvent implements Serializable {
 
     public long getCdcLatencyMs() { return cdcLatencyMs; }
     public void setCdcLatencyMs(long cdcLatencyMs) { this.cdcLatencyMs = cdcLatencyMs; }
+
+    public Double getBestAskPrice() { return bestAskPrice; }
+    public void setBestAskPrice(Double bestAskPrice) { this.bestAskPrice = bestAskPrice; }
+
+    public Double getBestAskSize() { return bestAskSize; }
+    public void setBestAskSize(Double bestAskSize) { this.bestAskSize = bestAskSize; }
+
+    public Double getBestBidPrice() { return bestBidPrice; }
+    public void setBestBidPrice(Double bestBidPrice) { this.bestBidPrice = bestBidPrice; }
+
+    public Double getBestBidSize() { return bestBidSize; }
+    public void setBestBidSize(Double bestBidSize) { this.bestBidSize = bestBidSize; }
 
     @Override
     public String toString() {

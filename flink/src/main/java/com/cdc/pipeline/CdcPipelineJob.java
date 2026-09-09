@@ -37,6 +37,9 @@ public class CdcPipelineJob {
         // 1. 실행 환경 설정
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(2);
+        // 2026-09-09: 클러스터 기본(3회×10초)은 ClickHouse 재시작(실측 24초)보다 짧아 잡이 FAILED로 멈출 수 있음 → 20회×30초
+        env.setRestartStrategy(org.apache.flink.api.common.restartstrategy.RestartStrategies.fixedDelayRestart(
+                20, org.apache.flink.api.common.time.Time.seconds(30)));
 
         // 2. 환경변수에서 설정 읽기
         String bootstrapServers = System.getenv().getOrDefault(
@@ -53,7 +56,8 @@ public class CdcPipelineJob {
                 .setBootstrapServers(bootstrapServers)
                 .setTopics("cdc.crypto_db.crypto_trades")
                 .setGroupId("flink-cdc-consumer")
-                .setStartingOffsets(OffsetsInitializer.latest())
+                // 2026-09-09: savepoint 없이 재시작해도 커밋된 그룹 오프셋부터 재개 (없으면 latest) — 재시작 유실 방지
+                .setStartingOffsets(OffsetsInitializer.committedOffsets(org.apache.kafka.clients.consumer.OffsetResetStrategy.LATEST))
                 .setValueOnlyDeserializer(new NullSafeStringSchema())
                 .build();
 

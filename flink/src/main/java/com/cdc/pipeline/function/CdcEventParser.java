@@ -78,6 +78,11 @@ public class CdcEventParser implements FlatMapFunction<String, CryptoTradeEvent>
             event.setSourceTimestamp(sourceTs);
             event.setCdcTimestamp(cdcTs);
             event.setCdcLatencyMs(cdcTs - sourceTs);
+            // 체결 시점 최우선 호가 (MySQL 컬럼 2026-09-09 추가, 이전 행은 null)
+            event.setBestAskPrice(parseNullableDecimal(data, "best_ask_price"));
+            event.setBestAskSize(parseNullableDecimal(data, "best_ask_size"));
+            event.setBestBidPrice(parseNullableDecimal(data, "best_bid_price"));
+            event.setBestBidSize(parseNullableDecimal(data, "best_bid_size"));
 
             out.collect(event);
 
@@ -97,6 +102,17 @@ public class CdcEventParser implements FlatMapFunction<String, CryptoTradeEvent>
             }
         }
         return node.asDouble();
+    }
+
+    /** decimal.handling.mode=string 이므로 문자열 → Double. 없거나 null이면 null 유지 */
+    private Double parseNullableDecimal(JsonNode data, String field) {
+        if (data == null || !data.has(field) || data.get(field).isNull()) return null;
+        JsonNode node = data.get(field);
+        try {
+            return node.isTextual() ? Double.valueOf(node.asText()) : node.asDouble();
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private long safeGetLong(JsonNode data, String field) {
