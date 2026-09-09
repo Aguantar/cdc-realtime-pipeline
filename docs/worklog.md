@@ -179,3 +179,4 @@
 ## 관찰 중 병행 작업 2: README 갱신 (06:20 UTC ~)
 - 갱신 범위: 데이터 소스(287마켓 체결·호가 실측치), 파이프라인 흐름(호가 직접 발행 경로), "2026-09 확장" 절(호가 경로 다이어그램 + 전/후 표), 리소스 배분(30컨테이너, 제한 합 14.3GB·실사용 7.5GB, 브로커·ZK에 3→1·KRaft 예정 명시), 기술 스택(collector·관찰 지표), Phase 9 체크리스트, 이슈 5(적재 지연 36.9h)·이슈 6(n8n 크래시 루프)·이슈 1 후속, 성능 지표(적재 지연·호가 e2e·처리량·체크포인트·200일+·91.97M), 프로젝트 구조(orderbook-collector, orderbook 패키지, orderbook.sql, config.d, observe, docs 07~12·worklog), 감시 유형 2·3 "호가로 확장 예정", 예상 질문 Q2·Q3·Q5·Q6 수정 + Q12(hashmap)·Q13(호가 경로)·Q14(7일 관찰) 추가, 서버 환경
 - 원칙: 이 세션에서 실측·문서화된 수치만 사용. 단일 호스트 HA 아님·CDC 소스 인위성은 README에도 명시(면접 답변 프레임과 일치)
+- 09-09 07:39 UTC 관찰 일일 요약(자동): 샘플 33, 위반 없음, 체결 lag p95 max 2.18s, 호가 e2e p95 max 5916.0ms, buffer max 63.0, 알림 44, ClickHouse max 0.93GiB → /home/calme/pipeline-observation/digest_2026-09-09.md
