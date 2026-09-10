@@ -59,10 +59,11 @@ Upbit WS (orderbook.15, KRW 287마켓, 단일 커넥션)
 
 A안 상시 점유 ≈ 25 GB(여유 366 GB의 7%). 상세 표는 `~/cdc-orderbook-probe/REPORT.md` §4-B.
 
-## 4. 남은 항목 / 결정 필요
+## 4. 남은 항목 / 결정 필요 (13:20 UTC 갱신)
 
-1. **ClickHouse 메모리 87%**: 호가 인서트(258 rows/s, 500건 배치) 추가 후 여유 13%. 제한 상향(1.25G → 1.75G)은 컨테이너 재시작 필요 → 승인 필요. 대안: 배치 크기 축소.
-2. e2e p95 1.9s의 대부분은 JDBC 배치 창(2초). 지연이 중요하면 1초로 축소 가능(인서트 파트 수 2배 → ClickHouse 머지 부담과 트레이드오프).
+1. ~~ClickHouse 메모리 87%~~ → **해결**: 04:23 UTC 1.25G → 1.75G 상향(3잡 savepoint 정지 후 재시작, 유실·중복 0). 이후 52~53%.
+2. e2e p95 1.9s의 대부분은 JDBC 배치 창(2초). 1초로 줄이면 파트 수 2배(머지 부담) → **사용자 결정: 유지**.
 3. 컨슈머 lag 표시값 오해 방지: 대시보드는 `flink_ts − ts`를 쓸 것(커밋 오프셋 기반 lag 아님).
-4. 파생지표 마트(dbt)·Grafana 호가 패널은 미착수.
-5. 미커밋: `orderbook-collector/`, `flink/src/.../orderbook/`, `clickhouse/orderbook.sql`, compose, docs/11, docs/worklog.md.
+4. 파생지표 마트(dbt)·Grafana 호가 패널 → **사용자 결정: 재생 실험 뒤**.
+5. ~~미커밋~~ → **해결**: feb959b(태그 obs-week1-start)에 포함.
+6. 호가 파생지표 선택(imbalance 1/5/15단 등)과 워터마크 5s/idleness 30s는 설계·관행값. 7일 관찰 데이터로 실측 근거 보강 예정.
