@@ -552,7 +552,9 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] 체결 287마켓 확장 + MySQL 정리 상향 + Kafka retention 상향 + tombstone 비활성, 1시간 dry-run 통과
 - [x] health_check: 잡 3개 감시, 적재 지연(source_ts − upbit_timestamp) 알림 추가
 - [x] 7일 무변경 관찰 시작 (2026-09-09 06:10 UTC, 태그 `obs-week1-start`, 계획 `docs/12`)
-- [ ] 관찰 뒤: 튜닝 → 녹화-재생 증폭 실험(브로커 장애 시나리오) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
+- [x] 관찰 중 예외 조치: sequential_id 마켓 간 충돌 유실 발견 → 유니크 키 교체 + 7일 원장 백필 210,469건 (이슈 7, `docs/13`)
+- [ ] 관찰 뒤 1순위: `reconcile_trades` DAG(일일 원장 대조·자동 백필·품질 테이블) + dbt `(market, sequential_id)` 유일성·커버리지·freshness 테스트
+- [ ] 이후: 관찰 분석(`docs/14`)·튜닝 → 녹화-재생 증폭 실험(브로커 장애 시나리오) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
 ---
 
@@ -588,6 +590,19 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 | **원인** | cgroup 제한을 V8가 힙 상한으로 환산(576M → 312MB). 스왑 상태 RSS(270MiB) 기준 1.5배 규칙이 실제 워킹셋을 과소산정 |
 | **해결** | n8n 제한 제거(compose 재생성). Node 앱은 `NODE_OPTIONS=--max-old-space-size`와 함께 정해야 함 |
 | **교훈** | 스왑이 많은 호스트에서 `docker stats` RSS는 메모리 산정 근거로 부적합 |
+
+### 이슈 7: 유실 사고 #2 — sequential_id 마켓 간 충돌로 INSERT IGNORE가 체결을 폐기 (2026-09-10)
+
+| 항목 | 내용 |
+|------|------|
+| **현상** | 287마켓 확장 후 업비트 시간봉 대비 거래량 커버리지 **94.7%**(활동 시간대 89.7%). 5코인 시절 일 단위 대조는 99%+라 보이지 않았음 |
+| **위치 특정** | ① MySQL vs ClickHouse 951,279 = 951,279 → CDC 이후 무결. ② REST 원장(`/v1/trades/ticks`) vs ClickHouse `sequential_id` → BTC 1시간 4,111건 중 265 누락, 버스트 초에 집중 |
+| **오판과 정정** | producer가 "받은 만큼 썼다"는 카운터를 근거로 **"업비트 WS 미전달"로 결론** → 더블체크 요구에 따라 DB 없는 **독립 WS 클라이언트**를 20분 동시 연결 → REST = 독립 클라이언트 100%, 파이프라인만 BTC −306(10.3%) → 결론 철회, producer 유실 확정 |
+| **근본 원인** | `sequential_id` = 체결 ms × 10,000 + ms 내 순번 → **마켓별** 유일. MySQL `UNIQUE KEY (sequential_id)` + `INSERT IGNORE`가 다른 마켓의 같은 ms 체결을 "중복"으로 폐기(누락 BTC sid가 MySQL에 XRP 행으로 존재). 폐기 건수를 `duplicates`로 집계해 정상으로 오인 |
+| **해결** | 유니크 키 `(market, sequential_id)`로 교체(`ALGORITHM=INPLACE, LOCK=NONE`, 404만 행 32초 무중단, Debezium DDL 추적). 재검증: 독립 클라이언트 10분 재실험 파이프라인 누락 0 |
+| **복구** | REST 원장(7일 창)으로 백필 **210,469건**(287마켓 구간 56,700 = 2.94%, 5코인 구간 153,769 = 6.71%) → MySQL 경유 CDC로 ClickHouse까지 전파. 재대조 287마켓×12h **100.0%**. 09-03 이전 손실은 원장 창 밖이라 복구 불가(추정 5.3%) |
+| **부작용** | 백필 체결이 "현재"로 처리돼 PRICE_SPIKE 오탐 1,646건(삭제), 5분 집계 창 오염(기록). 백필 창 하한을 소스(MySQL 7일 보존) 기준으로 잡아 ClickHouse 중복 53,012행 발생 → 삭제. 교훈: 백필 창은 타깃 기준 |
+| **교훈** | 외부 ID 유일성은 프로파일링으로 검증 후 키에 넣는다. 조용히 버리는 쓰기에는 지표·알림을 붙인다. 정합성 불일치는 소스 탓으로 결론내기 전에 독립 수신기로 재현한다. 대조는 거래량이 아닌 건수·ID 단위로, 원장 보존 창 안에 매일 자동으로. 상세 `docs/13-sequential-id-collision-incident.md` |
 
 ### 이슈 2: Flink Checkpoint Offset 복원 문제
 
@@ -750,6 +765,7 @@ cdc-realtime-pipeline/
     ├── 10-phase2-flink-producer-upgrade.md
     ├── 11-orderbook-launch.md
     ├── 12-observation-plan.md          # 7일 관찰 가설·임계값
+    ├── 13-sequential-id-collision-incident.md  # 유실 사고 #2: sid 마켓 간 충돌, 백필 210,469건
     └── worklog.md                      # 결정 표(근거 포함) + 시간순 작업 기록
 ```
 

@@ -276,3 +276,4 @@
 - 백필 부작용(예고대로): 01:52~03:02 알림 1,687(PRICE_SPIKE 1,473) vs 전날 7 → 백필 행 연결 1,646건 DELETE(03:04), 잔여 123. trade_aggregations 해당 창 오염은 기록만. Oracle n8n이 그 시간 알림 발송
 - 03:05 원장 재대조(09-09 15:00~09-10 03:00, 287마켓 3,393셀): **시간별 전부 100.0%, 95% 미만 0** → 수정+백필 완료 확인
 - 문서 docs/13-sequential-id-collision-incident.md 작성. 스크립트 scripts/observe/{backfill_trades,trade_sid_probe}.py 리포에 복사
+- 09-10 03:25 UTC README 이슈 7(sequential_id 충돌 유실 사고: 현상·위치 특정·오판과 정정·근본 원인·해결·복구·부작용·교훈) 추가, Phase 9 체크리스트에 예외 조치·관찰 뒤 1순위(reconcile DAG + dbt 테스트) 반영, docs 인덱스에 13번 추가
