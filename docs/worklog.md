@@ -3,14 +3,15 @@
 > 목적: 모든 판단의 근거(실측 명령·시각·수치)를 시간순으로 남긴다. 시각은 UTC(호스트 시계) 기준, KST = +9h.
 > 산출 문서: `docs/08-ingest-lag-incident.md`(적재 지연 사고), `docs/09-orderbook-phase1-execution.md`(1차 실행), `docs/10-phase2-flink-producer-upgrade.md`(2차 실행). 사전 검증 원문·프로브 스크립트·측정 JSON은 `~/cdc-orderbook-probe/`.
 
-## 현재 상태 (최신화 2026-09-09 08:00 UTC / 17:00 KST)
+## 현재 상태 (최신화 2026-09-10 03:15 UTC / 12:15 KST)
 
-- **7일 무변경 관찰 진행 중** (09-09 06:10 UTC ~ 09-16 06:10 UTC). 기준 커밋 feb959b, 태그 `obs-week1-start`. 이후 문서 커밋 53685c5(README), 5a8cf85(일일 요약).
-- 운영 중: 체결 CDC 경로 287마켓(producer → MySQL → Debezium → Kafka → Flink → ClickHouse), 호가 직접 경로 287마켓(collector → Kafka → Flink → ClickHouse), Flink 잡 3개(hashmap, TM 2g, 슬롯 4/4), ClickHouse 1.75G, health_check 10분(잡 3개·적재 지연 알림), n8n 알림은 Oracle만, 5분 지표 cron + 06:20 UTC 일일 요약 cron(worklog에 자동 한 줄).
-- 오늘 남은 자동 작업: 13:00 UTC 야간 프로브 1회(WS만, 파이프라인 무접촉) → 용량표 갱신.
-- 관찰 뒤 순서(확정): 분석(docs/13) → 튜닝 → 재생 증폭 실험(브로커 장애 시나리오) → 브로커 3→1 + KRaft → CDC 유의미화 A(가상 매매 원장)+B(이상탐지 케이스 관리) · MySQL DROP PARTITION 전환 · ReplacingMergeTree + 2월 백필.
-- 실험 도구: `~/pipeline-load-lab`(로컬 git, GitHub 미생성) recorder/replayer/measure 3종 dry-run 검증 완료. 코퍼스는 관찰 종료 시 고정.
-- 미커밋 잔여: `dbt_cdc_pipeline/tests/assert_no_long_gaps.sql`(이전 세션 diff), png 3개, 일일 요약이 추가하는 worklog 줄(관찰 종료 시 일괄 커밋).
+- **7일 무변경 관찰 진행 중** (09-09 06:10 ~ 09-16 06:10 UTC, 태그 `obs-week1-start`). 예외 조치 1건 발생: 09-10 01:20 유니크 키 교체 + 백필(docs/13). 나머지 구조·설정 변경 없음.
+- 운영: 체결 CDC 경로 287마켓(producer → MySQL → Debezium → Kafka → Flink → ClickHouse), 호가 직접 경로 287마켓, Flink 잡 3개(hashmap, TM 2g, 슬롯 4/4), ClickHouse 1.75G, health_check(잡 3·적재 지연 알림), n8n 알림은 Oracle만, 5분 지표 cron + 06:20 UTC 일일 요약.
+- 데이터 상태: 체결 유실 재발 차단(01:20 이후 원장 대조 100%), 09-03 이후 7일치 복구 완료(210,469행), 09-03 이전 손실은 복구 불가(추정 5.3%). 중복 0(백필 실수분 53,012 삭제 완료). 백필 창(09-10 01:52~03:02) trade_aggregations 오염은 기록만.
+- 관찰 뒤 순서(확정): (1) **reconcile_trades DAG** + dbt 유일성·커버리지·freshness 테스트 → (2) 관찰 분석(docs/14 예정)·튜닝(USDT LARGE_TRADE 임계, 파티션 키 market, Float64→Decimal, "하루" 정의 통일, 마켓 목록 갱신) → (3) 재생 증폭 실험(브로커 장애 시나리오) → (4) 브로커 3→1 + KRaft → (5) CDC 유의미화 A(가상 매매 원장)+B(이상탐지 케이스 관리), MySQL DROP PARTITION 전환, ReplacingMergeTree.
+- 실험 도구: `~/pipeline-load-lab`(로컬 git) recorder/replayer/measure dry-run 검증 완료. 코퍼스는 관찰 종료 시 고정.
+- 미커밋 잔여: dbt tests/assert_no_long_gaps.sql(이전 세션 diff), png 3개, 일일 요약 자동 추가분.
+- 문서 인덱스: docs/07 중복 감사 · 08 적재 지연 사고 · 09 1차 · 10 2차(Flink) · 11 호가 · 12 관찰 계획 · **13 sequential_id 충돌 유실 사고** · worklog(결정 30건 + 시간순).
 
 ## 결정 사항 (확정, 재논의 불필요)
 
@@ -39,6 +40,8 @@
 | 09-09 05:20 | **관찰 뒤 CDC 유의미화 방향(제안, 관찰 뒤 확정)**: A) 가상 매매 서비스 원장(orders/positions/balances, 체결 판정은 실시간 호가·체결 기준, "가상 주문" 명시) = 규모·원장 CDC·상태 upsert·스트림-상태 조인·실시간 손익. B) 이상탐지 케이스 관리 테이블(open→확인/오탐/종료를 규칙으로 갱신) → CDC → ClickHouse 정밀도 이력 → 임계값 재조정 순환. C) Airflow/n8n 메타 DB CDC는 보너스. **실주문(myOrder) 혼합은 제외** | 업비트 공개 API에 타인 주문·취소·청산 데이터 없음(문서 확인: 공개 WS ticker/trade/orderbook/candle, 인증 WS myOrder/myAsset 본인 한정, 선물·청산 없음). 실주문 반복은 허수성·취소 과다 감시 대상, 돈·키 관리 위험. 순서: 관찰 → 재생 실험 → A+B |
 | 09-09 05:30 | **호가 데이터의 성격과 활용 근거**: 업비트 호가는 주문 단위(L3)가 아니라 가격대별 잔량 합계 스냅샷(L2). 취소는 잔량 감소로 반영되며 "누구의 주문"만 없음. 체결 스트림과 대조하면 "체결 없이 사라진 잔량 = 취소·정정"으로 추론 가능 → 2월(docs/06)에 "호가 없어 불가"로 남긴 감시 유형 2(허수성 매매)·3(취소·정정 과다) 탐지를 확장 항목으로 등록. 원본 7일 보관 이유 = 이 추론 계산의 입력 | 실측: 15단 전체 스냅샷 258 msg/s, 스냅샷 간 diff로 이벤트 복원 가능. L2는 스프레드·깊이·불균형 분석의 업계 표준 형태 |
 | 09-09 05:30 | **실무자 관점 자체 평가(면접 대비)** — 강점: 200일+ 실운영, 사고 3건(46h 중단·37h 적재 지연·24분 알림 중단)의 원인·수치 문서화, 결정마다 실측 근거, 지연·유실·중복 각각 해결, 규모 하루 약 2,600만 이벤트(체결 400만+호가 2,200만, 초당 ~300). 약점(인정하고 답할 것): 단일 호스트 HA 아님(→3→1 결정), 체결 CDC 소스 인위적(→A+B), 싱크 at-least-once·멱등 upsert 미적용(→RMT 관찰 뒤), 스키마 계약·CI·IaC·SLO 없음, Iceberg 미구현. "왜 아직 안 했나" 답: 먼저 측정(중복 감사·7일 관찰)하고 게이트를 세운 뒤 전환하는 순서 | 약점을 먼저 말할 수 있는 것이 신뢰 요소 |
+| 09-10 01:19 | **관찰 예외 조치**: MySQL 유니크 키 `(market, sequential_id)`로 교체(무중단) + REST 7일 원장 백필 210,469행(MySQL 경유 CDC) | 진행 중 유실(287마켓 2.94%, BTC 10%). 독립 수신기 실험으로 producer 원인 확정(docs/13) |
+| 09-10 03:10 | **관찰 뒤 1순위 = `reconcile_trades` Airflow DAG**: 시간 파티션·catchup·멱등, 시간봉 대조 → 99% 미만 셀만 REST 원장 조회 → 누락 INSERT(MySQL 경유) → 재검증 → 품질 테이블 적재 → Slack 요약. REST pool 페이싱 ≤7/s, SLA "전날분 다음 날 정오까지". 이어서 dbt `unique_combination_of_columns(market, sequential_id)`·커버리지 테스트·source freshness(upbit_timestamp) | 원장 보존 7일 창 안에 자동 복구가 돌아야 유실이 영구화되지 않음. 오늘 수동 절차를 그대로 태스크화 |
 | 09-09 04:40 | n8n 이중 실행 해소: **미니PC 워크플로우만 비활성화**(컨테이너·자동 업데이트 cron 유지) | 실행 이력 대조로 이중 실행 실증. 워크플로우 비활성은 롤백이 가장 쉬움. Oracle이 6월 컷오버본 |
 | 09-09 06:09 | 재생 실험 도구는 별도 리포(`pipeline-load-lab`, 로컬), 재생기는 `load_test.` 외 토픽 거부 | 프로덕션 토픽 오발행 방지 안전장치. 관찰 중엔 읽기·dry-run만 |
 | 09-09 06:20 | README에 단일 호스트 HA 아님·체결 CDC 인위성·타협점을 명시 | 면접에서 약점을 먼저 말하는 것이 신뢰 요소(자체 평가 결정 참조) |
