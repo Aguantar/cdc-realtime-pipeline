@@ -277,3 +277,5 @@
 - 03:05 원장 재대조(09-09 15:00~09-10 03:00, 287마켓 3,393셀): **시간별 전부 100.0%, 95% 미만 0** → 수정+백필 완료 확인
 - 문서 docs/13-sequential-id-collision-incident.md 작성. 스크립트 scripts/observe/{backfill_trades,trade_sid_probe}.py 리포에 복사
 - 09-10 03:25 UTC README 이슈 7(sequential_id 충돌 유실 사고: 현상·위치 특정·오판과 정정·근본 원인·해결·복구·부작용·교훈) 추가, Phase 9 체크리스트에 예외 조치·관찰 뒤 1순위(reconcile DAG + dbt 테스트) 반영, docs 인덱스에 13번 추가
+- 09-10 03:35 UTC 일일 원장 대조(자동, 백필 없음): weighted 80.98% | cells 6813 | <99% 559 | <95% 557 | worst hour 2026-09-09T03 0.0% | fetch_fail 0 | /home/calme/pipeline-observation/reconcile_2026-09-10_03Z.csv
+- 09-10 03:35 UTC 일일 원장 대조 cron 등록(`35 6 * * *`, `scripts/observe/daily_reconcile.sh`, 읽기 전용·백필 없음, 06:20 일일 요약과 직렬). 첫 수동 실행(24h 창 09-09 03:00~09-10 03:00) 가중 80.98%는 **확장 전 2시간(03~04 UTC, 5코인만 수집)이 창에 포함된 기간 효과** — 확장 이후 시간대만 보면 아래 검증값. 09-11부터는 창 전체가 287마켓 구간
