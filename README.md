@@ -571,6 +571,32 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 | **교훈** | CDC 파이프라인에서 대량 DML은 반드시 시간 분산 처리 |
 | **2026-09 후속** | 체결 토픽 메시지의 84%가 delete+tombstone임을 실측 → `tombstones.on.delete=false`(compact 토픽이 아니라 무용), 전 코인 확장으로 정리 10분×40K. 근본 해결은 관찰 뒤 일 단위 파티션 + DROP PARTITION(행 단위 이벤트가 생기지 않음) |
 
+### 이슈 2: Flink Checkpoint Offset 복원 문제
+
+| 항목 | 내용 |
+|------|------|
+| **현상** | Kafka offset 리셋해도 Flink가 과거 offset으로 회귀 |
+| **원인** | Flink checkpoint가 Kafka consumer group보다 우선 |
+| **해결** | Checkpoint 삭제 + `OffsetsInitializer.latest()` 변경 |
+| **교훈** | Flink offset 관리는 checkpoint 우선, consumer group 리셋만으로 불충분 |
+
+### 이슈 3: 이상 탐지 과다 알림
+
+| 항목 | 내용 |
+|------|------|
+| **현상** | v1: 시간당 651건 (DOGE 1원 변동 매번 발동), v2: 시간당 72건 (VOLUME_SURGE 간신히 초과하는 노이즈) |
+| **원인** | v1: 고정 임계값이 암호화폐 변동성 미반영, v2: EMA×50이 정상 변동의 상단 경계에 위치 |
+| **해결** | v3: 24시간 분포 분석(p90=3.5x) 기반 EMA×150 적용 + RAPID_TRADES 비활성화(API 전송한계) → 시간당 ~13건 (31일 실측) |
+| **교훈** | 임계값은 도메인 지식 + 실측 데이터 분포 분석(percentile) 기반으로 반복 조정 필수 |
+
+### 이슈 4: Kafka Cluster ID 불일치
+
+| 항목 | 내용 |
+|------|------|
+| **현상** | Broker 재시작 시 ClusterIdMismatch로 기동 실패 |
+| **원인** | Docker volume 재생성 시 기존 meta.properties와 충돌 |
+| **해결** | startup.sh에서 Connect 내부 토픽 자동 재생성 로직 추가 |
+
 ### 이슈 5: 적재 지연 36.9시간 — 유실로 오인될 뻔한 사고 (2026-08-19 ~ 08-30)
 
 | 항목 | 내용 |
@@ -603,32 +629,6 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 | **복구** | REST 원장(7일 창)으로 백필 **210,469건**(287마켓 구간 56,700 = 2.94%, 5코인 구간 153,769 = 6.71%) → MySQL 경유 CDC로 ClickHouse까지 전파. 재대조 287마켓×12h **100.0%**. 09-03 이전 손실은 원장 창 밖이라 복구 불가(추정 5.3%) |
 | **부작용** | 백필 체결이 "현재"로 처리돼 PRICE_SPIKE 오탐 1,646건(삭제), 5분 집계 창 오염(기록). 백필 창 하한을 소스(MySQL 7일 보존) 기준으로 잡아 ClickHouse 중복 53,012행 발생 → 삭제. 교훈: 백필 창은 타깃 기준 |
 | **교훈** | 외부 ID 유일성은 프로파일링으로 검증 후 키에 넣는다. 조용히 버리는 쓰기에는 지표·알림을 붙인다. 정합성 불일치는 소스 탓으로 결론내기 전에 독립 수신기로 재현한다. 대조는 거래량이 아닌 건수·ID 단위로, 원장 보존 창 안에 매일 자동으로. 상세 `docs/13-sequential-id-collision-incident.md` |
-
-### 이슈 2: Flink Checkpoint Offset 복원 문제
-
-| 항목 | 내용 |
-|------|------|
-| **현상** | Kafka offset 리셋해도 Flink가 과거 offset으로 회귀 |
-| **원인** | Flink checkpoint가 Kafka consumer group보다 우선 |
-| **해결** | Checkpoint 삭제 + `OffsetsInitializer.latest()` 변경 |
-| **교훈** | Flink offset 관리는 checkpoint 우선, consumer group 리셋만으로 불충분 |
-
-### 이슈 3: 이상 탐지 과다 알림
-
-| 항목 | 내용 |
-|------|------|
-| **현상** | v1: 시간당 651건 (DOGE 1원 변동 매번 발동), v2: 시간당 72건 (VOLUME_SURGE 간신히 초과하는 노이즈) |
-| **원인** | v1: 고정 임계값이 암호화폐 변동성 미반영, v2: EMA×50이 정상 변동의 상단 경계에 위치 |
-| **해결** | v3: 24시간 분포 분석(p90=3.5x) 기반 EMA×150 적용 + RAPID_TRADES 비활성화(API 전송한계) → 시간당 ~13건 (31일 실측) |
-| **교훈** | 임계값은 도메인 지식 + 실측 데이터 분포 분석(percentile) 기반으로 반복 조정 필수 |
-
-### 이슈 4: Kafka Cluster ID 불일치
-
-| 항목 | 내용 |
-|------|------|
-| **현상** | Broker 재시작 시 ClusterIdMismatch로 기동 실패 |
-| **원인** | Docker volume 재생성 시 기존 meta.properties와 충돌 |
-| **해결** | startup.sh에서 Connect 내부 토픽 자동 재생성 로직 추가 |
 
 ---
 
