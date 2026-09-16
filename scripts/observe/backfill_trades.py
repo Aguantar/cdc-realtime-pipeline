@@ -30,6 +30,18 @@ def rest_ticks(market, day_ago, to_hms, lo_ms, hi_ms):
         cursor=d[-1]['sequential_id']; time.sleep(0.14)
     time.sleep(0.14); return out
 
+def record_repair(lo_ms, hi_ms, markets_n, rest_rows, inserted, elapsed_s, note=''):
+    """수리 계보(창 단위) → ClickHouse ingest_repairs (docs/19 #14). producer gap-fill 과 같은 테이블."""
+    from datetime import datetime, timezone
+    fmt=lambda ms: datetime.fromtimestamp(ms/1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    row={'repaired_at': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'), 'reason':'manual', 'window_start':fmt(lo_ms), 'window_end':fmt(hi_ms),
+         'markets':markets_n, 'rest_rows':rest_rows, 'inserted_rows':inserted, 'elapsed_s':round(elapsed_s,1), 'note':note}
+    try:
+        subprocess.run(['docker','exec','-i','cdc-clickhouse','clickhouse-client','-q','INSERT INTO cdc_pipeline.ingest_repairs FORMAT JSONEachRow'],
+                       input=json.dumps(row).encode(), check=True, timeout=30)
+    except Exception as e:
+        print(f"수리 계보 기록 실패(무시): {e}", file=sys.stderr)
+
 def mysql(sql):
     r=subprocess.run(['docker','exec','-i','cdc-mysql','sh','-c','mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N crypto_db'],input=sql,capture_output=True,text=True,timeout=600)
     if r.returncode!=0: raise RuntimeError(r.stderr[:500])
@@ -69,6 +81,8 @@ def main():
             w.writerow([m,day.isoformat(),len(T),len(have),len(miss),ins]); tot_rest+=len(T); tot_my+=len(have); tot_miss+=len(miss); tot_ins+=ins
             day+=timedelta(days=1)
         if (i+1)%20==0: print(f"  {i+1}/{len(markets)} markets, rest {tot_rest} mysql {tot_my} missing {tot_miss} inserted {tot_ins} ({time.time()-t0:.0f}s)", file=sys.stderr, flush=True)
+    if not a.dry_run:
+        record_repair(lo_ms, hi_ms, len(markets), tot_rest, tot_ins, time.time()-t0, note=f'manual backfill {csvp}')
     print(json.dumps({'from':a.t_from,'to':a.t_to,'markets':len(markets),'rest':tot_rest,'mysql':tot_my,'missing':tot_miss,'inserted':tot_ins,'missing_pct':round(100*tot_miss/tot_rest,2) if tot_rest else None,'dry_run':a.dry_run,'csv':csvp,'elapsed_s':round(time.time()-t0)}))
 
 if __name__=='__main__': main()

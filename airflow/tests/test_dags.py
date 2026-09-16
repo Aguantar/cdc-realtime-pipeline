@@ -56,6 +56,7 @@ def test_health_check_dag_structure(dag_bag):
         "check_kafka_health",
         "check_producer_activity",
         "check_ingest_lag",
+        "check_market_coverage",
         "check_kafka_connect",
         "evaluate_health",
     }
@@ -64,7 +65,7 @@ def test_health_check_dag_structure(dag_bag):
         f"Expected: {expected_tasks}, Got: {actual_tasks}"
     )
 
-    # evaluate_health는 6개 체크 태스크에 의존해야 함
+    # evaluate_health는 7개 체크 태스크에 의존해야 함
     evaluate = dag.get_task("evaluate_health")
     upstream_ids = {t.task_id for t in evaluate.upstream_list}
     assert upstream_ids == {
@@ -73,8 +74,11 @@ def test_health_check_dag_structure(dag_bag):
         "check_kafka_health",
         "check_producer_activity",
         "check_ingest_lag",
+        "check_market_coverage",
         "check_kafka_connect",
     }
+    # 커버리지 체크는 업비트 REST 풀로 직렬화되어야 한다 (한도 10/s, DAG 간 충돌 방지)
+    assert dag.get_task("check_market_coverage").pool == "upbit_rest"
 
 
 def test_daily_pipeline_dag_structure(dag_bag):

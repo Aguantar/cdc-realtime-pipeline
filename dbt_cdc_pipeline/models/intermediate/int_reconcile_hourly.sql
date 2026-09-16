@@ -1,4 +1,6 @@
-{{ config(materialized='table', order_by='(market, hour_utc)') }}
+{{ config(order_by='(market, hour_utc)') }}
+-- materialized 는 dbt_project.yml 의 intermediate 계층 설정(table)을 따른다. 처음엔 별도 reconcile/ 폴더에 두었으나
+-- int_ 접두어와 계층 규칙(staging→intermediate→marts)이 어긋나 intermediate 로 옮김 (2026-09-16).
 
 -- 원장 대조: 마켓×시간(UTC) 단위로 거래소 시간봉 거래량(진실값) 대비 ClickHouse 체결 거래량 비율.
 -- 기준 시각은 체결시각(upbit_timestamp). 적재시각(source_ts) 기준으로 비교하면 지연이 유실로 보인다 (docs/08).

@@ -10,7 +10,8 @@ COPY pom.xml .
 RUN mvn dependency:go-offline -B
 
 COPY src/ src/
-RUN mvn clean package -DskipTests -B
+# 2026-09-16: -DskipTests 제거. 늦은 이벤트 가드 테스트가 JAR 생성의 게이트가 되도록 (실행되지 않는 테스트는 게이트가 아니다)
+RUN mvn clean package -B
 
 # ===== Stage 2: Output =====
 # 빌드된 JAR만 추출 (빌드 도구는 버림 → 최종 이미지 경량화)

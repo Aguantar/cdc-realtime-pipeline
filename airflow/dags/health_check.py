@@ -29,7 +29,7 @@ with DAG(
     dag_id="health_check",
     default_args=default_args,
     description="CDC 파이프라인 전체 컴포넌트 헬스체크 (10분 간격)",
-    schedule_interval="*/10 * * * *",
+    schedule="*/10 * * * *",
     start_date=datetime(2026, 3, 11),
     catchup=False,
     tags=["monitoring", "health"],
@@ -100,6 +100,53 @@ with DAG(
         result_type="first",
     )
 
+    # ── 마켓별 커버리지 (2026-09-16 추가, docs/19 #8) ─────────
+    # 배경: KRW-BFC 상장 후 6일 무수집을 하루 뒤 대조로만 알았다. 감지를 10분으로 당긴다.
+    # 방법: 거래소 ticker(한 호출, 전 마켓)의 마지막 체결 시각 vs 우리 마켓별 마지막 체결 시각.
+    #       우리가 최신 체결을 갖고 있으면 차이는 적재 지연(관찰 주간 최대 7.75초)뿐이다.
+    # 판정: 거래소가 60초 넘게 전에 본 마지막 체결이 우리에게 없다 (ex_ms > ours_last AND now − ex_ms > 60s).
+    #   첫 실행(09-16 22:25)에서 배운 것 — "거래소 마지막 − 우리 마지막" 차이로 재면, 체결 직후 1~2초 사이에 체크가 돌 때
+    #   아직 적재되기 전의 직전 체결과 비교되어 뜸한 마켓(KRW-G)이 263초 뒤처진 것으로 나온다. 최신 체결에 도착할 시간(60초)을
+    #   준 뒤에도 없어야 누락이다.
+    # 임계 60초: 정상 적재 지연(관찰 주간 최대 7.75초)의 8배이고, 늦은 이벤트 가드·적재 지연 알림과 같은 "실시간 아님" 기준(docs/20).
+    # 대상: 거래소 마지막 체결이 최근 24시간 안인 마켓만 (하루 이상 거래 없는 마켓은 비교 대상 아님).
+    # 재연결 직후 gap-fill 이 끝나기 전 1회 걸릴 수 있다 — 그 알림은 실제 상태이므로 억제하지 않는다.
+    def _check_market_coverage(**context) -> dict:
+        import time
+        import requests
+        from hooks.clickhouse_hook import ClickHouseHook
+
+        markets = [m["market"] for m in requests.get("https://api.upbit.com/v1/market/all?is_details=false", timeout=15).json()
+                   if m["market"].startswith("KRW-")]
+        ticker = requests.get("https://api.upbit.com/v1/ticker", params={"markets": ",".join(markets)}, timeout=15).json()
+        exchange_last = {t["market"]: int(t["trade_timestamp"]) for t in ticker}
+
+        rows = ClickHouseHook().get_records("""
+            SELECT market, max(upbit_timestamp) AS last_ms
+            FROM cdc_pipeline.crypto_trades
+            WHERE source_ts >= now() - INTERVAL 1 DAY
+            GROUP BY market
+        """)
+        ours_last = {r["market"]: int(r["last_ms"]) for r in rows}
+
+        now_ms = int(time.time() * 1000)
+        missing = []
+        for market, ex_ms in exchange_last.items():
+            if now_ms - ex_ms > 86_400_000:
+                continue
+            if ex_ms > ours_last.get(market, 0) and now_ms - ex_ms > 60_000:
+                missing.append({"market": market, "behind_s": round((now_ms - ex_ms) / 1000), "ours": market in ours_last})
+        missing.sort(key=lambda x: -x["behind_s"])
+        result = {"checked": len(exchange_last), "missing": missing[:20], "missing_count": len(missing)}
+        context["ti"].log.info("market coverage: %s", result)
+        return result
+
+    check_market_coverage = PythonOperator(
+        task_id="check_market_coverage",
+        python_callable=_check_market_coverage,
+        pool="upbit_rest",
+    )
+
     # ── Kafka Connect 상태 확인 (REST API) ───────────────────
     def _check_kafka_connect(**context) -> dict:
         """Kafka Connect REST API로 커넥터 상태를 확인합니다."""
@@ -159,8 +206,19 @@ with DAG(
         producer_result = ti.xcom_pull(task_ids="check_producer_activity")
         connect_result = ti.xcom_pull(task_ids="check_kafka_connect")
         lag_result = ti.xcom_pull(task_ids="check_ingest_lag")
+        coverage_result = ti.xcom_pull(task_ids="check_market_coverage")
 
         unhealthy = []
+
+        # 마켓 커버리지: 거래소에는 최신 체결이 있는데 우리에게 60초 넘게 없는 마켓
+        if coverage_result and int(coverage_result.get("missing_count", 0)) > 0:
+            top = ", ".join(f"{m['market']}({m['behind_s']}s{'' if m['ours'] else ', 무수집'})" for m in coverage_result["missing"][:8])
+            unhealthy.append(
+                {
+                    "name": "Market Coverage",
+                    "message": f"{coverage_result['missing_count']}/{coverage_result['checked']} markets behind exchange: {top}",
+                }
+            )
 
         # 적재 지연: 최근 10분 p50 > 60초면 producer 포화 (max는 참고 표기)
         if lag_result and int(lag_result.get("rows_10min", 0)) > 0:
@@ -259,6 +317,7 @@ with DAG(
             check_producer_activity,
             check_connect,
             check_ingest_lag,
+            check_market_coverage,
         ]
         >> evaluate_health
     )

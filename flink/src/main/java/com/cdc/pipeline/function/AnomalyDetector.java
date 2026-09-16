@@ -8,6 +8,7 @@ import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.Counter;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
@@ -71,6 +72,16 @@ public class AnomalyDetector
     private static final double VOLUME_SURGE_MULTIPLIER = 150.0;   // EMA 대비 50배
     private static final long VOLUME_MIN_SAMPLES = 50;            // 최소 50건 학습 후 판단
 
+    // === 0. 늦은 이벤트 가드 (2026-09-16, docs/19 #7 · docs/20) ===
+    // 배경: 백필·gap-fill 로 들어온 옛 체결이 마켓별 lastPrice 상태를 덮어 "옛 체결 vs 현재가" + "실시간 체결 vs 옛 가격"
+    //       두 번 오탐을 냈다(3회 재현). 처리 순서로 비교하는 구조의 한계.
+    // 왜 "직전보다 과거면 생략"이 아닌가: 토픽이 3파티션이라 같은 마켓 체결의 5.87%가 이벤트 시각 역순으로 도착
+    //       (최대 4.8초, 09-16 실측). 단조 가드는 실시간 체결 6%를 탐지에서 빼게 된다.
+    // 왜 "적재 지연 > 60초"인가: 지연 = source_ts(MySQL 적재) − upbit_timestamp(체결). 실시간 행은 관찰 주간 최대 7.75초,
+    //       재정렬 최대 4.8초. 수리 행은 분~일 단위로 늦다. 60초는 health_check 가 이미 "실시간 아님"으로 쓰는 기준과 같다.
+    // 효과: 늦은 행은 상태 갱신·알림 모두 생략(적재는 별도 싱크라 영향 없음). 건수는 메트릭 lateEventsSkipped 로 노출.
+    private static final long LATE_EVENT_MS = 60_000;
+
     // === 4. RAPID_TRADES 임계값 ===
     private static final int RAPID_TRADE_COUNT = Integer.MAX_VALUE; // 비활성화: Upbit API 전송한계(~100건/10초)로 의미없음             // 10초 내 100건
     private static final long RAPID_TRADE_WINDOW_MS = 10_000;     // 10초
@@ -81,6 +92,7 @@ public class AnomalyDetector
     private transient ValueState<Long> volumeCount;
     private transient ValueState<Integer> windowTradeCount;
     private transient ValueState<Long> windowStart;
+    private transient Counter lateEventsSkipped;
 
     @Override
     public void open(Configuration parameters) {
@@ -94,6 +106,7 @@ public class AnomalyDetector
                 new ValueStateDescriptor<>("windowTradeCount", Types.INT));
         windowStart = getRuntimeContext().getState(
                 new ValueStateDescriptor<>("windowStart", Types.LONG));
+        lateEventsSkipped = getRuntimeContext().getMetricGroup().counter("lateEventsSkipped");
     }
 
     @Override
@@ -103,6 +116,12 @@ public class AnomalyDetector
         double price = event.getTradePrice();
         double volume = event.getTradeVolume();
         double amount = event.getTradeAmount();
+
+        // 0. 늦은 이벤트 가드 — 수리(백필·gap-fill) 행은 탐지·상태에서 제외
+        if (event.getSourceTimestamp() - event.getUpbitTimestamp() > LATE_EVENT_MS) {
+            lateEventsSkipped.inc();
+            return;
+        }
 
         // 1. LARGE_TRADE: 대량 체결 (마켓별 동적 임계값)
         double largeThreshold = getLargeTradeThreshold(market);

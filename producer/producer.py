@@ -78,6 +78,21 @@ WS_RECONNECT_DELAY = 5       # 초
 # 같은 연결에서 구독 메시지를 다시 보내면 구독이 교체된다 — 검증: 1마켓 → 3마켓 → 1마켓 모두 반영, 끊김 없음 (worklog 09-16).
 # 따라서 갱신에 재연결이 필요 없고 수신 공백도 생기지 않는다. REST 한도 10/s 대비 5분당 1회는 무시할 수준.
 MARKET_REFRESH_SEC = float(os.getenv('MARKET_REFRESH_SEC', '300'))
+
+# 유입 공백 gap-fill (2026-09-16, docs/19 #3·#10·#14, docs/20)
+# 배경: WS 재연결 5초가 45초 창의 16.06%, 컨테이너 재기동 2초가 30초 창의 4.19%를 잃었다(09-15·16 실측).
+# 방법: 재연결·기동 직후 [마지막 수신 체결 시각 − 여유, 재연결 시각 + 여유] 를 REST /v1/trades/ticks(거래소 원장) 로
+#       전 마켓 조회해 같은 INSERT IGNORE 경로로 넣는다. 겹치는 행은 (market, sequential_id) 유니크 키가 흡수.
+# 왜 겹침 배포 대신 기동 시 gap-fill 인가: compose 의 container_name 제약으로 같은 서비스 2개를 겹쳐 띄우는 절차가 복잡하고,
+#       기동 시 gap-fill 이 같은 결과(누락 0)를 REST 287콜(~45초)로 낸다. 재기동은 드물어 REST 비용은 무시할 수준.
+# 왜 기동 시 30분 상한인가: 그보다 긴 공백은 마켓당 REST 페이지가 여러 장이 되어 자동으로 돌리기엔 크고,
+#       원인 확인이 먼저다(08-19 36.9h 지연 사고처럼). 그 경우 수동 도구 scripts/observe/backfill_trades.py 를 쓴다.
+GAPFILL_ENABLED = os.getenv('GAPFILL_ENABLED', '1') == '1'
+GAPFILL_MARGIN_MS = 2_000                 # 끊김·재연결 시각 앞뒤 여유 (재정렬 최대 4.8초 실측의 절반; 겹침은 유니크 키가 흡수)
+GAPFILL_STARTUP_MAX_MS = 30 * 60_000      # 기동 시 자동 gap-fill 상한
+UPBIT_TICKS_URL = 'https://api.upbit.com/v1/trades/ticks'
+REST_INTERVAL_S = 0.14                    # ≤ 7 req/s (한도 10/s, 다른 REST 작업과 동시 실행 여유)
+CLICKHOUSE_URL = os.getenv('CLICKHOUSE_URL', 'http://cdc-clickhouse:8123')   # 수리 계보 기록용 (실패해도 gap-fill 은 계속)
 UPBIT_MARKET_URL = 'https://api.upbit.com/v1/market/all?is_details=false'
 WS_PING_INTERVAL = 30        # 초
 WS_PING_TIMEOUT = 10         # 초
@@ -208,6 +223,36 @@ class MySQLWriter:
             self.stats.last_buffer_warn = time.time()
         return total
 
+    def insert_direct(self, rows):
+        """gap-fill 행을 버퍼를 거치지 않고 바로 INSERT IGNORE. 반환 = 실제 삽입 수(= 누락이었던 수).
+        버퍼를 거치면 실시간 행과 섞여 삽입 수를 가릴 수 없어 분리했다. 같은 커서·같은 스레드(이벤트 루프)에서만 호출."""
+        inserted = 0
+        for i in range(0, len(rows), BATCH_SIZE):
+            batch = rows[i:i + BATCH_SIZE]
+            try:
+                self.cursor.executemany(INSERT_SQL, batch)
+                inserted += self.cursor.rowcount
+                self.conn.commit()
+            except mysql.connector.Error as e:
+                logger.error(f"gap-fill INSERT 실패: {e}")
+                self.stats.errors += 1
+                self.conn.rollback()
+                if not self.conn.is_connected():
+                    self.reconnect()
+        self.stats.inserted += inserted
+        self.stats.duplicates += len(rows) - inserted
+        return inserted
+
+    def last_event_ms(self):
+        """마지막으로 적재된 행의 체결 시각(ms). PK 역순 1행이라 즉시 응답. 기동 시 gap-fill 하한에 쓴다."""
+        try:
+            self.cursor.execute("SELECT upbit_timestamp FROM crypto_trades ORDER BY trade_id DESC LIMIT 1")
+            row = self.cursor.fetchone()
+            return int(row[0]) if row else None
+        except mysql.connector.Error as e:
+            logger.warning(f"마지막 체결 시각 조회 실패: {e}")
+            return None
+
     def close(self):
         """남은 버퍼 flush 후 연결 종료."""
         while self.buffer:
@@ -281,6 +326,83 @@ def fetch_krw_markets(retries=10):
     return None
 
 
+def fetch_gap_rows(lo_ms, hi_ms, markets):
+    """[lo_ms, hi_ms) 구간의 체결을 거래소 원장(REST)에서 전 마켓 조회해 INSERT 튜플로 반환. 블로킹 → 스레드에서 호출."""
+    import urllib.request, urllib.parse
+    from datetime import datetime, timezone
+    hi = datetime.fromtimestamp(hi_ms / 1000, tz=timezone.utc)
+    days_ago = (datetime.now(timezone.utc).date() - hi.date()).days
+    rows, rest_n = [], 0
+    for market in markets:
+        cursor = None
+        for _page in range(50):
+            q = {'market': market, 'to': hi.strftime('%H:%M:%S'), 'count': 500, 'daysAgo': days_ago}
+            if cursor:
+                q['cursor'] = cursor
+            data = None
+            for attempt in range(5):
+                try:
+                    req = urllib.request.Request(UPBIT_TICKS_URL + '?' + urllib.parse.urlencode(q),
+                                                 headers={'Accept': 'application/json'})
+                    with urllib.request.urlopen(req, timeout=20) as r:
+                        data = json.load(r)
+                    break
+                except urllib.error.HTTPError as e:
+                    if e.code == 429:
+                        time.sleep(1.5 * (attempt + 1))
+                        continue
+                    logger.warning(f"gap-fill REST 실패 {market}: HTTP {e.code}")
+                    break
+                except Exception as e:
+                    logger.warning(f"gap-fill REST 실패 {market}: {e}")
+                    time.sleep(1)
+            if not data:
+                break
+            stop = False
+            for t in data:
+                if t['timestamp'] < lo_ms:
+                    stop = True
+                    break
+                if t['timestamp'] < hi_ms:
+                    rest_n += 1
+                    price = float(t['trade_price']); vol = float(t['trade_volume'])
+                    rows.append((market, price, vol, price * vol, t['ask_bid'], int(t['timestamp']),
+                                 int(t['sequential_id']), None, None, None, None))
+            if stop or len(data) < 500:
+                break
+            cursor = data[-1]['sequential_id']
+            time.sleep(REST_INTERVAL_S)
+        time.sleep(REST_INTERVAL_S)
+    return rows, rest_n
+
+
+def record_repair(reason, lo_ms, hi_ms, markets_n, rest_rows, inserted, elapsed_s, note=''):
+    """수리 계보(창 단위)를 ClickHouse ingest_repairs 에 남긴다. 실패해도 gap-fill 결과에는 영향 없음."""
+    import urllib.request, urllib.parse
+    from datetime import datetime, timezone
+    fmt = lambda ms: datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    row = {'repaired_at': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'), 'reason': reason,
+           'window_start': fmt(lo_ms), 'window_end': fmt(hi_ms), 'markets': markets_n, 'rest_rows': rest_rows,
+           'inserted_rows': inserted, 'elapsed_s': round(elapsed_s, 1), 'note': note}
+    try:
+        q = urllib.parse.urlencode({'query': 'INSERT INTO cdc_pipeline.ingest_repairs FORMAT JSONEachRow'})
+        req = urllib.request.Request(f"{CLICKHOUSE_URL}/?{q}", data=json.dumps(row).encode(), method='POST')
+        urllib.request.urlopen(req, timeout=10).read()
+    except Exception as e:
+        logger.warning(f"수리 계보 기록 실패(무시): {e}")
+
+
+async def gap_fill(reason, lo_ms, hi_ms, markets, writer):
+    """REST 조회는 스레드에서, INSERT 는 이벤트 루프에서(커서 공유 안전). 수신 루프는 조회 중에도 계속 돈다."""
+    t0 = time.time()
+    logger.warning(f"gap-fill 시작 [{reason}] {lo_ms}~{hi_ms} ({(hi_ms - lo_ms) / 1000:.1f}s 창, {len(markets)}마켓)")
+    rows, rest_n = await asyncio.to_thread(fetch_gap_rows, lo_ms, hi_ms, markets)
+    inserted = writer.insert_direct(rows) if rows else 0
+    elapsed = time.time() - t0
+    logger.warning(f"gap-fill 완료 [{reason}] 원장 {rest_n}건 / 삽입(누락이었던) {inserted}건 / {elapsed:.1f}s")
+    record_repair(reason, lo_ms, hi_ms, len(markets), rest_n, inserted, elapsed)
+
+
 def _brief(items, limit=10):
     """로그용 축약 — 최초 기동 직후처럼 차이가 크면 목록 전체가 한 줄로 찍히는 것을 막는다."""
     if not items:
@@ -306,6 +428,20 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event, auto_refresh=F
     """
     markets = list(markets)
     last_market_refresh = time.time()
+    last_event_ms = None          # 마지막으로 받은 체결의 거래소 시각
+    disconnected_ms = None        # 끊긴 벽시계 시각
+    pending_startup_fill = None   # (lo_ms) 기동 시 메울 하한, 첫 연결 뒤 실행
+
+    if GAPFILL_ENABLED:
+        last_db_ms = writer.last_event_ms()
+        now_ms = int(time.time() * 1000)
+        if last_db_ms is None:
+            logger.info("기동 gap-fill: 기존 데이터 없음 → 건너뜀")
+        elif now_ms - last_db_ms > GAPFILL_STARTUP_MAX_MS:
+            logger.warning(f"기동 gap-fill 건너뜀: 공백 {(now_ms - last_db_ms) / 60000:.1f}분 > 상한 30분. "
+                           f"수동 백필(scripts/observe/backfill_trades.py) 필요")
+        else:
+            pending_startup_fill = last_db_ms - GAPFILL_MARGIN_MS
 
     while not shutdown_event.is_set():
         try:
@@ -319,6 +455,15 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event, auto_refresh=F
                 # 구독 요청
                 await ws.send(json.dumps(build_subscribe_msg(markets)))
                 logger.info("Upbit WebSocket 연결 완료, 체결 데이터 수신 시작")
+                connected_ms = int(time.time() * 1000)
+
+                if GAPFILL_ENABLED and pending_startup_fill is not None:
+                    asyncio.create_task(gap_fill('startup', pending_startup_fill, connected_ms + GAPFILL_MARGIN_MS, markets, writer))
+                    pending_startup_fill = None
+                elif GAPFILL_ENABLED and disconnected_ms is not None:
+                    lo = min(x for x in (last_event_ms, disconnected_ms) if x is not None) - GAPFILL_MARGIN_MS
+                    asyncio.create_task(gap_fill('reconnect', lo, connected_ms + GAPFILL_MARGIN_MS, markets, writer))
+                    disconnected_ms = None
 
                 # 배치 flush를 위한 타이머
                 last_flush = time.time()
@@ -342,6 +487,8 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event, auto_refresh=F
                             trade = parse_trade(data)
                             writer.add(trade)
                             stats.received += 1
+                            if last_event_ms is None or trade[5] > last_event_ms:
+                                last_event_ms = trade[5]
 
                     except asyncio.TimeoutError:
                         pass  # timeout은 정상 — flush 타이밍 체크용
@@ -372,8 +519,10 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event, auto_refresh=F
                             )
 
         except websockets.exceptions.ConnectionClosed as e:
+            disconnected_ms = int(time.time() * 1000)
             logger.warning(f"WebSocket 연결 끊김: {e}. {WS_RECONNECT_DELAY}초 후 재연결...")
         except Exception as e:
+            disconnected_ms = int(time.time() * 1000)
             logger.error(f"WebSocket 에러: {e}. {WS_RECONNECT_DELAY}초 후 재연결...")
 
         if not shutdown_event.is_set():
