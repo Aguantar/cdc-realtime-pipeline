@@ -17,9 +17,8 @@ sys.path.insert(0, os.path.join(AIRFLOW_HOME, "plugins"))
 
 os.environ.setdefault("AIRFLOW_HOME", AIRFLOW_HOME)
 os.environ.setdefault("AIRFLOW__CORE__LOAD_EXAMPLES", "false")
-os.environ.setdefault(
-    "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "sqlite:////:memory:"
-)
+# 기본값은 유효한 in-memory URI 로 (종전 "sqlite:////:memory:" 는 잘못된 경로라 CI 에서 실패). CI 는 마이그레이션한 파일 DB 를 env 로 준다.
+os.environ.setdefault("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "sqlite:///:memory:")
 
 from airflow.models import DagBag
 

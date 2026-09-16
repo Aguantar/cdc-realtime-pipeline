@@ -31,9 +31,14 @@ jobs:
           pip install "apache-airflow==2.8.1" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.8.1/constraints-3.10.txt"
           pip install pytest requests
       - name: DAG structure tests
+        # DagBag 로딩은 메타 DB 스키마를 요구하므로 파일 sqlite 를 마이그레이션한 뒤 실행 (컨테이너에선 실 DB 가 있어 드러나지 않던 전제)
         env:
           AIRFLOW_HOME: ${{ github.workspace }}/airflow
-        run: python -m pytest airflow/tests/test_dags.py -q
+          AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:///${{ runner.temp }}/airflow-ci.db
+          AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+        run: |
+          airflow db migrate -q 2>/dev/null || airflow db migrate
+          python -m pytest airflow/tests/test_dags.py -q
 
   dbt-parse:
     runs-on: ubuntu-latest
@@ -42,7 +47,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.10' }
       - name: install dbt-clickhouse 1.7.2
-        run: pip install "dbt-core==1.7.9" "dbt-clickhouse==1.7.2"
+        # protobuf<5: dbt-core 1.7 은 protobuf 4 API(MessageToJson including_default_value_fields)를 쓴다. 운영 컨테이너와 같은 조합으로 고정
+        run: pip install "dbt-core==1.7.9" "dbt-clickhouse==1.7.2" "protobuf<5"
       - name: dbt parse (no warehouse connection needed)
         working-directory: dbt_cdc_pipeline
         run: dbt parse --profiles-dir . --target dev
