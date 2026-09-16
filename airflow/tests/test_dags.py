@@ -39,7 +39,7 @@ def test_no_import_errors(dag_bag):
 
 def test_expected_dags_loaded(dag_bag):
     """필수 DAG들이 로드되었는지 확인."""
-    expected_dags = {"health_check", "daily_pipeline"}
+    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades"}
     loaded_dags = set(dag_bag.dag_ids)
     missing = expected_dags - loaded_dags
     assert not missing, f"Missing DAGs: {missing}"
@@ -55,6 +55,7 @@ def test_health_check_dag_structure(dag_bag):
         "check_flink_jobs",
         "check_kafka_health",
         "check_producer_activity",
+        "check_ingest_lag",
         "check_kafka_connect",
         "evaluate_health",
     }
@@ -63,7 +64,7 @@ def test_health_check_dag_structure(dag_bag):
         f"Expected: {expected_tasks}, Got: {actual_tasks}"
     )
 
-    # evaluate_health는 5개 체크 태스크에 의존해야 함
+    # evaluate_health는 6개 체크 태스크에 의존해야 함
     evaluate = dag.get_task("evaluate_health")
     upstream_ids = {t.task_id for t in evaluate.upstream_list}
     assert upstream_ids == {
@@ -71,6 +72,7 @@ def test_health_check_dag_structure(dag_bag):
         "check_flink_jobs",
         "check_kafka_health",
         "check_producer_activity",
+        "check_ingest_lag",
         "check_kafka_connect",
     }
 
@@ -81,6 +83,7 @@ def test_daily_pipeline_dag_structure(dag_bag):
     assert dag is not None
 
     expected_tasks = {
+        "dbt_source_freshness",
         "dbt_run",
         "dbt_test",
         "get_coin_list",
@@ -112,11 +115,15 @@ def test_daily_pipeline_dependencies(dag_bag):
     gen_report = dag.get_task("generate_report")
     assert "quality_gate" in {t.task_id for t in gen_report.upstream_list}
 
-    # slack_daily_report는 generate_report와 check_duplicates에 의존
+    # 중복 검사는 quality_gate 로 합류하고, slack_daily_report 는 generate_report 뒤
+    gate = dag.get_task("quality_gate")
+    assert "check_duplicates" in {t.task_id for t in gate.upstream_list}
     slack = dag.get_task("slack_daily_report")
-    upstream_ids = {t.task_id for t in slack.upstream_list}
-    assert "generate_report" in upstream_ids
-    assert "check_duplicates" in upstream_ids
+    assert {t.task_id for t in slack.upstream_list} == {"generate_report"}
+
+    # dbt_source_freshness 가 dbt_run 앞에 온다 (소스가 멈춘 채 mart 재계산 방지)
+    dbt_run = dag.get_task("dbt_run")
+    assert {t.task_id for t in dbt_run.upstream_list} == {"dbt_source_freshness"}
 
 
 def test_no_cycles(dag_bag):
@@ -143,3 +150,14 @@ def test_daily_pipeline_has_sla(dag_bag):
     dag = dag_bag.get_dag("daily_pipeline")
     dbt_run = dag.get_task("dbt_run")
     assert dbt_run.sla is not None, "dbt_run should have SLA configured"
+
+
+def test_reconcile_trades_dag_structure(dag_bag):
+    """reconcile_trades DAG: 참조값 적재 → dbt build(모델+테스트) → 요약/알림 순서, REST 풀 지정."""
+    dag = dag_bag.get_dag("reconcile_trades")
+    assert dag is not None
+    assert {t.task_id for t in dag.tasks} == {"fetch_hourly_candles", "dbt_build_reconcile", "summarize"}
+    assert dag.get_task("fetch_hourly_candles").pool == "upbit_rest"
+    assert {t.task_id for t in dag.get_task("dbt_build_reconcile").upstream_list} == {"fetch_hourly_candles"}
+    assert {t.task_id for t in dag.get_task("summarize").upstream_list} == {"dbt_build_reconcile"}
+    assert dag.get_task("summarize").trigger_rule == "all_done"

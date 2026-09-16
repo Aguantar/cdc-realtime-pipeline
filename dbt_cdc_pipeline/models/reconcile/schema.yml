@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: int_reconcile_hourly
+    description: >
+      거래소 시간봉 거래량(진실값) 대비 ClickHouse 체결 거래량 비율, 마켓×시간(UTC).
+      유실 판정의 단일 근거. Airflow reconcile_trades 가 매일 참조값을 적재한 뒤 dbt build 로 재계산·검증.
+      ratio_pct 가 100 을 소폭 넘는 것은 거래소 봉 경계 집계 차이(정상). 99% 미만은 유실 의심 (docs/13).
+    columns:
+      - name: market
+        tests: [not_null]
+      - name: hour_utc
+        description: "시간봉 시작(UTC). 분석용 '하루'는 KST(stg_trades.trade_date), 운영 대조는 UTC 로 고정 (docs/17)."
+        tests: [not_null]
+      - name: ratio_pct
+        description: "100 × ch_vol / candle_vol. candle_vol = 0 이면 NULL."

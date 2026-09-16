@@ -8,6 +8,11 @@ sources:
     tables:
       - name: crypto_trades
         description: "Upbit 코인 실시간 체결 데이터 (Flink raw sink)"
+        # freshness: 파이프라인이 살아 있으면 inserted_at 이 수분 내. 60분 넘게 멈추면 error (health_check 10분 주기와 별개로 dbt 산출물에 기록)
+        loaded_at_field: inserted_at
+        freshness:
+          warn_after: {count: 15, period: minute}
+          error_after: {count: 60, period: minute}
         columns:
           - name: trade_id
             description: "MySQL AUTO_INCREMENT PK"
@@ -61,3 +66,19 @@ sources:
             description: "마켓 코드"
           - name: detected_at
             description: "탐지 시각"
+
+  - name: reference
+    description: "외부 참조값(업비트 REST·경보 이력). Airflow/cron 이 적재, dbt 는 읽기만."
+    database: cdc_pipeline
+    schema: cdc_pipeline
+    tables:
+      - name: upbit_hourly_candles
+        description: "업비트 시간봉 (거래소 진실값). reconcile_trades DAG 가 매일 전날 24봉 적재. ReplacingMergeTree → FINAL 로 읽는다."
+        loaded_at_field: fetched_at
+        freshness:
+          warn_after: {count: 30, period: hour}
+          error_after: {count: 50, period: hour}
+      - name: upbit_daily_candles
+        description: "업비트 일봉 200일 (경보 백테스트 피처, docs/16)."
+      - name: upbit_market_event_records
+        description: "업비트 시장경보 지정/해제 이력 (이상탐지 정답 라벨, docs/16). 매시 증분 동기화."

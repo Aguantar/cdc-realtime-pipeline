@@ -47,6 +47,15 @@ def _get_target_date(context) -> str:
         return conf_date
     return context["ds"]
 
+
+def _kst_day_bounds_ms(target_date: str) -> tuple[int, int]:
+    """KST 하루 [00:00, 24:00) 를 Unix ms 로. '하루' 정의 통일(docs/17): 리포트·분석은 KST 체결시각 기준,
+    운영 대조(reconcile)는 UTC. 종전에는 toDate(source_ts)(UTC 적재시각)로 걸러 KST 리포트에 9시간 어긋난 하루가 들어갔다."""
+    from datetime import timezone
+    start = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=timezone(timedelta(hours=9)))
+    end = start + timedelta(days=1)
+    return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
+
 default_args = {
     "owner": "calme",
     "retries": 2,
@@ -58,7 +67,7 @@ with DAG(
     dag_id="daily_pipeline",
     default_args=default_args,
     description="dbt → 코인별 품질검증(동적) → quality gate → 일일 리포트",
-    schedule_interval="0 16 * * *",  # 01:00 KST = 16:00 UTC (전날 데이터 집계)
+    schedule="0 16 * * *",  # 01:00 KST = 16:00 UTC (전날 데이터 집계)
     start_date=datetime(2026, 3, 11),
     catchup=False,
     tags=["dbt", "data-quality", "report"],
@@ -66,6 +75,17 @@ with DAG(
     sla_miss_callback=sla_miss_callback,
     params={"target_date": ""},  # 수동 트리거 시 날짜 지정 가능 (빈값=오늘 KST)
 ) as dag:
+
+    # ── Step 0: dbt source freshness ─────────────────────────
+    # 소스가 멈춘 상태에서 mart 를 재계산하면 "정상 완료"로 위장된다. freshness 는 dbt 산출물(sources.json)에 남는 표준 점검.
+    # health_check(10분)와 중복이 아니라 역할 분리: 그쪽은 즉시 알림, 이쪽은 일일 배치의 전제조건 기록.
+    dbt_source_freshness = BashOperator(
+        task_id="dbt_source_freshness",
+        bash_command=(
+            "cd /opt/airflow/dbt && "
+            "dbt source freshness --profiles-dir /opt/airflow/dbt_profiles 2>&1"
+        ),
+    )
 
     # ── Step 1: dbt run ──────────────────────────────────────
     dbt_run = BashOperator(
@@ -93,12 +113,13 @@ with DAG(
         from hooks.clickhouse_hook import ClickHouseHook
 
         target_date = _get_target_date(context)
+        ms0, ms1 = _kst_day_bounds_ms(target_date)
         hook = ClickHouseHook()
         result = hook.get_records(
             f"""
             SELECT DISTINCT market
             FROM cdc_pipeline.crypto_trades
-            WHERE toDate(source_ts) = '{target_date}'
+            WHERE upbit_timestamp >= {ms0} AND upbit_timestamp < {ms1}
             ORDER BY market
             """
         )
@@ -117,13 +138,14 @@ with DAG(
         from hooks.clickhouse_hook import ClickHouseHook
 
         target_date = _get_target_date(context)
+        ms0, ms1 = _kst_day_bounds_ms(target_date)
         hook = ClickHouseHook()
         issues = []
 
         # 4-1. 일일 거래 건수
         count_result = hook.get_scalar(
             f"SELECT count() FROM cdc_pipeline.crypto_trades "
-            f"WHERE market = '{coin}' AND toDate(source_ts) = '{target_date}'"
+            f"WHERE market = '{coin}' AND upbit_timestamp >= {ms0} AND upbit_timestamp < {ms1}"
         )
         trade_count = int(count_result or 0)
         if trade_count == 0:
@@ -135,7 +157,7 @@ with DAG(
         null_result = hook.get_scalar(
             f"SELECT round(countIf(trade_price = 0 OR trade_price IS NULL) * 100.0 "
             f"/ count(), 2) FROM cdc_pipeline.crypto_trades "
-            f"WHERE market = '{coin}' AND toDate(source_ts) = '{target_date}'"
+            f"WHERE market = '{coin}' AND upbit_timestamp >= {ms0} AND upbit_timestamp < {ms1}"
         )
         null_pct = float(null_result or 0)
         if null_pct > 1.0:
@@ -144,7 +166,7 @@ with DAG(
         # 4-3. CDC 지연 이상치 (1초 초과)
         latency_result = hook.get_scalar(
             f"SELECT countIf(cdc_latency_ms > 1000) FROM cdc_pipeline.crypto_trades "
-            f"WHERE market = '{coin}' AND toDate(source_ts) = '{target_date}'"
+            f"WHERE market = '{coin}' AND upbit_timestamp >= {ms0} AND upbit_timestamp < {ms1}"
         )
         high_latency = int(latency_result or 0)
         if high_latency > 100:
@@ -235,12 +257,13 @@ with DAG(
         from hooks.clickhouse_hook import ClickHouseHook
 
         target_date = _get_target_date(context)
+        ms0, ms1 = _kst_day_bounds_ms(target_date)
         hook = ClickHouseHook()
         result = hook.get_scalar(
             f"""
             SELECT count() - uniqExact(source_ts, trade_id) AS dup_rows
             FROM cdc_pipeline.crypto_trades
-            WHERE toDate(source_ts) = '{target_date}'
+            WHERE upbit_timestamp >= {ms0} AND upbit_timestamp < {ms1}
             SETTINGS max_memory_usage = 500000000, max_threads = 2
             """
         )
@@ -259,6 +282,7 @@ with DAG(
         from hooks.clickhouse_hook import ClickHouseHook
 
         target_date = _get_target_date(context)
+        ms0, ms1 = _kst_day_bounds_ms(target_date)
         hook = ClickHouseHook()
 
         summary = hook.get_records(
@@ -296,7 +320,7 @@ with DAG(
                 round(quantile(0.99)(cdc_latency_ms), 1) AS p99,
                 round(max(cdc_latency_ms), 1) AS max_val
             FROM cdc_pipeline.crypto_trades
-            WHERE toDate(source_ts) = '{target_date}'
+            WHERE upbit_timestamp >= {ms0} AND upbit_timestamp < {ms1}
             """
         )
         latency = {}
@@ -314,7 +338,7 @@ with DAG(
             f"""
             SELECT alert_type, count() AS cnt
             FROM cdc_pipeline.anomaly_alerts
-            WHERE toDate(detected_at) = '{target_date}'
+            WHERE toDate(toTimeZone(detected_at, 'Asia/Seoul')) = '{target_date}'
             GROUP BY alert_type
             """
         )
@@ -373,6 +397,6 @@ with DAG(
     )
 
     # ── DAG 의존성 ───────────────────────────────────────────
-    dbt_run >> dbt_test >> get_coins >> validate_coins >> quality_gate
+    dbt_source_freshness >> dbt_run >> dbt_test >> get_coins >> validate_coins >> quality_gate
     dbt_test >> check_duplicates >> quality_gate
     quality_gate >> generate_report >> slack_report

@@ -534,6 +534,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] Custom Hook 개발 (ClickHouseHook — HTTP 인터페이스, 추가 드라이버 불필요)
 - [x] DAG 1: `health_check` (10분 간격) — 5개 컴포넌트 병렬 체크 → XCom 수집 → 이상 시 Slack
 - [x] DAG 2: `daily_pipeline` (매일 01:00 KST) — dbt run/test → Dynamic Task Mapping 코인별 품질검증 → quality gate → 일일 Slack 리포트
+- [x] DAG 3: `reconcile_trades` (매일 06:35 UTC) — 업비트 시간봉(진실값) 적재 → dbt build(유실·커버리지 테스트) → 실패 시 Slack. 첫 실행에서 상장 누락 마켓(BFC)과 재연결 5초 유실을 잡음 (docs/17)
 - [x] dbt 3계층 모델 (staging: stg_trades → intermediate: int_ohlcv_1h, int_ohlcv_daily → marts: mart_daily_summary, mart_volume_spike, mart_alert_rate)
 - [x] Airflow 메트릭 모니터링 (StatsD → Prometheus → Grafana Airflow Operations 대시보드 12패널)
 - [x] Fernet Key 암호화 (Slack Webhook URL 등 시크릿 보호)
