@@ -428,6 +428,20 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event, auto_refresh=F
     """
     markets = list(markets)
     last_market_refresh = time.time()
+    # 강제 재연결 훅 (2026-09-16, docs/20 §5): `docker kill -s USR1 cdc-upbit-producer` 로 현재 WS 를 정상 종료(1012)한다.
+    # 왜: 네트워크 단절 주입(5·45·90초)으로는 재연결 경로가 한 번도 돌지 않았다 — 동기식 MySQL 쓰기가 이벤트 루프를 막아
+    #     ping 도 멈추고 연결이 살아남았다. 실제 손실은 서버가 끊은 경우였고 그건 우리 쪽에서 못 일으킨다.
+    #     재연결 gap-fill 을 실전 검증하려면 클라이언트가 끊는 결정적 방법이 필요하다. 운영 중 강제 재연결 도구로도 쓴다.
+    current = {'ws': None}
+    def _force_reconnect():
+        ws = current.get('ws')
+        if ws is not None:
+            logger.warning("SIGUSR1: 강제 재연결 요청 → 현재 WS 종료(1012)")
+            asyncio.get_running_loop().create_task(ws.close(code=1012, reason='forced reconnect'))
+    try:
+        asyncio.get_running_loop().add_signal_handler(signal.SIGUSR1, _force_reconnect)
+    except (NotImplementedError, RuntimeError):
+        pass
     last_event_ms = None          # 마지막으로 받은 체결의 거래소 시각
     disconnected_ms = None        # 끊긴 벽시계 시각
     pending_startup_fill = None   # (lo_ms) 기동 시 메울 하한, 첫 연결 뒤 실행
@@ -452,6 +466,7 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event, auto_refresh=F
                 ping_interval=WS_PING_INTERVAL,
                 ping_timeout=WS_PING_TIMEOUT,
             ) as ws:
+                current['ws'] = ws
                 # 구독 요청
                 await ws.send(json.dumps(build_subscribe_msg(markets)))
                 logger.info("Upbit WebSocket 연결 완료, 체결 데이터 수신 시작")
