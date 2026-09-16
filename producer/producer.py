@@ -74,6 +74,11 @@ BUFFER_WARN_ROWS = int(os.getenv('BUFFER_WARN_ROWS', '5000'))          # 버퍼 
 
 # WebSocket 재연결 설정
 WS_RECONNECT_DELAY = 5       # 초
+# 마켓 목록 주기 갱신 (2026-09-16): 기동 시 1회만 조회해 09-10 상장 KRW-BFC 를 6일간 못 받았음 (docs/17).
+# 같은 연결에서 구독 메시지를 다시 보내면 구독이 교체된다 — 검증: 1마켓 → 3마켓 → 1마켓 모두 반영, 끊김 없음 (worklog 09-16).
+# 따라서 갱신에 재연결이 필요 없고 수신 공백도 생기지 않는다. REST 한도 10/s 대비 5분당 1회는 무시할 수준.
+MARKET_REFRESH_SEC = float(os.getenv('MARKET_REFRESH_SEC', '300'))
+UPBIT_MARKET_URL = 'https://api.upbit.com/v1/market/all?is_details=false'
 WS_PING_INTERVAL = 30        # 초
 WS_PING_TIMEOUT = 10         # 초
 
@@ -257,7 +262,34 @@ def parse_trade(data):
         _opt('bbs'),
     )
 
-async def subscribe_upbit(markets, writer, stats, shutdown_event):
+def fetch_krw_markets(retries=10):
+    """업비트 KRW 마켓 목록을 REST 로 조회한다. 실패 시 None (호출부가 기존 목록 유지)."""
+    import urllib.request
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(UPBIT_MARKET_URL, headers={'Accept': 'application/json'})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                markets = sorted(m['market'] for m in json.load(r) if m['market'].startswith('KRW-'))
+            if len(markets) < 100:          # 응답 이상 시 구독 축소를 막는 안전장치
+                logger.warning(f"마켓 목록이 비정상적으로 적음({len(markets)}개) — 갱신 건너뜀")
+                return None
+            return markets
+        except Exception as e:
+            logger.warning(f"마켓 목록 조회 실패 (시도 {attempt}/{retries}): {e}")
+            if attempt < retries:
+                time.sleep(3)
+    return None
+
+
+def build_subscribe_msg(markets):
+    return [
+        {"ticket": str(uuid.uuid4())[:8]},
+        {"type": "trade", "codes": markets, "isOnlyRealtime": True},
+        {"format": "SIMPLE"},
+    ]
+
+
+async def subscribe_upbit(markets, writer, stats, shutdown_event, auto_refresh=False):
     """Upbit WebSocket에 연결하여 체결 데이터를 수신한다.
 
     재연결 로직:
@@ -265,16 +297,8 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event):
     - Upbit 서버는 약 4시간마다 연결을 끊을 수 있음
     - 재연결 시 구독 메시지를 다시 보내야 함
     """
-    # 구독 메시지
-    subscribe_msg = [
-        {"ticket": str(uuid.uuid4())[:8]},
-        {
-            "type": "trade",
-            "codes": markets,
-            "isOnlyRealtime": True,  # 스냅샷 제외, 실시간만
-        },
-        {"format": "SIMPLE"},  # 필드명 축약 (tp, tv, ab 등)
-    ]
+    markets = list(markets)
+    last_market_refresh = time.time()
 
     while not shutdown_event.is_set():
         try:
@@ -286,7 +310,7 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event):
                 ping_timeout=WS_PING_TIMEOUT,
             ) as ws:
                 # 구독 요청
-                await ws.send(json.dumps(subscribe_msg))
+                await ws.send(json.dumps(build_subscribe_msg(markets)))
                 logger.info("Upbit WebSocket 연결 완료, 체결 데이터 수신 시작")
 
                 # 배치 flush를 위한 타이머
@@ -326,6 +350,20 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event):
                         stats.buffer_depth = len(writer.buffer)
                         stats.report()
 
+                    # 마켓 목록 주기 갱신 — 같은 연결에서 재구독 (신규 상장 자동 반영, 상장폐지 자동 제외)
+                    if auto_refresh and now - last_market_refresh >= MARKET_REFRESH_SEC:
+                        last_market_refresh = now
+                        latest = await asyncio.to_thread(fetch_krw_markets, 3)
+                        if latest and latest != markets:
+                            added = sorted(set(latest) - set(markets))
+                            removed = sorted(set(markets) - set(latest))
+                            markets = latest
+                            await ws.send(json.dumps(build_subscribe_msg(markets)))
+                            logger.warning(
+                                f"마켓 목록 변경 → 재구독 (총 {len(markets)}개) "
+                                f"추가={added or '-'} 제외={removed or '-'}"
+                            )
+
         except websockets.exceptions.ConnectionClosed as e:
             logger.warning(f"WebSocket 연결 끊김: {e}. {WS_RECONNECT_DELAY}초 후 재연결...")
         except Exception as e:
@@ -349,19 +387,10 @@ async def main():
 
     # 2026-09-09: MARKETS=ALL_KRW 이면 REST로 KRW 전 마켓을 조회해 구독 (전 코인 체결 확장)
     markets_env = os.getenv('MARKETS', '').strip()
-    if markets_env == 'ALL_KRW':
-        import urllib.request
-        for attempt in range(1, 11):
-            try:
-                req = urllib.request.Request('https://api.upbit.com/v1/market/all?is_details=false',
-                                             headers={'Accept': 'application/json'})
-                with urllib.request.urlopen(req, timeout=15) as r:
-                    args.markets = sorted(m['market'] for m in json.load(r) if m['market'].startswith('KRW-'))
-                break
-            except Exception as e:
-                logger.warning(f"마켓 목록 조회 실패 (시도 {attempt}/10): {e}")
-                time.sleep(3)
-        else:
+    auto_refresh = markets_env == 'ALL_KRW'   # 명시 목록을 준 경우엔 사용자의 의도이므로 갱신하지 않는다
+    if auto_refresh:
+        args.markets = fetch_krw_markets()
+        if not args.markets:
             raise RuntimeError("KRW 마켓 목록 조회 불가")
     elif markets_env:
         args.markets = [m.strip() for m in markets_env.split(',') if m.strip()]
@@ -373,6 +402,7 @@ async def main():
     logger.info(f"  마켓: {len(args.markets)}개 ({', '.join(args.markets[:5])}{' ...' if len(args.markets) > 5 else ''})")
     logger.info(f"  배치 크기: {BATCH_SIZE}")
     logger.info(f"  배치 간격: {BATCH_INTERVAL_SEC}초")
+    logger.info(f"  마켓 목록 갱신: {'매 ' + str(int(MARKET_REFRESH_SEC)) + '초' if auto_refresh else '없음(고정 목록)'}")
     logger.info(f"  MySQL: {MYSQL_CONFIG['host']}:{MYSQL_CONFIG['port']}")
     logger.info("=" * 50)
 
@@ -392,7 +422,7 @@ async def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        await subscribe_upbit(args.markets, writer, stats, shutdown_event)
+        await subscribe_upbit(args.markets, writer, stats, shutdown_event, auto_refresh=auto_refresh)
     finally:
         writer.close()
         stats.report()

@@ -34,6 +34,9 @@ TOPIC = os.getenv('ORDERBOOK_TOPIC', 'upbit.orderbook.v1')
 COUNT = int(os.getenv('ORDERBOOK_COUNT', '15'))            # 호가 단 수 (1/5/15/30)
 QUOTE = os.getenv('QUOTE_CURRENCY', 'KRW')
 MARKETS_ENV = os.getenv('MARKETS', '')                      # 지정 시 REST 조회 생략 (콤마 구분)
+# 마켓 목록 주기 갱신 (2026-09-16, docs/17): 기동 시 1회 조회만 하면 신규 상장 마켓을 영영 못 받는다.
+# 같은 연결에서 구독 메시지를 재전송하면 구독이 교체됨을 검증했다 → 재연결 없이 갱신, 수신 공백 없음.
+MARKET_REFRESH_SEC = float(os.getenv('MARKET_REFRESH_SEC', '300'))
 STATS_INTERVAL = int(os.getenv('STATS_INTERVAL_SEC', '30'))
 QUEUE_WARN = int(os.getenv('QUEUE_WARN_MSGS', '20000'))     # librdkafka 큐 잔량 경고 임계
 WS_PING_INTERVAL = 30
@@ -74,13 +77,24 @@ class Stats:
     bytes_interval = 0
 
 
-def fetch_markets():
+def fetch_markets(strict=True):
+    """KRW 마켓 목록. strict=False 면 실패·이상 응답 시 None 을 돌려 호출부가 기존 목록을 유지한다."""
     if MARKETS_ENV.strip():
         return [m.strip() for m in MARKETS_ENV.split(',') if m.strip()]
-    req = urllib.request.Request(UPBIT_MARKET_URL, headers={'Accept': 'application/json'})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        data = json.load(r)
-    return sorted(m['market'] for m in data if m['market'].startswith(QUOTE + '-'))
+    try:
+        req = urllib.request.Request(UPBIT_MARKET_URL, headers={'Accept': 'application/json'})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.load(r)
+        markets = sorted(m['market'] for m in data if m['market'].startswith(QUOTE + '-'))
+    except Exception as e:
+        if strict:
+            raise
+        logger.warning(f"마켓 목록 조회 실패: {e} — 기존 목록 유지")
+        return None
+    if len(markets) < 100 and not strict:   # 응답 이상 시 구독 축소를 막는 안전장치
+        logger.warning(f"마켓 목록이 비정상적으로 적음({len(markets)}개) — 갱신 건너뜀")
+        return None
+    return markets
 
 
 def make_producer():
@@ -111,14 +125,19 @@ async def run(stats, shutdown):
         else:
             stats.produced += 1
 
-    backoff = 1
-    last_stats = time.time()
-    while not shutdown.is_set():
-        sub = [
+    def build_sub(mk):
+        return [
             {"ticket": str(uuid.uuid4())[:8]},
-            {"type": "orderbook", "codes": [f"{m}.{COUNT}" for m in markets]},
+            {"type": "orderbook", "codes": [f"{m}.{COUNT}" for m in mk]},
             {"format": "SIMPLE"},
         ]
+
+    backoff = 1
+    last_stats = time.time()
+    last_market_refresh = time.time()
+    auto_refresh = not MARKETS_ENV.strip()   # 명시 목록을 준 경우엔 사용자의 의도이므로 갱신하지 않는다
+    while not shutdown.is_set():
+        sub = build_sub(markets)
         try:
             logger.info("Upbit WebSocket 연결 중...")
             async with websockets.connect(UPBIT_WS_URL, ping_interval=WS_PING_INTERVAL,
@@ -168,6 +187,18 @@ async def run(stats, shutdown):
                             stats.last_queue_warn = now
                         stats.report(qlen, len(markets))
                         last_stats = now
+
+                    # 마켓 목록 주기 갱신 — 같은 연결에서 재구독 (신규 상장 자동 반영)
+                    if auto_refresh and now - last_market_refresh >= MARKET_REFRESH_SEC:
+                        last_market_refresh = now
+                        latest = await asyncio.to_thread(fetch_markets, False)
+                        if latest and latest != markets:
+                            added = sorted(set(latest) - set(markets))
+                            removed = sorted(set(markets) - set(latest))
+                            markets = latest
+                            await ws.send(json.dumps(build_sub(markets)))
+                            logger.warning(f"마켓 목록 변경 → 재구독 (총 {len(markets)}개) "
+                                           f"추가={added or '-'} 제외={removed or '-'}")
         except websockets.exceptions.InvalidStatus as e:
             code = getattr(getattr(e, 'response', None), 'status_code', '?')
             logger.warning(f"WebSocket 핸드셰이크 거부 (HTTP {code}). {backoff}초 후 재연결")
