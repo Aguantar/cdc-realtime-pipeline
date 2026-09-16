@@ -554,7 +554,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] 7일 무변경 관찰 시작 (2026-09-09 06:10 UTC, 태그 `obs-week1-start`, 계획 `docs/12`)
 - [x] 관찰 중 예외 조치: sequential_id 마켓 간 충돌 유실 발견 → 유니크 키 교체 + 7일 원장 백필 210,469건 (이슈 7, `docs/13`)
 - [ ] 관찰 뒤 1순위: `reconcile_trades` DAG(일일 원장 대조·자동 백필·품질 테이블) + dbt `(market, sequential_id)` 유일성·커버리지·freshness 테스트
-- [ ] 이후: 관찰 분석(`docs/14`)·튜닝 → 녹화-재생 증폭 실험(브로커 장애 시나리오) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
+- [ ] 이후: 관찰 분석(`docs/14`)·튜닝 → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
 ---
 
@@ -766,6 +766,8 @@ cdc-realtime-pipeline/
     ├── 11-orderbook-launch.md
     ├── 12-observation-plan.md          # 7일 관찰 가설·임계값
     ├── 13-sequential-id-collision-incident.md  # 유실 사고 #2: sid 마켓 간 충돌, 백필 210,469건
+    ├── 15-load-experiment-design.md    # 재생 증폭 부하 실험 설계(3계층, Binance 코퍼스, 준확정)
+    ├── journey-index.md                # 블로그 원고용 에피소드 인덱스
     └── worklog.md                      # 결정 표(근거 포함) + 시간순 작업 기록
 ```
 
