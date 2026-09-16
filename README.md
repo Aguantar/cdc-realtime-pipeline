@@ -559,7 +559,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] 이상탐지 기준 재설계 (`docs/16`, 부록 `docs/16-appendix-queries.md`) — 업비트 시장경보 재현, 6개월 라벨 15,588건 대비 정밀도·재현율 실측
 - [x] DAG 3 `reconcile_trades` + dbt 계약 (`docs/17`) — 첫 실행에서 유실 2건 적발·복구 (이슈 8)
 - [x] 마켓 목록 5분 주기 갱신·재구독 (신규 상장 자동 반영)
-- [ ] 이후: 튜닝 적용(gap-fill 방식 결정 → 이상탐지 규칙 교체 → 백업) → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
+- [ ] 이후: `docs/19` 순서대로 — 배포 1(이벤트 시각 가드·무공백 배포·gap-fill·수리 계보·10분 커버리지) → 1주 대조 → 백업 → 이상탐지 규칙 교체(섀도) → 부하 실험 → 브로커 축소 → CDC 구간 재검토 → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
 ---
 
@@ -789,6 +789,7 @@ cdc-realtime-pipeline/
     ├── 16-appendix-queries.md          # 위 결론을 재생산하는 쿼리 10개와 출력 (scripts/analysis/rule_basis_check.sh)
     ├── 17-reconcile-dag-dbt-contracts.md  # 원장 대조 DAG·dbt 계약 설계 결정 + 첫 실행이 잡은 유실 2건
     ├── 18-findings-and-lessons.md      # 2026-09-16 발견 총괄 — 무엇을 찾았고 어떻게 찾았나, 정정 기록 포함
+    ├── 19-loss-prevention-gap-map.md   # 유실 방지 구조 실무 대비 현황표(14항목) + 작업 순서 — 이후 작업의 기준
     ├── journey-index.md                # 블로그 원고용 에피소드 인덱스
     └── worklog.md                      # 결정 표(근거 포함) + 시간순 작업 기록
 ```
