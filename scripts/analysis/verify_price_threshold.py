@@ -13,6 +13,25 @@ def get(u):
             return None  # 404/400: 상장폐지 등 → 건너뜀
         except Exception: time.sleep(1)
     return None
+OUT = '/home/calme/pipeline-observation/price_threshold_verify.json'
+def report():
+    d = json.load(open(OUT)); by = defaultdict(list)
+    for o in d: by[o['level']].append(abs(o['chg']))
+    for lvl in sorted(by):
+        v = sorted(by[lvl]); n = len(v)
+        print(f"{lvl} n={n} min={v[0]*100:.1f}% p10={v[int(n*.1)]*100:.1f}% p50={v[n//2]*100:.1f}% max={v[-1]*100:.1f}% below45={sum(1 for x in v if x<0.45)} 45-55={sum(1 for x in v if 0.45<=x<0.55)} 95-105={sum(1 for x in v if 0.95<=x<1.05)} ge195={sum(1 for x in v if x>=1.95)}")
+    bm = defaultdict(list)
+    for o in d:
+        if o['level'] == 'LEVEL_1': bm[o['t'][:7]].append(abs(o['chg']))
+    for m in sorted(bm):
+        v = sorted(bm[m]); n = len(v); print(f"LEVEL_1 {m} n={n} p10={v[int(n*.1)]*100:.1f}% p50={v[n//2]*100:.1f}% in45-55={sum(1 for x in v if .45<=x<.55)} below45={sum(1 for x in v if x<.45)}")
+    for tag, f in [('pre_0518', lambda t: t < '2026-05-18'), ('post_0518', lambda t: t >= '2026-05-18')]:
+        v = sorted(abs(o['chg']) for o in d if o['level'] == 'LEVEL_1' and f(o['t'])); n = len(v)
+        print(f"LEVEL_1 {tag} n={n} p10={v[int(n*.1)]*100:.1f}% p50={v[n//2]*100:.1f}% below45={sum(1 for x in v if x<.45)}")
+    for o in d:
+        if (o['level'] == 'LEVEL_1' and abs(o['chg']) < .45) or (o['level'] == 'LEVEL_2' and abs(o['chg']) < .9): print('outlier', o['level'], o['market'], o['t'], f"{o['chg']*100:+.1f}%")
+if '--report' in sys.argv:
+    report(); sys.exit()
 rows = subprocess.run(['docker', 'exec', 'cdc-clickhouse', 'clickhouse-client', '-d', 'cdc_pipeline', '-q',
     "SELECT market, warning_level, min(trigger_time_utc) FROM upbit_market_event_records FINAL WHERE event_type='PRICE_FLUCTUATIONS' GROUP BY market, warning_level, toDate(trigger_time_utc) ORDER BY 3 FORMAT TSV"],
     capture_output=True, text=True, check=True).stdout.strip().split('\n')
@@ -30,9 +49,5 @@ for r in rows:
     p_24h = close_at(market, (t0 - timedelta(hours=24) + timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M:%S'))
     if p_now and p_24h:
         out.append({'market': market, 'level': lvl, 't': t, 'chg': p_now / p_24h - 1})
-json.dump(out, open('/home/calme/pipeline-observation/price_threshold_verify.json', 'w'))
-by = defaultdict(list)
-for o in out: by[o['level']].append(abs(o['chg']))
-for lvl in sorted(by):
-    v = sorted(by[lvl]); n = len(v)
-    print(f"{lvl} n={n} min={v[0]*100:.1f}% p10={v[int(n*.1)]*100:.1f}% p50={v[n//2]*100:.1f}% max={v[-1]*100:.1f}%  below45={sum(1 for x in v if x<0.45)} 45-55={sum(1 for x in v if 0.45<=x<0.55)} 95-105={sum(1 for x in v if 0.95<=x<1.05)} ge195={sum(1 for x in v if x>=1.95)}")
+json.dump(out, open(OUT, 'w'))
+report()
