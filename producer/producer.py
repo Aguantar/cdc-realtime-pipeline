@@ -281,6 +281,13 @@ def fetch_krw_markets(retries=10):
     return None
 
 
+def _brief(items, limit=10):
+    """로그용 축약 — 최초 기동 직후처럼 차이가 크면 목록 전체가 한 줄로 찍히는 것을 막는다."""
+    if not items:
+        return '-'
+    return ', '.join(items[:limit]) + (f" 외 {len(items) - limit}개" if len(items) > limit else '')
+
+
 def build_subscribe_msg(markets):
     return [
         {"ticket": str(uuid.uuid4())[:8]},
@@ -361,7 +368,7 @@ async def subscribe_upbit(markets, writer, stats, shutdown_event, auto_refresh=F
                             await ws.send(json.dumps(build_subscribe_msg(markets)))
                             logger.warning(
                                 f"마켓 목록 변경 → 재구독 (총 {len(markets)}개) "
-                                f"추가={added or '-'} 제외={removed or '-'}"
+                                f"추가={_brief(added)} 제외={_brief(removed)}"
                             )
 
         except websockets.exceptions.ConnectionClosed as e:

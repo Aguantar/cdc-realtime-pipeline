@@ -77,6 +77,13 @@ class Stats:
     bytes_interval = 0
 
 
+def _brief(items, limit=10):
+    """로그용 축약 — 차이가 크면 목록 전체가 한 줄로 찍히는 것을 막는다."""
+    if not items:
+        return '-'
+    return ', '.join(items[:limit]) + (f" 외 {len(items) - limit}개" if len(items) > limit else '')
+
+
 def fetch_markets(strict=True):
     """KRW 마켓 목록. strict=False 면 실패·이상 응답 시 None 을 돌려 호출부가 기존 목록을 유지한다."""
     if MARKETS_ENV.strip():
@@ -198,7 +205,7 @@ async def run(stats, shutdown):
                             markets = latest
                             await ws.send(json.dumps(build_sub(markets)))
                             logger.warning(f"마켓 목록 변경 → 재구독 (총 {len(markets)}개) "
-                                           f"추가={added or '-'} 제외={removed or '-'}")
+                                           f"추가={_brief(added)} 제외={_brief(removed)}")
         except websockets.exceptions.InvalidStatus as e:
             code = getattr(getattr(e, 'response', None), 'status_code', '?')
             logger.warning(f"WebSocket 핸드셰이크 거부 (HTTP {code}). {backoff}초 후 재연결")
