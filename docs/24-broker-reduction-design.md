@@ -54,7 +54,12 @@ docs/19 #12 "스트림 로그 내구성: 형식만(RF3이 같은 NVMe 한 장)".
 | 2 minISR | 클러스터 기본(동적) 1, 전 토픽 1. 검증: 체결 토픽·`__consumer_offsets`·`_connect-offsets` 모두 1 |
 | 3~4 재할당 | 105 파티션 전부 replicas [1] → 약 2분 만에 완료 |
 | 5 검증 (독립 재검증 08:19) | **105/105 파티션 Replicas 1 / Isr 1**, under-replicated 0, 브로커 2·3 잔여 replica 0(데이터 디렉터리 36KB — 복제본 제거로 디스크는 이미 회수), 컨트롤러 = 브로커 1, 적재 계속(60초 체결 703·호가 9,940), 수집기 오류 0, Connect RUNNING |
-정지 없이 끝났다. 다음: 브로커 2·3 정지(사용자) → 24h 관찰 → compose 정리·정적 설정(minISR 1, default RF 1, offsets RF 1) → 축소 후 재시작 실측.
+정지 없이 끝났다.
+
+| 4 정지 (08:21:53 UTC, 사용자) | `docker stop cdc-kafka-2 cdc-kafka-3` → exit 143(정상 종료). 19초 뒤 검증: 브로커 목록 kafka-1 만, 컨트롤러 1, under-replicated 0, 적재 지속(60초 체결 937·호가 9,780), 수집기·Connect·Flink TM·circuit-connect-api 로그에 죽은 브로커 관련 오류 0, Connect RUNNING, Flink 3잡 RUNNING, 호스트 가용 메모리 6.9 → **8.4GB** |
+|---|---|
+
+다음: 24h 관찰(체결 대조 DAG 06:35, `dq_orderbook_gaps_daily`, health_check) → compose 정리·정적 설정(minISR 1, default RF 1, offsets RF 1)과 kafka-1 재기동 = 1브로커 재시작 실측.
 
 ## 5. 축소 뒤 남는 위험 (인정)
 - 브로커 1대 정지 = 전체 정지. 10분 넘는 정지면 호가 유실이 시작되고 표에만 남는다. 로컬 스풀은 그 유실이 실제로 생겼을 때.
