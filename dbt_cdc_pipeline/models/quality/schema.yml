@@ -24,3 +24,13 @@ models:
         tests:
           - accepted_values:
               values: ['PRICE_24H', 'VOLUME_24H']
+
+  - name: dq_alert_parity_daily
+    description: >
+      PRICE_24H 구현 동등성: Flink 탐지기의 등급 전이 vs 같은 입력(crypto_trades)에서 SQL 로 재계산한 전이를
+      마켓·(prev, level)·±60초로 매일 대조. 전이 10건 이상이 전부 일치(parity_ok)하면 승격 (docs/22 §4).
+    columns:
+      - name: day
+        tests: [not_null, unique]
+      - name: matched
+        tests: [not_null]

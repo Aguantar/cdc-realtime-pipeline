@@ -36,7 +36,7 @@ with DAG(
     dbt_build_rules = BashOperator(
         task_id="dbt_build_rules",
         bash_command=(
-            "cd /opt/airflow/dbt && dbt build --select int_volume_surge_daily dq_rule_eval_daily "
+            "cd /opt/airflow/dbt && dbt build --select int_volume_surge_daily dq_rule_eval_daily int_alert_transitions_recomputed dq_alert_parity_daily "
             "--profiles-dir /opt/airflow/dbt_profiles 2>&1"
         ),
     )

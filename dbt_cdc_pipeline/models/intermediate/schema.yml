@@ -35,3 +35,11 @@ models:
           - not_null
       - name: daily_range_pct
         description: "일중 변동폭 (%)"
+
+  - name: int_alert_transitions_recomputed
+    description: >
+      PRICE_24H 등급 전이를 crypto_trades 에서 SQL 로 재계산(분 종가·forward fill·24h 참조·늦은 이벤트 제외).
+      Flink 탐지기와 같은 정의, 다른 구현. dq_alert_parity_daily 의 입력 (docs/22 §4).
+    columns:
+      - name: market
+        tests: [not_null]
