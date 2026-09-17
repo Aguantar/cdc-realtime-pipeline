@@ -46,6 +46,16 @@ docs/19 #12 "스트림 로그 내구성: 형식만(RF3이 같은 NVMe 한 장)".
 | 6 | 축소 후 실측: `scenario_all_brokers_stop.sh OUTAGE_S=60` 를 1브로커에서 한 번 더 — "브로커 재시작 = 손실 0" 을 같은 스크립트로 | 호가 deliv_err 0, 체결 따라붙기, health_check 자동 재시작 경로 확인 |
 롤백: 브로커 2·3 기동 → 역재할당(replicas=[1,3,2]) → minISR 2.
 
+### 4-1. 실행 기록 (09-17 08:17 ~ 08:19 UTC, 사용자 터미널, 런북 `scripts/ops/kafka-reduce-to-one.sh`)
+| 단계 | 결과 |
+|---|---|
+| 0 사전 | 114 파티션, under-replicated 0. 배치 저장 `~/kafka-reassign/describe-before-20260917T0817.txt`, 롤백 JSON `rollback-assignment-20260917T0817.json` |
+| 1 실험 토픽 | load_test.trades·orderbook 삭제 (114 → 105 파티션) |
+| 2 minISR | 클러스터 기본(동적) 1, 전 토픽 1. 검증: 체결 토픽·`__consumer_offsets`·`_connect-offsets` 모두 1 |
+| 3~4 재할당 | 105 파티션 전부 replicas [1] → 약 2분 만에 완료 |
+| 5 검증 (독립 재검증 08:19) | **105/105 파티션 Replicas 1 / Isr 1**, under-replicated 0, 브로커 2·3 잔여 replica 0(데이터 디렉터리 36KB — 복제본 제거로 디스크는 이미 회수), 컨트롤러 = 브로커 1, 적재 계속(60초 체결 703·호가 9,940), 수집기 오류 0, Connect RUNNING |
+정지 없이 끝났다. 다음: 브로커 2·3 정지(사용자) → 24h 관찰 → compose 정리·정적 설정(minISR 1, default RF 1, offsets RF 1) → 축소 후 재시작 실측.
+
 ## 5. 축소 뒤 남는 위험 (인정)
 - 브로커 1대 정지 = 전체 정지. 10분 넘는 정지면 호가 유실이 시작되고 표에만 남는다. 로컬 스풀은 그 유실이 실제로 생겼을 때.
 - Connect 자동 복구의 최악 10분은 health_check 주기다. 필요하면 5분으로.
