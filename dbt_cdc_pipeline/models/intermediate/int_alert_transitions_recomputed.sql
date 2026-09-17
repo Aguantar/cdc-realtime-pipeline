@@ -49,29 +49,23 @@ filled AS (
     )
     GROUP BY market
 ),
--- 2b) 배열을 다시 행으로: (market, 분, 채워진 종가). 체결 500만 행에 배열(분당 8B × 4,320)을 조인하면 행마다 배열이 복제돼 메모리가 터진다(실측 1.84GiB) → 행으로 풀어 (market, m) 해시 조인
+-- 2b) 배열을 다시 행으로: (market, 분, 채워진 종가). 배열을 체결에 조인하면 행마다 배열이 복제돼 메모리가 터진다(실측 1.84GiB) → 행으로 풀어 조인
 refs AS (
-    SELECT market, m0 + toInt64(idx) - 1 AS m, c AS ref
+    SELECT market, m0 + toInt64(idx) - 1 AS m, c AS close
     FROM filled
     ARRAY JOIN cs AS c, arrayEnumerate(cs) AS idx
     WHERE c > 0
 ),
--- 3) 창 안 체결별 등급 (참조 = 체결 분 − 1,440 의 채워진 종가)
-trades AS (
-    SELECT market, upbit_timestamp, sequential_id, trade_price, intDiv(upbit_timestamp, 60000) AS m
-    FROM {{ source('raw', 'crypto_trades') }}
-    WHERE op = 'c'
-      AND toUnixTimestamp64Milli(source_ts) - upbit_timestamp <= 60000
-      AND upbit_timestamp >= {{ from_unix * 1000 }}
-      AND upbit_timestamp <  {{ to_unix * 1000 }}
-),
+-- 3) v2.1: 판정 단위 = 분 종가 (docs/22 §4-2). 창 안의 분마다 (채워진 종가 / 24h 전 채워진 종가 − 1) 로 등급.
+--    체결 단위(v2)는 임계 근처에서 초 단위로 플래핑했다(LSK 하루 0→1 전이 86회 vs 거래소 9회). 정답 해상도(분)·임계 근거(1분봉)·참조(분 종가)에 맞춘다.
 leveled AS (
-    SELECT t.market, t.upbit_timestamp, t.sequential_id, t.trade_price, r.ref,
-           toInt16(multiIf(abs(t.trade_price / r.ref - 1) >= 2.0, 3,
-                           abs(t.trade_price / r.ref - 1) >= 1.0, 2,
-                           abs(t.trade_price / r.ref - 1) >= 0.5, 1, 0)) AS lvl
-    FROM trades AS t
-    INNER JOIN refs AS r ON r.market = t.market AND r.m = t.m - 1440
+    SELECT cur.market, cur.m, cur.close, r.close AS ref,
+           toInt16(multiIf(abs(cur.close / r.close - 1) >= 2.0, 3,
+                           abs(cur.close / r.close - 1) >= 1.0, 2,
+                           abs(cur.close / r.close - 1) >= 0.5, 1, 0)) AS lvl
+    FROM refs AS cur
+    INNER JOIN refs AS r ON r.market = cur.market AND r.m = cur.m - 1440
+    WHERE cur.m >= intDiv({{ from_unix }}, 60) AND cur.m < intDiv({{ to_unix }}, 60)
 ),
 -- 창 시작 시점 등급 시드 = Flink 의 마지막 전이
 seed AS (
@@ -84,11 +78,11 @@ sql_transitions AS (
     SELECT market, upbit_timestamp, prev, lvl
     FROM (
         -- 첫 행의 prev 는 시드(창 이전 Flink 마지막 등급, 없으면 0). lagInFrame 의 기본값은 NULL 이 아니라 0 이라 센티널(-99)로 구분
-        SELECT l.market, l.upbit_timestamp, l.lvl,
+        SELECT l.market, (l.m + 1) * 60000 AS upbit_timestamp, l.lvl,        -- event_time = 분 끝 (Flink 와 동일)
                if(lagv = -99, coalesce(sd.lvl0, toInt16(0)), lagv) AS prev
         FROM (
-            SELECT market, upbit_timestamp, lvl,
-                   lagInFrame(lvl, 1, toInt16(-99)) OVER (PARTITION BY market ORDER BY upbit_timestamp, sequential_id
+            SELECT market, m, lvl,
+                   lagInFrame(lvl, 1, toInt16(-99)) OVER (PARTITION BY market ORDER BY m
                                                  ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS lagv
             FROM leveled
         ) AS l
