@@ -6,6 +6,8 @@ sources:
     database: cdc_pipeline
     schema: cdc_pipeline
     tables:
+      - name: orderbook_raw
+        description: 호가 스냅샷 원본(수집기 → Kafka → Flink). 원장이 없는 되돌릴 수 없는 데이터 — 유실은 dq_orderbook_gaps_daily 로 센다
       - name: crypto_trades
         description: "Upbit 코인 실시간 체결 데이터 (Flink raw sink)"
         # freshness: 파이프라인이 살아 있으면 inserted_at 이 수분 내. 60분 넘게 멈추면 error (health_check 10분 주기와 별개로 dbt 산출물에 기록)

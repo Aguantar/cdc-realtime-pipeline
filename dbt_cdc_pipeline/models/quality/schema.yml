@@ -34,3 +34,13 @@ models:
         tests: [not_null, unique]
       - name: matched
         tests: [not_null]
+
+  - name: dq_orderbook_gaps_daily
+    description: >
+      호가 유실 창 기록. 호가는 이력 API 도 원장도 없어 못 받은 순간 영구 유실이므로, 초당 스냅샷 0 인 구간(3초 이상)을 gap 으로
+      잡고 추정 유실 건수를 남긴다. 브로커 축소·수집기 버퍼 결정의 근거 (docs/23 §6).
+    columns:
+      - name: day
+        tests: [not_null, unique]
+      - name: zero_seconds
+        tests: [not_null]
