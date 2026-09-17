@@ -185,9 +185,12 @@ with DAG(
                         r = req.post(f"http://kafka-connect:8083/connectors/{name}/tasks/{t.get('id', i)}/restart", timeout=10)
                         restarted.append({"connector": name, "task": t.get("id", i), "http": r.status_code,
                                           "trace": (t.get("trace") or "")[:200]})
-                if connector_state == "FAILED":
-                    r = req.post(f"http://kafka-connect:8083/connectors/{name}/restart", timeout=10)
-                    restarted.append({"connector": name, "task": "connector", "http": r.status_code, "trace": ""})
+                # 2026-09-17 07:09 브로커 전체 정지 1분 재실험(docs/23 §7-1): 재기동 후 워커 리밸런스에서 커넥터가 UNASSIGNED,
+                # 태스크는 RUNNING 이라 보고하면서 6분간 아무것도 발행하지 않았다(binlog 클라이언트 유령). FAILED 조건으로는 못 잡는다
+                # → 커넥터 상태가 RUNNING 이 아니면 태스크 포함 재시작. 수동 재시작 실측: 20초 만에 binlog 재접속, 60초에 8,195행 따라붙음
+                if connector_state != "RUNNING":
+                    r = req.post(f"http://kafka-connect:8083/connectors/{name}/restart?includeTasks=true&onlyFailed=false", timeout=10)
+                    restarted.append({"connector": name, "task": "connector+tasks", "http": r.status_code, "trace": f"state={connector_state}"})
 
             all_running = all(
                 s["connector"] == "RUNNING"
@@ -341,12 +344,16 @@ with DAG(
         if producer_result:
             last_1min = int(producer_result.get("last_1min_count", 0))
             if last_1min == 0:
-                unhealthy.append(
-                    {
-                        "name": "Upbit Producer",
-                        "message": "No data in last 1 minute",
-                    }
-                )
+                msg = "No data in last 1 minute"
+                # 2026-09-17 (docs/23 §7-1): 커넥터가 RUNNING 이라 보고해도 발행이 멈춘 유령 상태가 있었다. 적재 0 이면 CDC 커넥터를 태스크 포함 재시작한다.
+                # producer(WS) 쪽 장애라면 이 재시작은 무해하고, Debezium 은 binlog 오프셋에서 이어 읽으므로 중복도 없다.
+                try:
+                    import requests as req
+                    r = req.post("http://kafka-connect:8083/connectors/mysql-cdc-connector/restart?includeTasks=true&onlyFailed=false", timeout=10)
+                    msg += f" | CDC connector restarted (HTTP {r.status_code})"
+                except Exception as e:  # noqa: BLE001
+                    msg += f" | CDC connector restart failed: {e}"
+                unhealthy.append({"name": "Upbit Producer", "message": msg})
 
         # Kafka Connect: 커넥터 상태
         if connect_result and not connect_result.get("healthy", False):
