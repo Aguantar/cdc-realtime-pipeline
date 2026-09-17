@@ -376,3 +376,12 @@
   - **컷오버 런북**(scripts/ops/clickhouse-auth-cutover.sh) 1회 정지 창: 3잡 savepoint → 7서비스 재생성 → 무인증 403 → 3잡 복원(trade_id 연속 +1) → producer 기동 gap-fill 714/565 → 가드 565 정확. Grafana·dbt·Airflow·icepush-api·circuit 전부 정상
   - **판단 오류 2건(docs/21 §2)**: ① "Docker 프록시가 출발지를 127.0.0.1 로 가린다" → 틀림, Access 로그는 10.88.0.1. 내 로컬 curl 을 n8n 으로 오독. IP 제한 풀었다 되살림 ② n8n 초안(workflow_entity.nodes)을 3번 고쳤으나 **실행은 workflow_history 의 발행 버전** → 전부 무효, 재시작 5회 낭비. 발행 버전에 적용하자 즉시 성공. 교훈: 설정을 읽는 위치부터 확인. 최종: n8n 자격증명(httpBasicAuth, 암호화) + n8n_reader HOST IP 10.88.0.1 + readonly=2, DB 평문 잔존 0
 - 09-17 01:04~01:25 **backup_daily DAG**(docs/21 §4): 권한 설계(바인드 마운트 chown 101 via 컨테이너 root, Airflow group_add 101, ssh 키 사본 uid 50000·호스트키 핑거프린트 대조 고정). 실측: 호가 하루 Parquet lz4 977MB → **zstd 726MB**(19.7M행, 70초, 피크 136MiB), 09-16 647MB. 첫 증분 80MB. 용량 산정 → **180일 불가, 120일 확정**(≈85GB + 백업 ≈20GB < 147GB). 첫 실행(dags test 2026-09-16): 백업·Parquet·rsync·보존 성공, 검증 실패 → 원인 = 수동 테스트의 실행일 역산으로 incr_20260915 가 최신 전체보다 오래된 증분으로 분류되어 원격에서 삭제(정책 정상 동작) → 산물 제거 후 검증 0건 통과. DAG unpause, 첫 스케줄 09-18 01:20 UTC
+- 09-17 01:30~01:50 **3번: 이상탐지 v2 + dbt 품질 층**(docs/22). 사용자 질문("이상탐지 초점 → 파이프라인 상태 초점에 맞게 구성돼 있나")에 대한 실행
+  - Flink: 구 AnomalyDetector·AnomalyAlert 삭제, `MarketAlertDetector`(PRICE_24H 등급 전이, 분 종가 링 1,500·forward-fill·늦은 이벤트 가드) → `market_alerts`(rule_version v2-shadow). 하네스 테스트 5개 — 첫 실행 1건 실패는 테스트 T0 가 분 경계 미정렬(+30초가 다음 분)이라서, 정렬 후 통과. `git rm` 으로 테스트 디렉터리가 사라져 첫 빌드가 테스트 없이 돈 것도 기록(재빌드). 배포: savepoint 574e51 → `--allowNonRestoredState`(구 연산자 상태 의도적 폐기) → 18febb20 RUNNING, trade_id 114,196,670 → +1, 메트릭 lateEventsSkipped·levelTransitions 노출. 첫 24h 는 참조 없어 출력 0(설계상, docs/22 §2)
+  - dbt: `quality/` 층(dq_reconcile_daily·dq_repairs_daily·dq_ingest_daily·**dq_rule_eval_daily**), `int_volume_surge_daily`(VOLUME_24H, post-hook 으로 market_alerts 기록·멱등) 13/13 PASS. 구 마트 mart_volume_spike·mart_alert_rate 삭제, exposures 갱신. **정정**: dq_ingest_daily 첫 판은 수리 행이 섞여 09-16 p95 511,766초 → 실시간(≤60s)만 분위수, 늦은 행 별도 카운트
+  - 실전 평가: VOLUME_24H 09-16 정밀도 0.833/재현율 1.0, 09-15 0.684/0.867, 09-14 0.75/0.938 (백테스트 0.79/0.80 과 같은 자리)
+  - Airflow: `rules_daily`(01:05 UTC) 신설, daily 리포트 첫 블록 = Pipeline Quality(대조 %·99% 미만 셀·수리·지연 p95·늦은 행·섀도 전이). DAG 테스트 11/11
+  - n8n FDS: 본문을 `upbit_market_events` 전이로 교체(발행 버전+초안, psql 변수는 -c 에서 안 되고 -f 에서만 됨 — 1회 실패 후 수정), success·ClickHouse 도착 확인
+  - Grafana: 메인 패널 2개 → market_alerts, 품질 대시보드(dq_* 6패널) 프로비저닝 확인
+  - README: 구 규칙을 업비트 감시 유형에 대응시킨 절(근거 없음)을 v2 절로 교체 — 공개 문서에 틀린 주장이 남아 있으면 안 됨
+  - 승격 기준 docs/22 §4. 다음: 섀도 7일 → 승격 판단

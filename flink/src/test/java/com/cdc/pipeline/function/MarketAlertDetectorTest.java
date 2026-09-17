@@ -19,7 +19,7 @@ import static org.junit.Assert.assertTrue;
 public class MarketAlertDetectorTest {
 
     private KeyedOneInputStreamOperatorTestHarness<String, CryptoTradeEvent, MarketAlert> h;
-    private static final long T0 = 1_789_600_000_000L;
+    private static final long T0 = 1_789_600_020_000L;   // 분 경계에 정렬 (÷60000 = 29,826,667). 정렬 안 된 T0 로는 +30초가 다음 분이 되어 '같은 분의 종가' 시나리오가 깨진다
     private static final long MIN = 60_000L;
 
     @Before
