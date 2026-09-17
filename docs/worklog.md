@@ -370,3 +370,8 @@
   - 판단 정정: 메트릭을 처리 직후 읽고 0 이라 단정할 뻔한 것 2회(수집 주기). 이후 60초 뒤 재조회를 규칙으로
   - "1주 잔여 손실 측정" 삭제 → 주입 테스트로 대체. 다음 = 내일 06:35 대조 확인 → 백업 + 접근 통제
 - 09-16 23:54 **재연결 gap-fill 독립 검증 완료**: 별도 도구 dry-run 으로 강제 재연결 창(23:35:40~23:36:00, 20초, 287마켓) 재대조 → 원장 272 / 보유 272 / **누락 0**. 배포 1의 두 gap-fill 경로(기동·재연결) 모두 "자체 집계 + 독립 도구" 이중으로 검증 종료. 오늘 커밋 32개. 다음: 09-17 06:35 대조 DAG 결과 확인 → 백업 + 접근 통제(#15). 결정 대기: dbt 품질 층·구 이상탐지 마트 정리를 규칙 교체와 묶을지 먼저 할지
+- 09-17 00:25~01:05 **2번 착수: 백업 + 접근 통제**(사용자 승인 "2,3 진행해"). 상세 docs/21
+  - 백업: `backups.allowed_path` 가 재시작 없이 hot-reload 됨(실측) → 전체 백업 3.90GiB/20초(orderbook_raw 제외) → 호스트 추출 25초 → rsync Oracle 4.19GB/71초. **Oracle 블록 볼륨 150GB 신규 생성·연결·마운트**(/mnt/backup, 부트 47 + 150 = 197 ≤ 무료 200). **복원 리허설 성공**: Oracle 임시 ClickHouse(arm64) RESTORE 79초, crypto_trades 109,829,325행, 실제 집계 쿼리 OK. 첫 시도는 rsync 소유자(uid 1000) 때문에 권한 실패 → chmod → 성공 (리허설 없이는 몰랐을 실패)
+  - 접근 통제: 영향 범위 점검(query_log 로 "누가 default 로 붙나")에서 **타 프로젝트 2개**(circuit Flink 잡, icepush-api·icepush dbt DAG) 발견 → 전용 사용자 icepush 생성, env 주입(icepush 저장소 2파일 커밋 1699e50), circuit 은 제출 시 자기 DB URL env. 사용자 4종(pipeline / n8n_reader / icepush / default 비밀번호). docker-exec 스크립트는 컨테이너 클라이언트 설정 파일(호스트 600) 마운트로 무수정
+  - **컷오버 런북**(scripts/ops/clickhouse-auth-cutover.sh) 1회 정지 창: 3잡 savepoint → 7서비스 재생성 → 무인증 403 → 3잡 복원(trade_id 연속 +1) → producer 기동 gap-fill 714/565 → 가드 565 정확. Grafana·dbt·Airflow·icepush-api·circuit 전부 정상
+  - **판단 오류 2건(docs/21 §2)**: ① "Docker 프록시가 출발지를 127.0.0.1 로 가린다" → 틀림, Access 로그는 10.88.0.1. 내 로컬 curl 을 n8n 으로 오독. IP 제한 풀었다 되살림 ② n8n 초안(workflow_entity.nodes)을 3번 고쳤으나 **실행은 workflow_history 의 발행 버전** → 전부 무효, 재시작 5회 낭비. 발행 버전에 적용하자 즉시 성공. 교훈: 설정을 읽는 위치부터 확인. 최종: n8n 자격증명(httpBasicAuth, 암호화) + n8n_reader HOST IP 10.88.0.1 + readonly=2, DB 평문 잔존 0
