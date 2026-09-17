@@ -733,7 +733,7 @@ cdc-realtime-pipeline/
     ├── 20-deployment-1.md              # 배포 1: 늦은 이벤트 가드·gap-fill·수리 계보·10분 커버리지·CI — 설계 변경 근거와 실측 검증
     ├── 21-backup-and-access-control.md # 백업(Oracle 오프사이트, 복원 리허설 79초)·접근 통제(사용자 분리, 컷오버 런북) — 판단 오류 2건 정정 포함
     ├── 22-rules-v2-and-quality-layer.md # 이상탐지 v2(PRICE_24H 등급 전이 섀도, VOLUME_24H dbt 규칙) + dq_* 품질 층 + 규칙 평가 모델 + 승격 기준
-    ├── 23-load-experiment-results.md # 이상탐지 v2(PRICE_24H 등급 전이 섀도, VOLUME_24H dbt 규칙) + dq_* 품질 층 + 규칙 평가 모델 + 승격 기준
+    ├── 23-load-experiment-results.md # 부하 실험 결과: ① 체결 200/s 유실·중복 0, ③ Kafka 상한 19k(무배치)/65k(배치) msg/s, S3·② 대기
     ├── journey-index.md                # 블로그 원고용 에피소드 인덱스
     └── worklog.md                      # 결정 표(근거 포함) + 시간순 작업 기록
 ```
