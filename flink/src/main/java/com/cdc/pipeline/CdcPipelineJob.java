@@ -50,12 +50,20 @@ public class CdcPipelineJob {
             "CLICKHOUSE_URL",
             "jdbc:clickhouse://clickhouse:8123/cdc_pipeline"
         );
+        // 2026-09-17 부하 실험(docs/15) 격리용. 기본값은 프로덕션과 동일하고, 실험 잡만 제출 시 env 로 바꾼다:
+        //   CDC_TOPIC=load_test.trades CDC_GROUP_ID=flink-loadtest-consumer CLICKHOUSE_TABLE_PREFIX=load_test_
+        //   MARKET_ALERTS_ENABLED=false (실험 체결이 섀도 평가에 섞이지 않게) JOB_NAME="CDC Realtime Pipeline [load_test]"
+        String topic = System.getenv().getOrDefault("CDC_TOPIC", "cdc.crypto_db.crypto_trades");
+        String groupId = System.getenv().getOrDefault("CDC_GROUP_ID", "flink-cdc-consumer");
+        String tablePrefix = System.getenv().getOrDefault("CLICKHOUSE_TABLE_PREFIX", "");
+        boolean alertsEnabled = !"false".equalsIgnoreCase(System.getenv().getOrDefault("MARKET_ALERTS_ENABLED", "true"));
+        String jobName = System.getenv().getOrDefault("JOB_NAME", "CDC Realtime Pipeline");
 
         // 3. Kafka Source 설정
         KafkaSource<String> kafkaSource = KafkaSource.<String>builder()
                 .setBootstrapServers(bootstrapServers)
-                .setTopics("cdc.crypto_db.crypto_trades")
-                .setGroupId("flink-cdc-consumer")
+                .setTopics(topic)
+                .setGroupId(groupId)
                 // 2026-09-09: savepoint 없이 재시작해도 커밋된 그룹 오프셋부터 재개 (없으면 latest) — 재시작 유실 방지
                 .setStartingOffsets(OffsetsInitializer.committedOffsets(org.apache.kafka.clients.consumer.OffsetResetStrategy.LATEST))
                 .setValueOnlyDeserializer(new NullSafeStringSchema())
@@ -77,35 +85,37 @@ public class CdcPipelineJob {
                 .name("5min Window Aggregation");
 
         aggregated.print("AGG");
-        aggregated.addSink(ClickHouseSinks.aggregationSink(clickhouseUrl))
+        aggregated.addSink(ClickHouseSinks.aggregationSink(clickhouseUrl, tablePrefix))
                 .name("ClickHouse Aggregation Sink");
 
         // 6. Stream 2: 이상탐지 v2 — PRICE_24H 등급 전이 → market_alerts (섀도, docs/22)
         // uid 를 명시하는 이유: 구 AnomalyDetector 의 상태(lastPrice 등)를 이어받지 않고 새로 시작한다.
         // 재제출 시 savepoint 의 구 연산자 상태는 --allowNonRestoredState 로 의도적으로 버린다 (근거 없는 규칙의 상태는 보존 가치가 없다).
-        DataStream<MarketAlert> marketAlerts = tradeEvents
-                .filter(event -> "c".equals(event.getOp()))
-                .keyBy(CryptoTradeEvent::getMarket)
-                .process(new MarketAlertDetector())
-                .uid("market-alert-detector-v2")
-                .name("Market Alert Detector (PRICE_24H)");
+        if (alertsEnabled) {
+            DataStream<MarketAlert> marketAlerts = tradeEvents
+                    .filter(event -> "c".equals(event.getOp()))
+                    .keyBy(CryptoTradeEvent::getMarket)
+                    .process(new MarketAlertDetector())
+                    .uid("market-alert-detector-v2")
+                    .name("Market Alert Detector (PRICE_24H)");
 
-        marketAlerts.print("ALERT");
-        marketAlerts.addSink(ClickHouseSinks.marketAlertSink(clickhouseUrl))
-                .uid("market-alert-sink-v2")
-                .name("ClickHouse Market Alert Sink");
+            marketAlerts.print("ALERT");
+            marketAlerts.addSink(ClickHouseSinks.marketAlertSink(clickhouseUrl))
+                    .uid("market-alert-sink-v2")
+                    .name("ClickHouse Market Alert Sink");
+        }
 
         // 7. Stream 3: Raw 체결 이벤트 → ClickHouse
-        tradeEvents.addSink(ClickHouseSinks.rawTradeSink(clickhouseUrl))
+        tradeEvents.addSink(ClickHouseSinks.rawTradeSink(clickhouseUrl, tablePrefix))
                 .name("ClickHouse Raw Trade Sink");
 
         LOG.info("=== CDC Crypto Pipeline Started ===");
         LOG.info("Kafka: {}", bootstrapServers);
         LOG.info("ClickHouse: {}", clickhouseUrl);
-        LOG.info("Topic: cdc.crypto_db.crypto_trades");
+        LOG.info("Topic: {} / group: {} / table prefix: '{}' / alerts: {}", topic, groupId, tablePrefix, alertsEnabled);
         LOG.info("Parallelism: {}", env.getParallelism());
         LOG.info("Window: 5 minutes (tumbling)");
 
-        env.execute("CDC Realtime Pipeline");
+        env.execute(jobName);
     }
 }

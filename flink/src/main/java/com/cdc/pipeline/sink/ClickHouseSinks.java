@@ -24,8 +24,13 @@ public class ClickHouseSinks {
      * Raw 체결 데이터 → crypto_trades 테이블
      */
     public static SinkFunction<CryptoTradeEvent> rawTradeSink(String clickhouseUrl) {
+        return rawTradeSink(clickhouseUrl, "");
+    }
+
+    /** tablePrefix: 부하 실험 격리용("load_test_"). 프로덕션은 "" (docs/15). */
+    public static SinkFunction<CryptoTradeEvent> rawTradeSink(String clickhouseUrl, String tablePrefix) {
         return JdbcSink.sink(
-            "INSERT INTO crypto_trades (op, trade_id, market, trade_price, trade_volume, trade_amount, ask_bid, upbit_timestamp, sequential_id, source_ts, cdc_ts, cdc_latency_ms, flink_ts, best_ask_price, best_ask_size, best_bid_price, best_bid_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO " + tablePrefix + "crypto_trades (op, trade_id, market, trade_price, trade_volume, trade_amount, ask_bid, upbit_timestamp, sequential_id, source_ts, cdc_ts, cdc_latency_ms, flink_ts, best_ask_price, best_ask_size, best_bid_price, best_bid_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ps, event) -> {
                 ps.setString(1, event.getOp());
                 ps.setLong(2, event.getTradeId());
@@ -58,8 +63,12 @@ public class ClickHouseSinks {
      * 5분 윈도우 집계 → trade_aggregations 테이블
      */
     public static SinkFunction<TradeAggResult> aggregationSink(String clickhouseUrl) {
+        return aggregationSink(clickhouseUrl, "");
+    }
+
+    public static SinkFunction<TradeAggResult> aggregationSink(String clickhouseUrl, String tablePrefix) {
         return JdbcSink.sink(
-            "INSERT INTO trade_aggregations (market, window_start, window_end, trade_count, bid_count, ask_count, total_amount, total_volume, avg_price, min_price, max_price, vwap) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO " + tablePrefix + "trade_aggregations (market, window_start, window_end, trade_count, bid_count, ask_count, total_amount, total_volume, avg_price, min_price, max_price, vwap) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ps, agg) -> {
                 ps.setString(1, agg.getMarket());
                 ps.setTimestamp(2, new Timestamp(agg.getWindowStart()));

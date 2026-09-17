@@ -17,9 +17,12 @@ public class OrderbookSinks {
     private static final long BATCH_INTERVAL_MS = 2000;
     private static final int MAX_RETRIES = 3;
 
-    public static SinkFunction<OrderbookEvent> rawSink(String url) {
+    public static SinkFunction<OrderbookEvent> rawSink(String url) { return rawSink(url, ""); }
+
+    /** tablePrefix: 부하 실험 격리용("load_test_"), 프로덕션은 "" (docs/15). */
+    public static SinkFunction<OrderbookEvent> rawSink(String url, String tablePrefix) {
         return JdbcSink.sink(
-            "INSERT INTO orderbook_raw (market, ts, level, total_ask_size, total_bid_size, ask_prices, ask_sizes, bid_prices, bid_sizes, stream_type, recv_ts, flink_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO " + tablePrefix + "orderbook_raw (market, ts, level, total_ask_size, total_bid_size, ask_prices, ask_sizes, bid_prices, bid_sizes, stream_type, recv_ts, flink_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ps, e) -> {
                 ps.setString(1, e.getMarket());
                 ps.setTimestamp(2, new Timestamp(e.getTs()));
@@ -37,9 +40,11 @@ public class OrderbookSinks {
             executionOptions(), connectionOptions(url));
     }
 
-    public static SinkFunction<OrderbookMinute> minuteSink(String url) {
+    public static SinkFunction<OrderbookMinute> minuteSink(String url) { return minuteSink(url, ""); }
+
+    public static SinkFunction<OrderbookMinute> minuteSink(String url, String tablePrefix) {
         return JdbcSink.sink(
-            "INSERT INTO orderbook_1m (market, window_start, window_end, snapshots, mid_open, mid_close, mid_min, mid_max, spread_avg, spread_bp_avg, spread_bp_max, imb1_avg, imb5_avg, imb15_avg, ask_depth15_avg, bid_depth15_avg, total_ask_avg, total_bid_avg, recv_lag_ms_avg, flink_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO " + tablePrefix + "orderbook_1m (market, window_start, window_end, snapshots, mid_open, mid_close, mid_min, mid_max, spread_avg, spread_bp_avg, spread_bp_max, imb1_avg, imb5_avg, imb15_avg, ask_depth15_avg, bid_depth15_avg, total_ask_avg, total_bid_avg, recv_lag_ms_avg, flink_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ps, m) -> {
                 ps.setString(1, m.market);
                 ps.setTimestamp(2, new Timestamp(m.windowStart));

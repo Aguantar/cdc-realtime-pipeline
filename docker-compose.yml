@@ -274,6 +274,36 @@ services:
     networks:
       - cdc-network
 
+  # 2026-09-17 부하 실험 전용 TaskManager (docs/15 §4). 프로필 lab 으로만 기동: docker compose --profile lab up -d flink-taskmanager-lab
+  # 왜 별도 TM 인가: 프로덕션 TM 슬롯이 4/4 사용 중이라 실험 잡은 이 TM 에만 배치된다 → 슬롯 경합 없음. 실험이 끝나면 내린다.
+  flink-taskmanager-lab:
+    image: flink:1.18-java11
+    container_name: cdc-flink-taskmanager-lab
+    profiles: ["lab"]
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.memory.process.size: 1536m
+        taskmanager.memory.jvm-metaspace.size: 256m
+        taskmanager.memory.managed.fraction: 0.25
+        taskmanager.numberOfTaskSlots: 2
+        state.backend: hashmap
+        state.checkpoints.dir: file:///opt/flink/checkpoints
+        state.savepoints.dir: file:///opt/flink/savepoints
+    user: "0"
+    volumes:
+      - flink_checkpoints:/opt/flink/checkpoints
+      - flink_savepoints:/opt/flink/savepoints
+    deploy:
+      resources:
+        limits:
+          memory: 1792M
+    networks:
+      - cdc-network
+
   clickhouse:
     image: clickhouse/clickhouse-server:24.1
     container_name: cdc-clickhouse

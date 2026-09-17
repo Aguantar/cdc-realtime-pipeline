@@ -33,6 +33,10 @@ public class OrderbookJob {
         String topic = System.getenv().getOrDefault("ORDERBOOK_TOPIC", "upbit.orderbook.v1");
         String clickhouseUrl = System.getenv().getOrDefault("CLICKHOUSE_URL", "jdbc:clickhouse://clickhouse:8123/cdc_pipeline");
         int parallelism = Integer.parseInt(System.getenv().getOrDefault("ORDERBOOK_PARALLELISM", "1"));
+        // 2026-09-17 부하 실험 격리(docs/15): 실험 잡만 ORDERBOOK_TOPIC=load_test.orderbook ORDERBOOK_GROUP_ID=... CLICKHOUSE_TABLE_PREFIX=load_test_
+        String groupId = System.getenv().getOrDefault("ORDERBOOK_GROUP_ID", "flink-orderbook-consumer");
+        String tablePrefix = System.getenv().getOrDefault("CLICKHOUSE_TABLE_PREFIX", "");
+        String jobName = System.getenv().getOrDefault("JOB_NAME", "Orderbook Pipeline");
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(parallelism);
@@ -44,7 +48,7 @@ public class OrderbookJob {
         KafkaSource<String> source = KafkaSource.<String>builder()
                 .setBootstrapServers(bootstrap)
                 .setTopics(topic)
-                .setGroupId("flink-orderbook-consumer")
+                .setGroupId(groupId)
                 .setStartingOffsets(OffsetsInitializer.committedOffsets(OffsetResetStrategy.LATEST))
                 .setValueOnlyDeserializer(new NullSafeStringSchema())
                 .build();
@@ -63,7 +67,7 @@ public class OrderbookJob {
                 .assignTimestampsAndWatermarks(wm);
 
         // (1) 원본 스냅샷
-        books.addSink(OrderbookSinks.rawSink(clickhouseUrl)).name("ClickHouse Orderbook Raw Sink");
+        books.addSink(OrderbookSinks.rawSink(clickhouseUrl, tablePrefix)).name("ClickHouse Orderbook Raw Sink");
 
         // (2) 1분 파생지표
         DataStream<OrderbookMinute> minutes = books
@@ -71,9 +75,9 @@ public class OrderbookJob {
                 .window(TumblingEventTimeWindows.of(Time.minutes(1)))
                 .aggregate(new OrderbookAggregator(), new OrderbookAggregator.WindowEnricher())
                 .name("1min Orderbook Aggregation");
-        minutes.addSink(OrderbookSinks.minuteSink(clickhouseUrl)).name("ClickHouse Orderbook 1m Sink");
+        minutes.addSink(OrderbookSinks.minuteSink(clickhouseUrl, tablePrefix)).name("ClickHouse Orderbook 1m Sink");
 
         LOG.info("=== Orderbook Job: topic={} bootstrap={} clickhouse={} parallelism={}", topic, bootstrap, clickhouseUrl, parallelism);
-        env.execute("Orderbook Pipeline");
+        env.execute(jobName);
     }
 }
