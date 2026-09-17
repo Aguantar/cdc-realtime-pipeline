@@ -168,7 +168,7 @@ def send_daily_report(report_data: dict[str, Any]) -> None:
     date = report_data.get("date", "N/A")
     quality = report_data.get("quality", {})
     summary = report_data.get("summary", [])
-    volume_spikes = report_data.get("volume_spikes", [])
+    qm = report_data.get("quality_metrics", {}) or {}
     duplicates = report_data.get("duplicates_found", 0)
     latency = report_data.get("latency_stats", {})
     anomaly_counts = report_data.get("anomaly_counts", {})
@@ -283,23 +283,28 @@ def send_daily_report(report_data: dict[str, Any]) -> None:
                 "text": {
                     "type": "mrkdwn",
                     "text": (
-                        f":rotating_light: *Anomaly Alerts* ({total_anomalies}건)\n"
+                        f":rotating_light: *Market Alerts v2 (섀도, 미발송)* ({total_anomalies}건 전이)\n"
                         + " | ".join(anomaly_parts)
                     ),
                 },
             })
 
-    # 볼륨 스파이크
-    if volume_spikes:
-        spike_lines = [
-            f"• {s.get('market', '?')} {s.get('hour_start', '?')} (x{s.get('volume_ratio', '?')})"
-            for s in volume_spikes[:3]
-        ]
+    # 파이프라인 품질 (docs/22): 어제 데이터가 맞는가 — 원장 대조·수리·지연·늦은 행·섀도 전이
+    if qm:
+        rp = qm.get("reconcile_pct") or "-"
+        cb = qm.get("cells_below_99") or 0
+        rep = qm.get("repairs") or 0
+        rec = qm.get("rows_recovered") or 0
+        pq = ":large_green_circle:" if str(cb) == "0" and rp not in ("-", "", None) else ":large_yellow_circle:"
         blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": ":zap: *Volume Spikes*\n" + "\n".join(spike_lines),
+                "text": (
+                    f"{pq} *Pipeline Quality*\n"
+                    f"원장 대조(전날 UTC) {rp}% · 99% 미만 셀 {cb} | 수리 {rep}회 / {rec}행 | "
+                    f"지연 p95 {qm.get('lag_p95_s') or '-'}s · 늦은 행 {qm.get('late_rows') or 0} | 섀도 전이 {qm.get('shadow_alerts') or 0}"
+                ),
             },
         })
 

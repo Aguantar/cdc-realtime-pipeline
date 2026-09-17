@@ -1,11 +1,11 @@
 package com.cdc.pipeline;
 
-import com.cdc.pipeline.function.AnomalyDetector;
+import com.cdc.pipeline.function.MarketAlertDetector;
 import com.cdc.pipeline.function.TradeAggregator;
 import com.cdc.pipeline.function.CdcEventParser;
 import com.cdc.pipeline.model.CryptoTradeEvent;
 import com.cdc.pipeline.model.TradeAggResult;
-import com.cdc.pipeline.model.AnomalyAlert;
+import com.cdc.pipeline.model.MarketAlert;
 import com.cdc.pipeline.sink.ClickHouseSinks;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
@@ -80,16 +80,20 @@ public class CdcPipelineJob {
         aggregated.addSink(ClickHouseSinks.aggregationSink(clickhouseUrl))
                 .name("ClickHouse Aggregation Sink");
 
-        // 6. Stream 2: 이상 탐지 → ClickHouse
-        DataStream<AnomalyAlert> anomalies = tradeEvents
+        // 6. Stream 2: 이상탐지 v2 — PRICE_24H 등급 전이 → market_alerts (섀도, docs/22)
+        // uid 를 명시하는 이유: 구 AnomalyDetector 의 상태(lastPrice 등)를 이어받지 않고 새로 시작한다.
+        // 재제출 시 savepoint 의 구 연산자 상태는 --allowNonRestoredState 로 의도적으로 버린다 (근거 없는 규칙의 상태는 보존 가치가 없다).
+        DataStream<MarketAlert> marketAlerts = tradeEvents
                 .filter(event -> "c".equals(event.getOp()))
                 .keyBy(CryptoTradeEvent::getMarket)
-                .process(new AnomalyDetector())
-                .name("Anomaly Detector");
+                .process(new MarketAlertDetector())
+                .uid("market-alert-detector-v2")
+                .name("Market Alert Detector (PRICE_24H)");
 
-        anomalies.print("ALERT");
-        anomalies.addSink(ClickHouseSinks.alertSink(clickhouseUrl))
-                .name("ClickHouse Alert Sink");
+        marketAlerts.print("ALERT");
+        marketAlerts.addSink(ClickHouseSinks.marketAlertSink(clickhouseUrl))
+                .uid("market-alert-sink-v2")
+                .name("ClickHouse Market Alert Sink");
 
         // 7. Stream 3: Raw 체결 이벤트 → ClickHouse
         tradeEvents.addSink(ClickHouseSinks.rawTradeSink(clickhouseUrl))

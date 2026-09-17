@@ -301,15 +301,20 @@ with DAG(
             """
         )
 
-        volume_spikes = hook.get_records(
+        # 파이프라인 품질 (2026-09-17, docs/22): 리포트의 중심을 이상탐지 건수에서 "어제 데이터가 맞는가"로 옮긴다.
+        # 원장 대조·수리·지연은 dbt 품질 층(dq_*)에서 읽는다. 대조는 UTC 하루 기준이라 전날 UTC 로 조회.
+        quality_metrics = hook.get_first(
             f"""
-            SELECT market, hour_start, round(volume_ratio, 1) AS volume_ratio
-            FROM cdc_pipeline.mart_volume_spike
-            WHERE toDate(hour_start) = '{target_date}'
-            ORDER BY volume_ratio DESC
-            LIMIT 5
+            SELECT
+                (SELECT weighted_pct FROM cdc_pipeline.dq_reconcile_daily WHERE day = toDate('{target_date}') - 1) AS reconcile_pct,
+                (SELECT cells_below_99 FROM cdc_pipeline.dq_reconcile_daily WHERE day = toDate('{target_date}') - 1) AS cells_below_99,
+                (SELECT sum(repairs) FROM cdc_pipeline.dq_repairs_daily WHERE day = toDate('{target_date}')) AS repairs,
+                (SELECT sum(rows_recovered) FROM cdc_pipeline.dq_repairs_daily WHERE day = toDate('{target_date}')) AS rows_recovered,
+                (SELECT lag_p95_s FROM cdc_pipeline.dq_ingest_daily WHERE day = toDate('{target_date}')) AS lag_p95_s,
+                (SELECT late_rows_gt_60s FROM cdc_pipeline.dq_ingest_daily WHERE day = toDate('{target_date}')) AS late_rows,
+                (SELECT count() FROM cdc_pipeline.market_alerts WHERE toDate(event_time) = toDate('{target_date}') AND prev_level = 0 AND level > 0) AS shadow_alerts
             """
-        )
+        ) or {}
 
         # CDC 지연 통계 (p50/p95/p99/max)
         latency_stats = hook.get_records(
@@ -333,13 +338,13 @@ with DAG(
                 "max": row.get("max_val", "?"),
             }
 
-        # 이상 탐지 알림 건수 (유형별)
+        # 이상탐지 v2 (섀도): 등급 전이 건수 — 발송 전이라 리포트에 건수만
         anomaly_rows = hook.get_records(
             f"""
-            SELECT alert_type, count() AS cnt
-            FROM cdc_pipeline.anomaly_alerts
-            WHERE toDate(toTimeZone(detected_at, 'Asia/Seoul')) = '{target_date}'
-            GROUP BY alert_type
+            SELECT concat(alert_type, ' L', toString(level)) AS alert_type, count() AS cnt
+            FROM cdc_pipeline.market_alerts
+            WHERE toDate(event_time) = toDate('{target_date}') AND prev_level = 0 AND level > 0
+            GROUP BY alert_type, level
             """
         )
         anomaly_counts = {
@@ -349,7 +354,7 @@ with DAG(
         return {
             "date": target_date,
             "summary": summary,
-            "volume_spikes": volume_spikes,
+            "quality_metrics": quality_metrics,
             "latency_stats": latency,
             "anomaly_counts": anomaly_counts,
             "coin_count": len(summary),
@@ -381,7 +386,7 @@ with DAG(
             "date": target_date,
             "quality": quality,
             "summary": report.get("summary", []) if report else [],
-            "volume_spikes": report.get("volume_spikes", []) if report else [],
+            "quality_metrics": report.get("quality_metrics", {}) if report else {},
             "latency_stats": report.get("latency_stats", {}) if report else {},
             "anomaly_counts": report.get("anomaly_counts", {}) if report else {},
             "duplicates_found": dup_rows,

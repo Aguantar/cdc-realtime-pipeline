@@ -2,7 +2,7 @@ package com.cdc.pipeline.sink;
 
 import com.cdc.pipeline.model.CryptoTradeEvent;
 import com.cdc.pipeline.model.TradeAggResult;
-import com.cdc.pipeline.model.AnomalyAlert;
+import com.cdc.pipeline.model.MarketAlert;
 
 import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
 import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
@@ -80,19 +80,24 @@ public class ClickHouseSinks {
     }
 
     /**
-     * 이상 탐지 알림 → anomaly_alerts 테이블
+     * 이상탐지 v2 — 마켓 등급 전이 → market_alerts (docs/22). 섀도 기간엔 이 테이블만 쓰고 발송은 없다.
      */
-    public static SinkFunction<AnomalyAlert> alertSink(String clickhouseUrl) {
+    public static SinkFunction<MarketAlert> marketAlertSink(String clickhouseUrl) {
         return JdbcSink.sink(
-            "INSERT INTO anomaly_alerts (alert_type, market, trade_id, message, value, threshold, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (ps, alert) -> {
-                ps.setString(1, alert.getType().name());
-                ps.setString(2, alert.getMarket());
-                ps.setLong(3, alert.getTradeId());
-                ps.setString(4, alert.getMessage());
-                ps.setDouble(5, alert.getValue());
-                ps.setDouble(6, alert.getThreshold());
-                ps.setTimestamp(7, new Timestamp(alert.getDetectedAt()));
+            "INSERT INTO market_alerts (alert_type, market, level, prev_level, event_time, detected_at, value, threshold, ref_price, price, trade_id, rule_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ps, a) -> {
+                ps.setString(1, a.getAlertType());
+                ps.setString(2, a.getMarket());
+                ps.setInt(3, a.getLevel());
+                ps.setInt(4, a.getPrevLevel());
+                ps.setTimestamp(5, new Timestamp(a.getEventTime()));
+                ps.setTimestamp(6, new Timestamp(a.getDetectedAt()));
+                ps.setDouble(7, a.getValue());
+                ps.setDouble(8, a.getThreshold());
+                ps.setDouble(9, a.getRefPrice());
+                ps.setDouble(10, a.getPrice());
+                ps.setLong(11, a.getTradeId());
+                ps.setString(12, a.getRuleVersion());
             },
             executionOptions(),
             connectionOptions(clickhouseUrl)

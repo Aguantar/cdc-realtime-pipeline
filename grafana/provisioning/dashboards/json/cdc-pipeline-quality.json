@@ -1,0 +1,182 @@
+{
+  "uid": "cdc-pipeline-quality",
+  "title": "CDC Pipeline Quality (dq_*)",
+  "tags": [
+    "cdc",
+    "quality"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "refresh": "10m",
+  "panels": [
+    {
+      "id": 1,
+      "title": "원장 대조 — 일별 가중 비율 (%)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT toDateTime(day) as time, weighted_pct FROM cdc_pipeline.dq_reconcile_daily WHERE day >= today() - 30 ORDER BY day",
+          "format": 0,
+          "refId": "A",
+          "queryType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "원장 대조 — 99% 미만 셀 / 0건 마켓",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT toDateTime(day) as time, cells_below_99, markets_no_rows FROM cdc_pipeline.dq_reconcile_daily WHERE day >= today() - 30 ORDER BY day",
+          "format": 0,
+          "refId": "A",
+          "queryType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "적재 지연 p50/p95/max (초)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT toDateTime(day) as time, lag_p50_s, lag_p95_s, lag_max_live_s FROM cdc_pipeline.dq_ingest_daily WHERE day >= today() - 30 ORDER BY day",
+          "format": 0,
+          "refId": "A",
+          "queryType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "늦은 행(>60s, 가드 대상) / 수리 복구 행",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT toDateTime(i.day) as time, i.late_rows_gt_60s, ifNull(r.rows_recovered, 0) as rows_recovered FROM cdc_pipeline.dq_ingest_daily i LEFT JOIN (SELECT day, sum(rows_recovered) rows_recovered FROM cdc_pipeline.dq_repairs_daily GROUP BY day) r ON r.day = i.day WHERE i.day >= today() - 30 ORDER BY i.day",
+          "format": 0,
+          "refId": "A",
+          "queryType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "수리 계보 (창 단위)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT toDateTime(day) as time, reason, repairs, gap_seconds, exchange_rows_in_windows, rows_recovered FROM cdc_pipeline.dq_repairs_daily ORDER BY day DESC LIMIT 30",
+          "format": 1,
+          "refId": "A",
+          "queryType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "규칙 평가 — 정밀도·재현율·선행(초) vs 거래소 지정",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT toDateTime(day) as time, rule, ours, matched, exchange, precision, recall, lead_median_s FROM cdc_pipeline.dq_rule_eval_daily ORDER BY day DESC LIMIT 30",
+          "format": 1,
+          "refId": "A",
+          "queryType": "sql"
+        }
+      ]
+    }
+  ],
+  "description": "파이프라인 품질 층(dbt dq_*): 원장 대조·수리 계보·적재 지연·규칙 평가. docs/22"
+}

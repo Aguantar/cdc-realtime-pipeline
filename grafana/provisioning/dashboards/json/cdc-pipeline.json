@@ -183,7 +183,7 @@
     },
     {
       "id": 3,
-      "title": "⚠ Active Alerts (이상 탐지 / 최근 1시간 기준)",
+      "title": "⚠ Market Alerts v2 (섀도 · 최근 1시간 지정 전이)",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -197,7 +197,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT count() as alerts FROM cdc_pipeline.anomaly_alerts WHERE detected_at >= now() - INTERVAL 1 HOUR",
+          "rawSql": "SELECT count() as alerts FROM cdc_pipeline.market_alerts WHERE detected_at >= now() - INTERVAL 1 HOUR AND prev_level = 0 AND level > 0",
           "refId": "A",
           "format": 1
         }
@@ -559,7 +559,7 @@
     },
     {
       "id": 8,
-      "title": "Anomaly Alerts (이상 탐지 내역)",
+      "title": "Market Alerts v2 (등급 전이 · 섀도)",
       "type": "table",
       "gridPos": {
         "h": 8,
@@ -573,7 +573,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT \n    detected_at as time,\n    alert_type,\n    market,\n    replaceRegexpAll(message, '(\\d{4,})', '\\1') as message,\n    value,\n    threshold\nFROM cdc_pipeline.anomaly_alerts \nORDER BY detected_at DESC \nLIMIT 50",
+          "rawSql": "SELECT event_time as time, alert_type, market, concat('L', toString(prev_level), '→L', toString(level)) as transition, round(value, 1) as value_pct, threshold, rule_version FROM cdc_pipeline.market_alerts ORDER BY event_time DESC LIMIT 50",
           "refId": "A",
           "format": 1
         }

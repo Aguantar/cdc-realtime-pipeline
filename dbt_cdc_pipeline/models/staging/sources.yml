@@ -82,5 +82,7 @@ sources:
         description: "업비트 일봉 200일 (경보 백테스트 피처, docs/16)."
       - name: upbit_market_event_records
         description: "업비트 시장경보 지정/해제 이력 (이상탐지 정답 라벨, docs/16). 매시 증분 동기화."
+      - name: market_alerts
+        description: "이상탐지 v2 출력(마켓 등급 전이). PRICE_24H 는 Flink(섀도), VOLUME_24H 는 dbt. 승격 전까지 발송 없음 (docs/22)."
       - name: ingest_repairs
         description: "유입 공백 수리 계보(창 단위): producer gap-fill(reconnect/startup)·수동 백필(manual). 대조 결과와 조인해 '수리된 구간'을 표시한다 (docs/19 #14)."

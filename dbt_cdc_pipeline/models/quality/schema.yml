@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: dq_reconcile_daily
+    description: "일별 원장 대조 요약 (가중 비율·99% 미만 셀·0건 셀·최악 셀). 유실 0 의 일일 증거."
+    columns:
+      - name: day
+        tests: [not_null, unique]
+      - name: weighted_pct
+        description: "거래소 시간봉 거래량 대비 우리 체결 거래량, 하루 가중."
+  - name: dq_repairs_daily
+    description: "유입 공백 수리 계보(창 단위)의 일별 요약. reason = reconnect | startup | manual."
+  - name: dq_ingest_daily
+    description: "일별 적재 지연 분위수·늦은 행·마켓 수. 증분 재계산(전날~오늘)."
+    columns:
+      - name: day
+        tests: [not_null, unique]
+  - name: dq_rule_eval_daily
+    description: >
+      이상탐지 규칙(PRICE_24H 섀도, VOLUME_24H)을 거래소 지정 이력과 매일 대조한 정밀도·재현율·선행 시간.
+      규칙의 존재 이유이자 승격 판단 근거 (docs/16 §5, docs/22).
+    columns:
+      - name: rule
+        tests:
+          - accepted_values:
+              values: ['PRICE_24H', 'VOLUME_24H']

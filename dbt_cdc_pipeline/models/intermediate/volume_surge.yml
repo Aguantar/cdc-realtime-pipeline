@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: int_volume_surge_daily
+    description: "VOLUME_24H 규칙: 전일 거래대금 ≥ 7일 평균 × 4 AND ≥ 10억 (docs/16 §4-2 실측: 정밀도 0.79 / 재현율 0.80). 배치 규칙은 dbt 모델로."
+    columns:
+      - name: market
+        tests: [not_null]
+      - name: day
+        tests: [not_null]
+      - name: flagged
+        tests: [not_null]

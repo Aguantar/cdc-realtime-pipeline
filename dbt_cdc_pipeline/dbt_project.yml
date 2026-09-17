@@ -23,3 +23,5 @@ models:
       +materialized: table
     marts:
       +materialized: table
+    quality:
+      +materialized: table   # 파이프라인 품질 층 (docs/22): 대조·수리·지연·규칙 평가. DE 가 소유하는 경계 계약의 결과 테이블
