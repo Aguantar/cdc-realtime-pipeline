@@ -385,7 +385,10 @@ def record_repair(reason, lo_ms, hi_ms, markets_n, rest_rows, inserted, elapsed_
            'window_start': fmt(lo_ms), 'window_end': fmt(hi_ms), 'markets': markets_n, 'rest_rows': rest_rows,
            'inserted_rows': inserted, 'elapsed_s': round(elapsed_s, 1), 'note': note}
     try:
-        q = urllib.parse.urlencode({'query': 'INSERT INTO cdc_pipeline.ingest_repairs FORMAT JSONEachRow'})
+        params = {'query': 'INSERT INTO cdc_pipeline.ingest_repairs FORMAT JSONEachRow'}
+        if os.getenv('CLICKHOUSE_PIPELINE_USER'):
+            params['user'] = os.getenv('CLICKHOUSE_PIPELINE_USER'); params['password'] = os.getenv('CLICKHOUSE_PIPELINE_PASSWORD', '')
+        q = urllib.parse.urlencode(params)
         req = urllib.request.Request(f"{CLICKHOUSE_URL}/?{q}", data=json.dumps(row).encode(), method='POST')
         urllib.request.urlopen(req, timeout=10).read()
     except Exception as e:

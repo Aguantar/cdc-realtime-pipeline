@@ -219,6 +219,8 @@ services:
       - "8081:8081"
     command: jobmanager
     environment:
+      # ClickHouse 싱크 인증 (docs/21). main() 이 제출 시 이 env 를 읽어 잡 그래프에 넣는다
+      CLICKHOUSE_URL: jdbc:clickhouse://clickhouse:8123/cdc_pipeline?user=${CLICKHOUSE_PIPELINE_USER}&password=${CLICKHOUSE_PIPELINE_PASSWORD}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         jobmanager.memory.process.size: 768m
@@ -251,6 +253,7 @@ services:
       - flink-jobmanager
     command: taskmanager
     environment:
+      CLICKHOUSE_URL: jdbc:clickhouse://clickhouse:8123/cdc_pipeline?user=${CLICKHOUSE_PIPELINE_USER}&password=${CLICKHOUSE_PIPELINE_PASSWORD}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.memory.process.size: 2g
@@ -280,11 +283,17 @@ services:
     environment:
       CLICKHOUSE_DB: cdc_pipeline
       CLICKHOUSE_USER: default
+      # 2026-09-17 접근 통제 (docs/21): default 에 비밀번호. "localhost 전용" 제한은 Docker userland proxy 가 모든 호스트 포트 접속을
+      # 127.0.0.1 로 보이게 해 무의미했다(n8n 접속이 127.0.0.1 로 관측됨). 따라서 인증이 유일한 통제다.
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_DEFAULT_PASSWORD}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
       - ./clickhouse/config.d/system-logs-ttl.xml:/etc/clickhouse-server/config.d/system-logs-ttl.xml:ro
+      - ./clickhouse/config.d/backups.xml:/etc/clickhouse-server/config.d/backups.xml:ro       # 백업 허용 경로 (docs/21)
+      - /home/calme/clickhouse-client-config.xml:/etc/clickhouse-client/config.xml:ro              # docker exec clickhouse-client 인증 (docs/21, 저장소 밖)
+      - /home/calme/clickhouse-backups:/backups                                                    # 백업 산출물 (호스트 → rsync → Oracle)
     deploy:
       resources:
         limits:
@@ -317,6 +326,8 @@ services:
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      CLICKHOUSE_PIPELINE_USER: ${CLICKHOUSE_PIPELINE_USER}          # 데이터소스 프로비저닝에서 참조 (docs/21)
+      CLICKHOUSE_PIPELINE_PASSWORD: ${CLICKHOUSE_PIPELINE_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
@@ -343,6 +354,9 @@ services:
       MYSQL_DATABASE: crypto_db
       BATCH_SIZE: "100"
       MARKETS: ALL_KRW
+      CLICKHOUSE_URL: http://cdc-clickhouse:8123          # 수리 계보 기록 (docs/20)
+      CLICKHOUSE_PIPELINE_USER: ${CLICKHOUSE_PIPELINE_USER}
+      CLICKHOUSE_PIPELINE_PASSWORD: ${CLICKHOUSE_PIPELINE_PASSWORD}
       BATCH_INTERVAL_SEC: "2"
     deploy:
       resources:
@@ -443,6 +457,10 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER}:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB}
       AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      CLICKHOUSE_PIPELINE_USER: ${CLICKHOUSE_PIPELINE_USER}          # dbt profile env_var (docs/21)
+      CLICKHOUSE_PIPELINE_PASSWORD: ${CLICKHOUSE_PIPELINE_PASSWORD}
+      CLICKHOUSE_ICEPUSH_USER: ${CLICKHOUSE_ICEPUSH_USER}            # icepush dbt DAG 용 (타 프로젝트, docs/21)
+      CLICKHOUSE_ICEPUSH_PASSWORD: ${CLICKHOUSE_ICEPUSH_PASSWORD}
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     entrypoint: /bin/bash
     command:
@@ -468,6 +486,10 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER}:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB}
       AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      CLICKHOUSE_PIPELINE_USER: ${CLICKHOUSE_PIPELINE_USER}          # dbt profile env_var (docs/21)
+      CLICKHOUSE_PIPELINE_PASSWORD: ${CLICKHOUSE_PIPELINE_PASSWORD}
+      CLICKHOUSE_ICEPUSH_USER: ${CLICKHOUSE_ICEPUSH_USER}            # icepush dbt DAG 용 (타 프로젝트, docs/21)
+      CLICKHOUSE_ICEPUSH_PASSWORD: ${CLICKHOUSE_ICEPUSH_PASSWORD}
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
       AIRFLOW__WEBSERVER__AUTH_ROLE_PUBLIC: Viewer
@@ -509,6 +531,10 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER}:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB}
       AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      CLICKHOUSE_PIPELINE_USER: ${CLICKHOUSE_PIPELINE_USER}          # dbt profile env_var (docs/21)
+      CLICKHOUSE_PIPELINE_PASSWORD: ${CLICKHOUSE_PIPELINE_PASSWORD}
+      CLICKHOUSE_ICEPUSH_USER: ${CLICKHOUSE_ICEPUSH_USER}            # icepush dbt DAG 용 (타 프로젝트, docs/21)
+      CLICKHOUSE_ICEPUSH_PASSWORD: ${CLICKHOUSE_ICEPUSH_PASSWORD}
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__METRICS__STATSD_ON: 'true'
       AIRFLOW__METRICS__STATSD_HOST: statsd-exporter

@@ -11,4 +11,7 @@ datasources:
       port: 9000
       protocol: native
       defaultDatabase: cdc_pipeline
+      username: $CLICKHOUSE_PIPELINE_USER
+    secureJsonData:
+      password: $CLICKHOUSE_PIPELINE_PASSWORD
     editable: true
