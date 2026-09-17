@@ -175,21 +175,17 @@
 
 ![Gmail Alert](docs/images/gmail-alert.png)
 
-**FDS 이상거래 탐지 (Slack)**
+**FDS 알림 (Slack)** — 2026-09-17 부터 n8n 은 우리 규칙이 아니라 **거래소 시장경보 지정·해제 전이**(`upbit_market_events`, 1분 폴링)를 보낸다.
+우리 규칙(PRICE_24H·VOLUME_24H)은 `market_alerts` 에 섀도로만 쌓이고, 승격 기준(`docs/22 §4`)을 넘기 전엔 발송하지 않는다.
+아래는 교체 전(v1 규칙) 메시지 예시로, 형식 참고용이다.
 
 ```
-🚨 FDS 이상거래 탐지!
+🚨 FDS 이상거래 탐지!  (v1, 2026-02 — 규칙은 폐기됨)
 
 최근 1분간: 3건
-최근 5분 거래: 2,476건
-총 적재 건수: 6,764,002건
-시간: 2026-02-23 14:42:19
-
 상세 내역:
 • VOLUME_SURGE | KRW-BTC: 거래량 EMA 대비 52.3배 급증
 • VOLUME_SURGE | KRW-ETH: 거래량 EMA 대비 61.7배 급증
-
-📊 Grafana 대시보드 바로가기
 ```
 
 **CDC 파이프라인 장애 (Gmail)**
