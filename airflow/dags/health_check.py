@@ -197,6 +197,46 @@ with DAG(
     )
 
     # ── 종합 판단 (XCom 수집) ────────────────────────────────
+    # ── 포화 선행 지표 (2026-09-17 추가, docs/23 §5 부하 실험) ─────────
+    # 실험에서 임계(10,000/s)에 닿기 전에 먼저 움직인 지표 둘: ① Flink 소스 체인 busy(500→5,000/s 에서 48→240 ms/s 선형, 임계에서 1,000),
+    # ② ClickHouse insert 평균 지연(기준선 9ms → 24ms 부터 정체 시작). 프로덕션 기준선: busy 3 ms/s, insert 평균 14~18 ms(24h 시간별).
+    # 임계: busy > 500 ms/s(포화의 절반 — 실험에서 651 은 이미 정체), insert 평균 > 30 ms(기준선 2배). 둘 다 10분 창.
+    # 백프레셔는 쓰지 않는다: 소스가 체인의 머리라 10,000/s 에서도 0 이었다(docs/23 §5).
+    def _check_source_busy(**context) -> dict:
+        import requests
+        base = "http://flink-jobmanager:8081"
+        jobs = requests.get(f"{base}/jobs/overview", timeout=10).json()["jobs"]
+        js = [j for j in jobs if j["name"] == "CDC Realtime Pipeline" and j["state"] == "RUNNING"]
+        if not js:
+            return {"busy_max_ms": None, "error": "prod CDC job not running"}
+        jid = js[0]["jid"]
+        vertices = requests.get(f"{base}/jobs/{jid}", timeout=10).json()["vertices"]
+        src = [v for v in vertices if v["name"].startswith("Source")][0]["id"]
+        m = requests.get(f"{base}/jobs/{jid}/vertices/{src}/subtasks/metrics",
+                         params={"get": "busyTimeMsPerSecond", "agg": "max"}, timeout=10).json()
+        busy = float(m[0]["max"]) if m else None
+        return {"busy_max_ms": busy, "job_id": jid}
+
+    check_source_busy = PythonOperator(
+        task_id="check_source_busy",
+        python_callable=_check_source_busy,
+    )
+
+    check_insert_latency = ClickHouseOperator(
+        task_id="check_insert_latency",
+        sql="""
+            SELECT
+                round(avg(query_duration_ms), 1) AS insert_avg_ms,
+                round(quantile(0.95)(query_duration_ms)) AS insert_p95_ms,
+                count() AS inserts_10min
+            FROM system.query_log
+            WHERE type = 'QueryFinish' AND query_kind = 'Insert'
+              AND has(tables, 'cdc_pipeline.crypto_trades')
+              AND event_time >= now() - INTERVAL 10 MINUTE
+        """,
+        result_type="first",
+    )
+
     def _evaluate_health(**context) -> dict:
         ti = context["ti"]
 
@@ -207,8 +247,19 @@ with DAG(
         connect_result = ti.xcom_pull(task_ids="check_kafka_connect")
         lag_result = ti.xcom_pull(task_ids="check_ingest_lag")
         coverage_result = ti.xcom_pull(task_ids="check_market_coverage")
+        busy_result = ti.xcom_pull(task_ids="check_source_busy")
+        insert_result = ti.xcom_pull(task_ids="check_insert_latency")
 
         unhealthy = []
+
+        # 포화 선행 지표 (docs/23 §5): 유실 전에, 실시간이 깨지기 전에 알린다
+        if busy_result and busy_result.get("busy_max_ms") is not None and float(busy_result["busy_max_ms"]) > 500:
+            unhealthy.append({"name": "Flink Source Saturation",
+                              "message": f"source busy max {busy_result['busy_max_ms']:.0f} ms/s (> 500; 1,000 = 포화, 기준선 3)"})
+        if insert_result and insert_result.get("insert_avg_ms") is not None and int(insert_result.get("inserts_10min", 0)) > 0 \
+                and float(insert_result["insert_avg_ms"]) > 30:
+            unhealthy.append({"name": "ClickHouse Insert Latency",
+                              "message": f"insert avg {insert_result['insert_avg_ms']} ms / p95 {insert_result['insert_p95_ms']} ms over 10 min (> 30; 기준선 14~18)"})
 
         # 마켓 커버리지: 거래소에는 최신 체결이 있는데 우리에게 60초 넘게 없는 마켓
         if coverage_result and int(coverage_result.get("missing_count", 0)) > 0:
@@ -318,6 +369,8 @@ with DAG(
             check_connect,
             check_ingest_lag,
             check_market_coverage,
+            check_source_busy,
+            check_insert_latency,
         ]
         >> evaluate_health
     )
