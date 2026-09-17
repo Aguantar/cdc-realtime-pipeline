@@ -160,6 +160,7 @@ with DAG(
             connectors = resp.json()
 
             statuses = {}
+            restarted = []
             for name in connectors:
                 status_resp = req.get(
                     f"http://kafka-connect:8083/connectors/{name}/status",
@@ -176,6 +177,17 @@ with DAG(
                     "connector": connector_state,
                     "tasks": tasks_state,
                 }
+                # 2026-09-17 자동 복구 (docs/23 §6, 브로커 축소 선행 조건): Connect 는 FAILED 태스크를 스스로 살리지 않는다.
+                # 브로커 전체 정지 뒤 프로듀서 재시도 한도를 넘긴 태스크가 FAILED 로 남으면 MySQL 원장에 쌓인 체결이 영영 안 흐른다.
+                # 재시작하면 Debezium 이 binlog 오프셋에서 이어 읽는다(binlog 보존 무기한). 알림은 그대로 보내되 "재시작했다"를 붙인다.
+                for i, t in enumerate(status.get("tasks", [])):
+                    if t.get("state") == "FAILED":
+                        r = req.post(f"http://kafka-connect:8083/connectors/{name}/tasks/{t.get('id', i)}/restart", timeout=10)
+                        restarted.append({"connector": name, "task": t.get("id", i), "http": r.status_code,
+                                          "trace": (t.get("trace") or "")[:200]})
+                if connector_state == "FAILED":
+                    r = req.post(f"http://kafka-connect:8083/connectors/{name}/restart", timeout=10)
+                    restarted.append({"connector": name, "task": "connector", "http": r.status_code, "trace": ""})
 
             all_running = all(
                 s["connector"] == "RUNNING"
@@ -187,6 +199,7 @@ with DAG(
                 "healthy": all_running,
                 "connectors": statuses,
                 "count": len(connectors),
+                "restarted": restarted,
             }
         except req.RequestException as e:
             return {"healthy": False, "error": str(e), "connectors": {}, "count": 0}
@@ -345,6 +358,9 @@ with DAG(
                 if s.get("connector") != "RUNNING"
             ]
             msg = f"Failed connectors: {failed}" if failed else f"Error: {error}"
+            restarted = connect_result.get("restarted", [])
+            if restarted:
+                msg += " | auto-restarted: " + ", ".join(f"{r['connector']}/task{r['task']} (HTTP {r['http']})" for r in restarted)
             unhealthy.append({"name": "Kafka Connect", "message": msg})
 
         if unhealthy:
