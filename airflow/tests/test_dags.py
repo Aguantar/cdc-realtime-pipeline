@@ -38,7 +38,7 @@ def test_no_import_errors(dag_bag):
 
 def test_expected_dags_loaded(dag_bag):
     """필수 DAG들이 로드되었는지 확인."""
-    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades"}
+    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades", "backup_daily"}
     loaded_dags = set(dag_bag.dag_ids)
     missing = expected_dags - loaded_dags
     assert not missing, f"Missing DAGs: {missing}"
@@ -164,3 +164,13 @@ def test_reconcile_trades_dag_structure(dag_bag):
     assert {t.task_id for t in dag.get_task("dbt_build_reconcile").upstream_list} == {"fetch_hourly_candles"}
     assert {t.task_id for t in dag.get_task("summarize").upstream_list} == {"dbt_build_reconcile"}
     assert dag.get_task("summarize").trigger_rule == "all_done"
+
+
+def test_backup_daily_dag_structure(dag_bag):
+    """backup_daily: 백업·Parquet 병렬 → 전송 → 원격 보존 → 로컬 보존 → 검증 순서."""
+    dag = dag_bag.get_dag("backup_daily")
+    assert dag is not None
+    assert {t.task_id for t in dag.tasks} == {"clickhouse_backup", "export_orderbook_parquet", "sync_to_oracle",
+                                              "apply_remote_retention", "prune_local", "verify_remote_in_sync"}
+    assert {t.task_id for t in dag.get_task("sync_to_oracle").upstream_list} == {"clickhouse_backup", "export_orderbook_parquet"}
+    assert {t.task_id for t in dag.get_task("verify_remote_in_sync").upstream_list} == {"prune_local"}

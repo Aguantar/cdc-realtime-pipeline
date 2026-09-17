@@ -541,7 +541,11 @@ services:
       AIRFLOW__METRICS__STATSD_PORT: '9125'
       AIRFLOW__METRICS__STATSD_PREFIX: airflow
     command: scheduler
+    group_add:
+      - "101"      # ClickHouse(uid/gid 101) 가 만든 750 백업 디렉터리를 읽기 위해 (docs/21 §4)
     volumes:
+      - /home/calme/clickhouse-backups:/backups                     # 백업 스테이징 (ClickHouse 컨테이너와 공유, docs/21 §4)
+      - /home/calme/airflow-secrets:/opt/airflow/secrets:ro          # Oracle rsync 용 ssh 키 사본(uid 50000)·고정 호스트키
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
