@@ -16,7 +16,10 @@ import java.sql.Timestamp;
  */
 public class ClickHouseSinks {
 
-    private static final int BATCH_SIZE = 200;
+    // 2026-09-17 부하 실험 S4(docs/23 §5): 배치 크기를 env 로. 기본 200 = 프로덕션 불변. 실험 잡만 CLICKHOUSE_BATCH_SIZE=1000 으로 제출.
+    // 근거: 10k/s 에서 소스 체인(동기 JDBC 싱크 포함) busy 가 1.0 에 닿았고 그 시각 insert 평균 지연이 9→34ms 로 올랐다.
+    // 서브태스크당 busy ≈ inserts/s × insert 지연. 배치를 키우면 inserts/s 가 그만큼 준다(3초 간격 상한은 그대로).
+    private static final int BATCH_SIZE = Integer.parseInt(System.getenv().getOrDefault("CLICKHOUSE_BATCH_SIZE", "200"));
     private static final long BATCH_INTERVAL_MS = 3000;
     private static final int MAX_RETRIES = 3;
 
