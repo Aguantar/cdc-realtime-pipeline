@@ -112,9 +112,12 @@ def make_producer():
         'compression.type': 'zstd',
         'linger.ms': 50,
         'batch.num.messages': 2000,
-        'queue.buffering.max.messages': 200000,
+        'queue.buffering.max.messages': 200000,   # 평시 ~250/s → 약 13분치
         'queue.buffering.max.kbytes': 262144,
-        'message.timeout.ms': 120000,
+        # 2026-09-17 브로커 전체 정지 3분 실측(docs/23 §7): 120초 타임아웃이 1.45만 건을 버렸고, 브로커 재기동 순간 토픽 메타데이터가
+        # "파티션 0"으로 잠깐 보이자 librdkafka 가 큐 2.1만 건을 폐기했다. 호가는 원장이 없어 이 유실이 영구다.
+        'message.timeout.ms': 600000,             # 10분 정지까지 큐에서 보존 (큐 용량 13분치 안)
+        'topic.metadata.propagation.max.ms': 300000,   # 메타데이터가 비어 보여도 5분은 폐기하지 않고 기다린다
     }
     return Producer(conf)
 
@@ -183,6 +186,12 @@ async def run(stats, shutdown):
                                                      on_delivery=on_delivery)
                                 except BufferError:
                                     stats.delivery_errors += 1
+                            except KafkaException as e:
+                                # 브로커 재기동 직후 _UNKNOWN_TOPIC 같은 일시 오류. WS 는 멀쩡하므로 재연결하지 않고 전송 오류로 센다 (docs/23 §7)
+                                stats.delivery_errors += 1
+                                if stats.delivery_errors <= 5 or stats.delivery_errors % 1000 == 0:
+                                    logger.error(f"produce 실패(일시): {e}")
+                                producer.poll(0.1)
                         elif 'error' in data:
                             logger.error(f"Upbit 에러 메시지: {data}")
                     producer.poll(0)
