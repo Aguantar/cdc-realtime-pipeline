@@ -10,14 +10,14 @@ docs/19 §2-1 순서 1. 대상은 docs/19 #1(체결 Kafka 선기록), #4(`market
 | 정리 | MySQL EVENT `cleanup_old_trades`: 10분마다 `DELETE … WHERE created_at < NOW()-7d LIMIT 40000`. **실행 계획 = 풀스캔(type ALL, 15.9M행)** — created_at 단독 인덱스가 없다. 실측 59초 실행, MySQL CPU 51%(docs/23 §5-1 정체 시각과 일치) |
 | Debezium | snapshot.mode initial, `skipped.operations` 없음, binlog_row_image FULL → **삭제도 전체 행 이미지로 Kafka 에 간다** |
 | 토픽 구성 | 24h 체결 토픽 4,109,009 메시지 중 ClickHouse 적재(create) 2,235,132 → **삭제 이벤트 ≈ 1,873,877 = 46%**. Flink 파서가 op='d' 를 버린다(docs/20). 즉 Kafka 쓰기·Debezium 처리·Flink 파싱의 절반이 버릴 데이터 |
-| binlog | 15파일 1.38GB, `binlog_expire_logs_seconds=0`(**무기한**), MySQL 볼륨 5.8GB. Debezium 오프셋 복구엔 좋지만 상한이 없다 |
+| binlog | 15파일 1.38GB, MySQL 볼륨 5.8GB. 처음엔 `binlog_expire_logs_seconds=0` 만 보고 **무기한이라고 잘못 판단** → 적용 단계에서 compose 의 레거시 옵션 `--expire-logs-days=3` 이 살아 있음을 발견(둘은 동시에 못 씀, 오류 4113). 실제 보존은 **3일**이었다. 정정 |
 | 원장의 실제 성능 | 브로커 정지 4회(1대 5분·전체 3분·전체 1분·재기동 14초)에서 체결 유실 0 — 원장이 4/4 지켰다(docs/23 §3·§7·§7-1, docs/24 §4-4) |
 
 ## 1-1. 실무는 어떻게 하나 (사용자 질문: 삭제 이벤트는 실무에서도 필요 없는가, 우리 스펙 때문인가)
 - **삭제 이벤트가 필요한지는 스펙이 아니라 의미로 갈린다.** 받는 쪽이 원본의 거울(mirror)이면 삭제는 데이터 자체라 필수다(회원 탈퇴가 복제본에도 반영돼야). 받는 쪽이 역사 보관소(archive)면 원본의 보존 정리 삭제는 유지보수 동작이라 전달하면 역사가 지워진다. 우리 MySQL(7일 완충)→ClickHouse(365일)는 후자. 스펙은 "그 낭비가 얼마나 아픈가"만 정한다(넉넉한 서버면 비효율, 4코어 동거면 정체 원인).
 - **실무는 업무 삭제와 보존 삭제를 처음부터 구분한다**: ① 원본 파티션 DROP(행 이벤트가 binlog 에 안 생김, 정석 — 우리는 PK·유니크 키에 날짜가 없어 못 함 = 설계 부채) ② 정리 세션만 `sql_log_bin=0`(원본이 "복제 대상 아님" 선언, 다른 복제본이 없을 때) ③ 커넥터 `skipped.operations=d`(소비자가 "이 테이블엔 업무 삭제가 없다" 선언, 되돌리기 쉬움 — 체결은 불변 사건이라 성립).
 - **OLTP 삭제의 불문율 셋**: 인덱스로 찾을 것, 작게 나눌 것, 운영 트래픽과 다투지 않을 것. 우리는 둘째만 지켰다. 실무의 DB 는 자기 서버가 있어 풀스캔이 "낭비"에 그치지만 우리는 "정체"가 된다 → 인덱스가 실무에선 습관, 우리에겐 필수. 정석 도구는 pt-archiver 류(작은 배치 + 휴식 + 인덱스 순서).
-- **binlog 보존** = 가장 느린 소비자의 지연 + 복구 시간보다 길게(보통 며칠~몇 주, 백업 정책과 묶음). 무기한은 없다. 우리는 소비자가 Debezium 하나·원장 7일 → 30일이면 극단까지 덮고, 그보다 길면 재스냅샷(원장의 한계).
+- **binlog 보존** = 가장 느린 소비자의 지연 + 복구 시간보다 길게(보통 며칠~몇 주, 백업 정책과 묶음). 우리는 3일이었고(compose 레거시 옵션), 소비자가 Debezium 하나·원장 7일 → 30일이면 재스냅샷까지 피한다.
 - **ClickHouse 의 자리**: 삭제 이벤트를 본 적이 없다(Flink 가 버림) → 1번을 고쳐도 데이터 불변, 부하만 준다. ClickHouse 의 보존(TTL 로 파트 통째 만료)은 이미 정석 — MySQL 이 못 하는 파티션 DROP 을 ClickHouse 는 하고 있다. 언젠가 삭제를 전달해야 하면 행을 지우는 게 아니라 "지워졌다" 행을 넣는다(ReplacingMergeTree is_deleted / CollapsingMergeTree) — mutation 이 비싸서 실무의 CDC 거울도 그렇게 한다.
 
 ## 2. #1 "체결도 Kafka 에 선기록" — 철회
@@ -28,10 +28,10 @@ docs/19 §2-1 순서 1. 대상은 docs/19 #1(체결 Kafka 선기록), #4(`market
 ## 3. 정리 방식 — DELETE 를 어떻게 할 것인가
 | 선택지 | 내용 | 판정 |
 |---|---|---|
-| A. 파티션 DROP | 일 파티션으로 나눠 DROP → binlog 에 행 이벤트 없음, 즉시 | **정정(09-18 12:10)**: created_at 으로 나누면 유니크 키에 created_at 이 들어가 gap-fill 재삽입이 중복이 되지만, **upbit_timestamp(체결 시각)** 으로 나누면 같은 체결은 언제 넣어도 키가 같아 중복 방지가 유지된다(sequential_id 가 이미 체결 시각을 품음). 따라서 **근본 해결이 맞다** — 다만 원장 교체 절차(새 테이블·`sql_log_bin=0` 복사·AUTO_INCREMENT 연속·원자적 RENAME·Debezium 스키마·Flink 파서 확인)가 크고, 2층 원장 설계가 MySQL 스키마를 다시 건드릴 가능성이 커 **2층과 묶어 한 번에**. 그때까지는 B·C·D 로 응급 처치 |
+| A. 파티션 DROP | 일 파티션으로 나눠 DROP → binlog 에 행 이벤트 없음, 즉시 | **정정(09-18 11:30)**: created_at 으로 나누면 유니크 키에 created_at 이 들어가 gap-fill 재삽입이 중복이 되지만, **upbit_timestamp(체결 시각)** 으로 나누면 같은 체결은 언제 넣어도 키가 같아 중복 방지가 유지된다(sequential_id 가 이미 체결 시각을 품음). 따라서 **근본 해결이 맞다** — 다만 원장 교체 절차(새 테이블·`sql_log_bin=0` 복사·AUTO_INCREMENT 연속·원자적 RENAME·Debezium 스키마·Flink 파서 확인)가 크고, 2층 원장 설계가 MySQL 스키마를 다시 건드릴 가능성이 커 **2층과 묶어 한 번에**. 그때까지는 B·C·D 로 응급 처치 |
 | B. Debezium `skipped.operations=d` | 삭제 이벤트를 소스에서 버린다 | **채택 제안**. 토픽·Debezium·Flink 부하 −46%, binlog 는 그대로. Flink 는 이미 버리고 있어 결과 불변. MV `mv_latency_stats` 는 op in (c,u,d) 를 세므로 event_count 가 create 만으로 바뀜(대시보드 주석) |
 | C. `created_at` 단독 인덱스 | 온라인 DDL(InnoDB), 16M행 | **채택 제안**. DELETE 가 풀스캔 → 인덱스 범위. 59초·CPU 51% 의 정체 유발원 제거. 인덱스 유지 비용은 쓰기당 항목 1개 |
-| D. binlog 보존 30일 | `binlog_expire_logs_seconds=2592000` (동적) + compose 반영 | **채택 제안**. 원장 보존이 7일이라 30일이면 Debezium 재시작·재스냅샷 어떤 경우도 덮는다. 무기한은 디스크 상한이 없다 |
+| D. binlog 보존 30일 | 레거시 `expire_logs_days` 를 0 으로 내리고 `binlog_expire_logs_seconds=2592000` (SET PERSIST) + compose 옵션 교체 | **채택**. 실제 보존은 3일이었다(위 정정). 3일이면 Debezium 이 3일 넘게 멈춘 뒤엔 재스냅샷이 필요하고(원장 7일이라 유실은 없음), 30일은 그 재스냅샷조차 피하는 여유. 디스크 약 14GB(1.38GB/3일 비례), 344GB 여유 |
 | E. DELETE 주기·LIMIT 조정 | 10분/4만 → 그대로 | C 뒤엔 문제가 아니다. 실측 후 판단 |
 
 B·C·D 는 정지 없이 적용 가능(B 는 커넥터 설정 PUT → 커넥터가 자체 재시작, 수 초). A(체결 시각 파티션) 가 들어오면 B·C 는 불필요해지고 D 만 남는다. 적용 뒤 검증: 24h 토픽 메시지 ≈ ClickHouse 적재 행(삭제 0), DELETE 실행 시간(processlist·`Innodb_rows_deleted` 증가 속도), health_check 의 insert 지연 알림 없음.

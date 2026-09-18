@@ -23,7 +23,7 @@ services:
       --log-bin=mysql-bin
       --binlog-format=ROW
       --binlog-row-image=FULL
-      --expire-logs-days=3
+      --binlog-expire-logs-seconds=2592000   # 2026-09-18 (docs/26 §3 D): 레거시 expire-logs-days=3 → 30일. SET PERSIST 와 일치
       --max-binlog-size=100M
       --gtid-mode=ON
       --enforce-gtid-consistency=ON
