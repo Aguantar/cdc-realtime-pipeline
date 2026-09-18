@@ -21,10 +21,10 @@ CREATE TABLE IF NOT EXISTS crypto_trades
     flink_ts        DateTime64(3),    -- Flink 처리 시각
     inserted_at     DateTime64(3) DEFAULT now64(3)
 )
-ENGINE = MergeTree()
+ENGINE = ReplacingMergeTree(flink_ts)   -- 2026-09-18 (docs/25): Connect 재시작 재전송 중복(27+239 실측) 을 저장 층에서 제거. 중복 키 = ORDER BY, 최신 flink_ts 유지
 PARTITION BY toYYYYMM(source_ts)
 ORDER BY (market, source_ts, trade_id)
-TTL toDateTime(source_ts) + INTERVAL 90 DAY
+TTL toDateTime(source_ts) + INTERVAL 365 DAY   -- 실제 운영값(2026-09-18 확인: init.sql 의 90일과 달랐음)
 SETTINGS index_granularity = 8192;
 
 

@@ -503,7 +503,8 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] 이상탐지 v2.1: 체결 단위 → 분 종가 판정(플래핑 86→9, 거래소 지정과 시각 일치), 동등성 대조 모델 (`docs/22 §4`)
 - [x] 되돌릴 수 없는 데이터 정리: 호가 유실 창 모델, 수집기 버퍼 600s, Connect 자동 복구 (`docs/23 §7`)
 - [x] 브로커 3→1 (`docs/24`): 105 파티션 RF1 재할당 무정지, 24h 대조 100%, 재기동 실측 14초 정지·유실 0·중복 239, 메모리 +1.5GB·디스크 −27GB
-- [ ] 이후: 섀도 승격 판단(동등성 10건) → ReplacingMergeTree(중복 27 근거) → CDC 구간 재검토(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
+- [x] ReplacingMergeTree (`docs/25`): 재전송 중복 27+239 근거, 무정지 교체, 중복 0
+- [ ] 이후: 섀도 승격 판단(동등성 10건) → CDC 구간 재검토(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
 ---
 
@@ -737,6 +738,7 @@ cdc-realtime-pipeline/
     ├── 20-deployment-1.md              # 배포 1: 늦은 이벤트 가드·gap-fill·수리 계보·10분 커버리지·CI — 설계 변경 근거와 실측 검증
     ├── 21-backup-and-access-control.md # 백업(Oracle 오프사이트, 복원 리허설 79초)·접근 통제(사용자 분리, 컷오버 런북) — 판단 오류 2건 정정 포함
     ├── 22-rules-v2-and-quality-layer.md # 이상탐지 v2(PRICE_24H 등급 전이 섀도, VOLUME_24H dbt 규칙) + dq_* 품질 층 + 규칙 평가 모델 + 승격 기준
+    ├── 25-replacing-merge-tree.md    # 싱크 중복을 저장 층에서: RMT 전환 무정지, 재전송 중복 239→0, 메모리 한도 실패와 슬라이스 복사
     ├── 24-broker-reduction-design.md # 브로커 3→1 축소 설계·실행·실측: 선행 조건(정지 실험 2회), ZK 유지 재할당 vs KRaft 컷오버, 24h 판정, 재기동 14초·유실 0
     ├── 23-load-experiment-results.md # 부하 실험 결과: 임계 5k~10k/s(병목 = 동기 JDBC 싱크·머지), 배치 1,000 으로 정체 5→0, 여유 85배(현 설정)·170배, 브로커 정지 무손실, 선행 지표 알림
     ├── journey-index.md                # 블로그 원고용 에피소드 인덱스
