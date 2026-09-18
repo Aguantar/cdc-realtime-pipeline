@@ -244,6 +244,7 @@ with DAG(
             SELECT
                 round(avg(query_duration_ms), 1) AS insert_avg_ms,
                 round(quantile(0.95)(query_duration_ms)) AS insert_p95_ms,
+                max(query_duration_ms) AS insert_max_ms,
                 count() AS inserts_10min
             FROM system.query_log
             WHERE type = 'QueryFinish' AND query_kind = 'Insert'
@@ -272,10 +273,16 @@ with DAG(
         if busy_result and busy_result.get("busy_max_ms") is not None and float(busy_result["busy_max_ms"]) > 500:
             unhealthy.append({"name": "Flink Source Saturation",
                               "message": f"source busy max {busy_result['busy_max_ms']:.0f} ms/s (> 500; 1,000 = 포화, 기준선 3)"})
-        if insert_result and insert_result.get("insert_avg_ms") is not None and int(insert_result.get("inserts_10min", 0)) > 0 \
-                and float(insert_result["insert_avg_ms"]) > 30:
-            unhealthy.append({"name": "ClickHouse Insert Latency",
-                              "message": f"insert avg {insert_result['insert_avg_ms']} ms / p95 {insert_result['insert_p95_ms']} ms over 10 min (> 30; 기준선 14~18)"})
+        # 2026-09-18 정정: 첫 밤 알림 2건이 평균의 착시였다(p50 18·p95 28~32 는 기준선인데 7.5초짜리 insert 2~4건이 평균을 42~66 으로 끌어올림, dbt 배치 시각과 겹침).
+        # 부하 실험의 정체 신호는 분포 전체가 오르는 것(9→24~34ms)이었으므로 p95 로 보고(기준선 27~38 → 임계 60), 단발 스톨은 max 로 따로 알린다.
+        if insert_result and int(insert_result.get("inserts_10min", 0)) > 0:
+            p95 = float(insert_result.get("insert_p95_ms") or 0); mx = float(insert_result.get("insert_max_ms") or 0)
+            if p95 > 60:
+                unhealthy.append({"name": "ClickHouse Insert Latency",
+                                  "message": f"insert p95 {p95:.0f} ms over 10 min (> 60; 기준선 27~38) avg {insert_result['insert_avg_ms']} ms"})
+            elif mx > 5000:
+                unhealthy.append({"name": "ClickHouse Insert Stall",
+                                  "message": f"단발 insert {mx/1000:.1f}s (p95 {p95:.0f} ms 는 정상) — 배치·머지와 겹침 여부 확인"})
 
         # 마켓 커버리지: 거래소에는 최신 체결이 있는데 우리에게 60초 넘게 없는 마켓
         if coverage_result and int(coverage_result.get("missing_count", 0)) > 0:
