@@ -737,7 +737,6 @@ cdc-realtime-pipeline/
     ├── 20-deployment-1.md              # 배포 1: 늦은 이벤트 가드·gap-fill·수리 계보·10분 커버리지·CI — 설계 변경 근거와 실측 검증
     ├── 21-backup-and-access-control.md # 백업(Oracle 오프사이트, 복원 리허설 79초)·접근 통제(사용자 분리, 컷오버 런북) — 판단 오류 2건 정정 포함
     ├── 22-rules-v2-and-quality-layer.md # 이상탐지 v2(PRICE_24H 등급 전이 섀도, VOLUME_24H dbt 규칙) + dq_* 품질 층 + 규칙 평가 모델 + 승격 기준
-    ├── portfolio-de-highlights.md      # DE 어필 포인트 총정리(유실·지연·중복·병목·품질·기준·운영·정정 기록·한계) — 숫자마다 조건·출처
     ├── 24-broker-reduction-design.md # 브로커 3→1 축소 설계: 실측 선행 조건, ZK 유지 재할당(A) vs KRaft 컷오버(B) 비교, 절차·롤백 (결정 대기)
     ├── 23-load-experiment-results.md # 부하 실험 결과: 임계 5k~10k/s(병목 = 동기 JDBC 싱크·머지), 배치 1,000 으로 정체 5→0, 여유 85배(현 설정)·170배, 브로커 정지 무손실, 선행 지표 알림
     ├── journey-index.md                # 블로그 원고용 에피소드 인덱스
