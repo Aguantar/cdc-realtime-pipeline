@@ -6,6 +6,8 @@ sources:
     database: cdc_pipeline
     schema: cdc_pipeline
     tables:
+      - name: orderbook_1m
+        description: "호가 분 집계(Flink OrderbookJob) — mid·스프레드(bp)·잔량 불균형(1/5/15호가)·15호가 깊이(수량). 체결×호가 마트의 호가 쪽 재료"
       - name: orderbook_raw
         description: 호가 스냅샷 원본(수집기 → Kafka → Flink). 원장이 없는 되돌릴 수 없는 데이터 — 유실은 dq_orderbook_gaps_daily 로 센다
       - name: crypto_trades

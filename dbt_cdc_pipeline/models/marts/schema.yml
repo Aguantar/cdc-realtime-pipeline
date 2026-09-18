@@ -1,19 +1,15 @@
 version: 2
-
 models:
-  - name: mart_daily_summary
+  - name: mart_trade_orderbook_1m
     description: >
-      일별 종합 리포트. 종목별 OHLCV + 전일 대비 변동률.
-      Grafana 일별 코인 시세 대시보드 데이터소스.
+      체결 × 호가 분 단위 결합 마트. 거래소가 호가 이력을 주지 않으므로 우리만 가진 데이터.
+      유동성 플래그와 규칙 평가의 설명 변수(스프레드·깊이·체결/깊이 비율)가 붙는 자리 (docs/19 §2-1, docs/27).
     columns:
       - name: market
-        tests:
-          - not_null
-      - name: trade_date
-        tests:
-          - not_null
-      - name: close_change_pct
-        description: "전일 대비 종가 변동률 (%)"
-      - name: bid_ratio_pct
-        description: "매수 비율 (%)"
-
+        tests: [not_null]
+      - name: minute
+        tests: [not_null]
+      - name: spread_bp_avg
+        description: 분 평균 스프레드(bp). 얇은 호가 지표
+      - name: volume_over_depth15
+        description: 그 분 체결 수량 / 15호가 평균 잔량(양쪽 합). 1 이상이면 호가 전체만큼 체결

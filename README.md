@@ -505,7 +505,8 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] 브로커 3→1 (`docs/24`): 105 파티션 RF1 재할당 무정지, 24h 대조 100%, 재기동 실측 14초 정지·유실 0·중복 239, 메모리 +1.5GB·디스크 −27GB
 - [x] ReplacingMergeTree (`docs/25`): 재전송 중복 27+239 근거, 무정지 교체, 중복 0
 - [x] CDC 구간 재검토 (`docs/26`): 삭제 이벤트 46% 제거·정리 DELETE 59s→1s·binlog 30일, #1 철회, `dim_markets`(상장일 근사·커버리지 공백 BFC 6일)
-- [ ] 이후: 섀도 승격 판단(동등성 10건) → 체결×호가 분 단위 마트 → 2층(가상 원장, 체결 시각 파티션 재설계 포함) → KRaft 컷오버(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
+- [x] 체결×호가 분 단위 마트 (`docs/27`): 10일 3.78M 행, EURC 되튐의 원인은 스프레드가 아니라 체결/깊이(≥300bp 변동 분의 중앙값 1.0)
+- [ ] 이후: 섀도 승격 판단(동등성 10건) → 2층(가상 원장, 체결 시각 파티션 재설계 포함) → KRaft 컷오버(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
 ---
 
@@ -739,6 +740,7 @@ cdc-realtime-pipeline/
     ├── 20-deployment-1.md              # 배포 1: 늦은 이벤트 가드·gap-fill·수리 계보·10분 커버리지·CI — 설계 변경 근거와 실측 검증
     ├── 21-backup-and-access-control.md # 백업(Oracle 오프사이트, 복원 리허설 79초)·접근 통제(사용자 분리, 컷오버 런북) — 판단 오류 2건 정정 포함
     ├── 22-rules-v2-and-quality-layer.md # 이상탐지 v2(PRICE_24H 등급 전이 섀도, VOLUME_24H dbt 규칙) + dq_* 품질 층 + 규칙 평가 모델 + 승격 기준
+    ├── 27-trade-orderbook-mart.md    # 체결×호가 분 결합 마트: 우리만의 데이터, volume_over_depth15, EURC 되튐 = 깊이 대비 체결량(500배)
     ├── 26-cdc-segment-review.md      # CDC 구간 재검토: 삭제 이벤트가 토픽의 46%·정리 DELETE 풀스캔·binlog 무기한 → skipped.operations/인덱스/보존, #1 철회, dim_markets (결정 대기)
     ├── 25-replacing-merge-tree.md    # 싱크 중복을 저장 층에서: RMT 전환 무정지, 재전송 중복 239→0, 메모리 한도 실패와 슬라이스 복사
     ├── 24-broker-reduction-design.md # 브로커 3→1 축소 설계·실행·실측: 선행 조건(정지 실험 2회), ZK 유지 재할당 vs KRaft 컷오버, 24h 판정, 재기동 14초·유실 0
