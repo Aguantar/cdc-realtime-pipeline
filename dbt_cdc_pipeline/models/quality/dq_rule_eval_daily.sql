@@ -2,9 +2,17 @@
 -- 규칙 검증 기반 (docs/16 §5, docs/22): 우리 규칙의 출력을 거래소 지정 이력(정답)과 매일 대조해 정밀도·재현율·선행 시간을 낸다.
 -- 이 표가 규칙의 존재 이유다. "임계값이 왜 그 값인가" 에 대한 답이 매일 갱신되는 숫자로 남는다. 섀도 → 승격 판단은 여기서 한다.
 -- 매칭 정의: 같은 마켓, 우리 지정(level 0→N 전이)과 거래소 지정(TRIGGER 시각)이 ±10분 안. 선행 시간 = 거래소 − 우리 (양수면 우리가 먼저).
-WITH ours_price AS (
-    SELECT market, event_time AS t, event_time - INTERVAL 10 MINUTE AS t_lo FROM {{ source('reference', 'market_alerts') }}
-    WHERE alert_type = 'PRICE_24H' AND prev_level = 0 AND level > 0
+WITH -- 신규 상장 96시간은 거래소가 지정하지 않는다(docs/16 공식 기준). 우리 출력도 그 구간은 평가에서 뺀다 — dim_markets 의 상장일 근사 기준 (2026-09-18)
+new_listing AS (
+    SELECT market, toDateTime(listing_date_est) + INTERVAL 96 HOUR AS eligible_from
+    FROM {{ ref('dim_markets') }} WHERE listing_date_est IS NOT NULL AND listing_date_source = 'daily_candle_first'
+),
+ours_price AS (
+    SELECT a.market, a.event_time AS t, a.event_time - INTERVAL 10 MINUTE AS t_lo
+    FROM {{ source('reference', 'market_alerts') }} AS a
+    LEFT JOIN new_listing AS n ON n.market = a.market
+    WHERE a.alert_type = 'PRICE_24H' AND a.prev_level = 0 AND a.level > 0
+      AND (n.market = '' OR a.event_time >= n.eligible_from)
 ),
 ex_price AS (
     SELECT market, trigger_time_utc AS t FROM {{ source('reference', 'upbit_market_event_records') }} FINAL
@@ -24,7 +32,9 @@ ex_price_day AS (
     SELECT toDate(t) AS day, count() AS exchange FROM ex_price GROUP BY day
 ),
 ours_vol AS (
-    SELECT market, day FROM {{ ref('int_volume_surge_daily') }} WHERE flagged
+    SELECT v.market, v.day FROM {{ ref('int_volume_surge_daily') }} AS v
+    LEFT JOIN new_listing AS n ON n.market = v.market
+    WHERE v.flagged AND (n.market = '' OR toDateTime(v.day) + INTERVAL 1 DAY >= n.eligible_from)
 ),
 ex_vol AS (
     SELECT market, toDate(trigger_time_utc) - 1 AS day FROM {{ source('reference', 'upbit_market_event_records') }} FINAL

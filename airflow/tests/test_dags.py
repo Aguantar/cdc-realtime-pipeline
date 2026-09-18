@@ -163,9 +163,11 @@ def test_reconcile_trades_dag_structure(dag_bag):
     """reconcile_trades DAG: 참조값 적재 → dbt build(모델+테스트) → 요약/알림 순서, REST 풀 지정."""
     dag = dag_bag.get_dag("reconcile_trades")
     assert dag is not None
-    assert {t.task_id for t in dag.tasks} == {"fetch_hourly_candles", "dbt_build_reconcile", "summarize"}
+    # 2026-09-18: fetch_market_master(dim_markets, docs/26 §4) 가 candles 와 dbt 사이에 들어감
+    assert {t.task_id for t in dag.tasks} == {"fetch_hourly_candles", "fetch_market_master", "dbt_build_reconcile", "summarize"}
     assert dag.get_task("fetch_hourly_candles").pool == "upbit_rest"
-    assert {t.task_id for t in dag.get_task("dbt_build_reconcile").upstream_list} == {"fetch_hourly_candles"}
+    assert dag.get_task("fetch_market_master").pool == "upbit_rest"
+    assert {t.task_id for t in dag.get_task("dbt_build_reconcile").upstream_list} == {"fetch_market_master"}
     assert {t.task_id for t in dag.get_task("summarize").upstream_list} == {"dbt_build_reconcile"}
     assert dag.get_task("summarize").trigger_rule == "all_done"
 

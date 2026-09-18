@@ -1,4 +1,4 @@
-"""DAG 5: rules_daily — 배치 이상탐지 규칙(VOLUME_24H)과 규칙 평가(dq_rule_eval_daily)를 매일 01:05 UTC 에 갱신 (docs/22).
+"""DAG 5: rules_daily — 배치 이상탐지 규칙(VOLUME_24H)과 규칙 평가(dq_rule_eval_daily)를 매일 01:15 UTC 에 갱신 (docs/22).
 
 왜 별도 DAG 인가: daily_pipeline 은 16:00 UTC 에 돌아 전일 UTC 기준으로는 15시간 늦다. 거래소는 01:00 UTC 에 일괄 지정하므로
 그 직후에 우리 규칙도 판정해야 '선행/동시/지연'을 같은 시각 축에서 비교할 수 있다. 라벨 동기화(매시 07분) 보다는 앞서지만
@@ -25,7 +25,7 @@ with DAG(
     dag_id="rules_daily",
     default_args=default_args,
     description="VOLUME_24H 규칙 판정 + 규칙 평가(정밀도·재현율·선행) 갱신",
-    schedule="5 1 * * *",
+    schedule="15 1 * * *",   # 2026-09-18: 01:05 → 01:15. 거래소 라벨 fetch(cron 매시 :07)보다 뒤여야 같은 날 01:00 지정을 평가에 넣는다(01:05 실행은 exchange=0 을 냈다)
     start_date=datetime(2026, 9, 16),
     catchup=False,
     max_active_runs=1,

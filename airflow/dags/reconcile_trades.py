@@ -126,6 +126,45 @@ default_args = {
     "on_failure_callback": task_failure_callback,
 }
 
+
+def _fetch_market_master(**context) -> dict:
+    """마켓 마스터 스냅샷 (docs/26 §4). 거래소 목록·이름·경보 플래그 + 상장일 근사(새 마켓만 일봉 200일 창 조회).
+    왜: 대조 분모·규칙 평가(신규 상장 96h 제외)·커버리지 사유가 각자 거래소 목록을 부르고 있어 한 곳으로 모은다.
+    상장일 근사의 한계: 일봉 창 200일 → 그보다 오래된 마켓은 '그 이전'(before_window)."""
+    from hooks.clickhouse_hook import ClickHouseHook
+    hook = ClickHouseHook()
+    session = requests.Session()
+    markets = [m for m in session.get("https://api.upbit.com/v1/market/all?is_details=true", timeout=15).json() if m["market"].startswith("KRW-")]
+    known = {r["market"]: r for r in hook.get_records("SELECT market, listing_date_est, listing_date_source, lookback_days FROM cdc_pipeline.upbit_market_master FINAL")}
+    rows, fetched = [], 0
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    for m in markets:
+        k = known.get(m["market"])
+        if k and k.get("listing_date_est") not in ("", "\\N", None):
+            ld, src, lb = k["listing_date_est"], k["listing_date_source"], int(k.get("lookback_days") or 0)
+        else:
+            candles = None
+            for attempt in range(3):   # 429(초당 한도) 는 일시적 — 첫 실행에서 32/289 가 unknown 으로 남았다 → 1초 쉬고 재시도
+                resp = session.get(f"https://api.upbit.com/v1/candles/days?market={m['market']}&count=200", timeout=15)
+                time.sleep(0.12)
+                if resp.status_code == 200:
+                    candles = resp.json(); break
+                time.sleep(1.0)
+            fetched += 1
+            if isinstance(candles, list) and candles:
+                ld = min(c["candle_date_time_utc"][:10] for c in candles)
+                src, lb = ("daily_candle_first" if len(candles) < 200 else "before_window"), len(candles)
+            else:
+                ld, src, lb = None, "unknown", 0
+        ev = m.get("market_event") or {}
+        rows.append({"market": m["market"], "korean_name": m.get("korean_name", ""), "english_name": m.get("english_name", ""),
+                     "market_warning": m.get("market_warning") or "NONE", "event_warning": 1 if ev.get("warning") else 0,
+                     "caution_json": json.dumps(ev.get("caution") or {}, separators=(",", ":")),
+                     "listing_date_est": ld, "listing_date_source": src, "lookback_days": lb, "is_active": 1, "fetched_at": now})
+    hook.execute("INSERT INTO cdc_pipeline.upbit_market_master FORMAT JSONEachRow\n" + "\n".join(json.dumps(r) for r in rows))
+    context["ti"].log.info("market master: %s markets, %s candle fetches", len(rows), fetched)
+    return {"markets": len(rows), "candle_fetches": fetched}
+
 with DAG(
     dag_id="reconcile_trades",
     default_args=default_args,
@@ -164,4 +203,10 @@ with DAG(
         retries=0,
     )
 
-    fetch_hourly_candles >> dbt_build_reconcile >> summarize
+    fetch_market_master = PythonOperator(
+        task_id="fetch_market_master",
+        python_callable=_fetch_market_master,
+        pool="upbit_rest",
+    )
+
+    fetch_hourly_candles >> fetch_market_master >> dbt_build_reconcile >> summarize

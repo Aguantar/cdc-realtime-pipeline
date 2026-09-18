@@ -504,7 +504,8 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] 되돌릴 수 없는 데이터 정리: 호가 유실 창 모델, 수집기 버퍼 600s, Connect 자동 복구 (`docs/23 §7`)
 - [x] 브로커 3→1 (`docs/24`): 105 파티션 RF1 재할당 무정지, 24h 대조 100%, 재기동 실측 14초 정지·유실 0·중복 239, 메모리 +1.5GB·디스크 −27GB
 - [x] ReplacingMergeTree (`docs/25`): 재전송 중복 27+239 근거, 무정지 교체, 중복 0
-- [ ] 이후: 섀도 승격 판단(동등성 10건) → CDC 구간 재검토(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
+- [x] CDC 구간 재검토 (`docs/26`): 삭제 이벤트 46% 제거·정리 DELETE 59s→1s·binlog 30일, #1 철회, `dim_markets`(상장일 근사·커버리지 공백 BFC 6일)
+- [ ] 이후: 섀도 승격 판단(동등성 10건) → 체결×호가 분 단위 마트 → 2층(가상 원장, 체결 시각 파티션 재설계 포함) → KRaft 컷오버(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
 ---
 

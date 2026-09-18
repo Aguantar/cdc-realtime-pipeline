@@ -52,6 +52,17 @@ B·C·D 는 정지 없이 적용 가능(B 는 커넥터 설정 PUT → 커넥터
 - 형태: dbt 테이블 `dim_markets`(market, names, listing_date_est, listing_date_bound, first_seen_ours, seen_gap_days, warning flags, is_active, updated_at), 일 1회 갱신(일봉 fetch 와 같은 DAG). 소비: `int_reconcile_hourly` 분모, `dq_rule_eval_daily` 의 96h 제외, health_check 커버리지의 "신규 상장인데 우리 체결 없음" 사유 표기.
 - 하지 않는 것: 상장 공지 파싱(비정형·근거 약함). 상장일은 일봉 첫 날로 정의하고 그 한계(창 200일)를 컬럼에 남긴다.
 
+### 4-1. 구현·실행 기록 (09-18 11:50 ~ 12:00 UTC)
+| 항목 | 결과 |
+|---|---|
+| 적재 | `upbit_market_master`(ReplacingMergeTree) + reconcile_trades DAG 태스크 `fetch_market_master`(candles → **master** → dbt 순, pool upbit_rest). 첫 실행 289마켓·일봉 조회 289회, **32개가 unknown**(초당 한도 429) → 두 번째 실행에서 32개만 재조회해 전부 해소 → 태스크에 429 재시도(1초 대기, 최대 3회) 추가 |
+| 상장일 근사 | 일봉 창 안(daily_candle_first) **57**, 창 이전(before_window, ≤ 2026-03-03) **232** |
+| `dim_markets` | dbt 테이블(dimensions/), 테스트 4/4. `coverage_gap_days` = 전 마켓 수집 시작(09-09) 이후 상장 마켓의 "상장일 → 우리 첫 체결": **KRW-BFC 6**(사고의 숫자), KRW-JPYC 0·KRW-PYUSD 0(09-17 상장, 마켓 갱신 5분이 당일 잡음) |
+| 소비처 1 | `dq_rule_eval_daily`: 신규 상장 96h 안의 우리 지정(PRICE·VOLUME)은 평가에서 제외(거래소 공식 예외) |
+| 부수 발견 | **rules_daily 01:05 가 라벨 fetch(매시 :07)보다 앞서** 같은 날 01:00 거래대금 지정을 못 봤다 → 09-17 행이 exchange 0 으로 잘못 계산돼 있었음. 재빌드 후 ours 10 / matched 9 / exchange 10 = **0.9 / 0.9**. 스케줄 01:15 로 이동 |
+| 남은 소비처 | 대조 분모(int_reconcile_hourly)·health_check 커버리지 사유는 다음 정기 변경 때 dim_markets 로 통일 |
+편집 실수 3건(같은 종류): 한 줄 안에 인라인 주석을 넣어 뒤를 삼킴 — 재기동 런북 루프, compose command, 테스트 집합 리터럴. 규칙으로 남긴다: **한 줄 구문 안엔 주석을 넣지 않는다, 편집 뒤 즉시 문법 검사**.
+
 ## 5. 결정 요청과 순서
 1. B·C·D 적용(정지 없음, 30분) → 24h 검증 표 → docs/26 §6.
 2. `dim_markets` 구현(dbt + fetch 확장, 반나절) → 소비처 3곳 교체.

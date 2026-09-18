@@ -1,0 +1,15 @@
+version: 2
+models:
+  - name: dim_markets
+    description: >
+      마켓 마스터: 거래소 목록·이름·경보 플래그·상장일 근사(일봉 200일 창 첫 봉) + 우리가 처음 본 체결.
+      규칙 평가의 신규 상장 96h 제외와 커버리지 사유의 기준 (docs/26 §4).
+    columns:
+      - name: market
+        tests: [not_null, unique]
+      - name: coverage_gap_days
+        description: 전 마켓 수집 시작(2026-09-09) 이후 상장 마켓의 '상장일 → 우리 첫 체결' 일수. BFC=6 이 사고의 숫자
+      - name: listing_date_source
+        tests:
+          - accepted_values:
+              values: ['daily_candle_first', 'before_window', 'unknown']
