@@ -28,13 +28,13 @@ docs/19 §2-1 순서 1. 대상은 docs/19 #1(체결 Kafka 선기록), #4(`market
 ## 3. 정리 방식 — DELETE 를 어떻게 할 것인가
 | 선택지 | 내용 | 판정 |
 |---|---|---|
-| A. 파티션 DROP | 일 파티션으로 나눠 DROP → binlog 에 행 이벤트 없음, 즉시 | **기각**. MySQL 파티션은 모든 유니크 키에 파티션 컬럼이 들어가야 한다 → UNIQUE(market, sequential_id) 가 (market, sequential_id, created_at) 이 되면서 gap-fill 재삽입(created_at 이 다름)이 중복으로 들어간다. 유실 방지 구조(docs/20 §2 ④)를 깨는 대가 |
+| A. 파티션 DROP | 일 파티션으로 나눠 DROP → binlog 에 행 이벤트 없음, 즉시 | **정정(09-18 12:10)**: created_at 으로 나누면 유니크 키에 created_at 이 들어가 gap-fill 재삽입이 중복이 되지만, **upbit_timestamp(체결 시각)** 으로 나누면 같은 체결은 언제 넣어도 키가 같아 중복 방지가 유지된다(sequential_id 가 이미 체결 시각을 품음). 따라서 **근본 해결이 맞다** — 다만 원장 교체 절차(새 테이블·`sql_log_bin=0` 복사·AUTO_INCREMENT 연속·원자적 RENAME·Debezium 스키마·Flink 파서 확인)가 크고, 2층 원장 설계가 MySQL 스키마를 다시 건드릴 가능성이 커 **2층과 묶어 한 번에**. 그때까지는 B·C·D 로 응급 처치 |
 | B. Debezium `skipped.operations=d` | 삭제 이벤트를 소스에서 버린다 | **채택 제안**. 토픽·Debezium·Flink 부하 −46%, binlog 는 그대로. Flink 는 이미 버리고 있어 결과 불변. MV `mv_latency_stats` 는 op in (c,u,d) 를 세므로 event_count 가 create 만으로 바뀜(대시보드 주석) |
 | C. `created_at` 단독 인덱스 | 온라인 DDL(InnoDB), 16M행 | **채택 제안**. DELETE 가 풀스캔 → 인덱스 범위. 59초·CPU 51% 의 정체 유발원 제거. 인덱스 유지 비용은 쓰기당 항목 1개 |
 | D. binlog 보존 30일 | `binlog_expire_logs_seconds=2592000` (동적) + compose 반영 | **채택 제안**. 원장 보존이 7일이라 30일이면 Debezium 재시작·재스냅샷 어떤 경우도 덮는다. 무기한은 디스크 상한이 없다 |
 | E. DELETE 주기·LIMIT 조정 | 10분/4만 → 그대로 | C 뒤엔 문제가 아니다. 실측 후 판단 |
 
-B·C·D 는 정지 없이 적용 가능(B 는 커넥터 설정 PUT → 커넥터가 자체 재시작, 수 초). 적용 뒤 검증: 24h 토픽 메시지 ≈ ClickHouse 적재 행(삭제 0), DELETE 실행 시간(processlist·`Innodb_rows_deleted` 증가 속도), health_check 의 insert 지연 알림 없음.
+B·C·D 는 정지 없이 적용 가능(B 는 커넥터 설정 PUT → 커넥터가 자체 재시작, 수 초). A(체결 시각 파티션) 가 들어오면 B·C 는 불필요해지고 D 만 남는다. 적용 뒤 검증: 24h 토픽 메시지 ≈ ClickHouse 적재 행(삭제 0), DELETE 실행 시간(processlist·`Innodb_rows_deleted` 증가 속도), health_check 의 insert 지연 알림 없음.
 
 ## 4. #4 `markets` 마스터 — `dim_markets`
 - 왜 필요한가: ① 거래소 예외를 흉내 내려면 상장일이 필요(신규 상장 96시간 제외, docs/16) ② 대조 분모·커버리지 체크·규칙 평가가 각자 거래소 목록을 부르고 있다 → 한 곳으로 ③ BFC 사고(상장 후 6일 무수집)를 "우리가 처음 본 날 − 상장일" 로 표에 남길 수 있다.
