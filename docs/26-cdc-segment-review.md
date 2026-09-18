@@ -36,6 +36,16 @@ docs/19 §2-1 순서 1. 대상은 docs/19 #1(체결 Kafka 선기록), #4(`market
 
 B·C·D 는 정지 없이 적용 가능(B 는 커넥터 설정 PUT → 커넥터가 자체 재시작, 수 초). A(체결 시각 파티션) 가 들어오면 B·C 는 불필요해지고 D 만 남는다. 적용 뒤 검증: 24h 토픽 메시지 ≈ ClickHouse 적재 행(삭제 0), DELETE 실행 시간(processlist·`Innodb_rows_deleted` 증가 속도), health_check 의 insert 지연 알림 없음.
 
+### 3-1. 적용과 검증 (09-18 11:33 ~ 11:47 UTC)
+| 조치 | 적용 | 검증 (11:45:11 정리 실행을 낀 150초 창) |
+|---|---|---|
+| C. `idx_created_at` | 온라인 DDL 82초, 적재 지속(60초 1,318행), EXPLAIN 풀스캔 15.9M → key=idx_created_at rows 1,173 | DELETE 가 processlist 에 **1회·최대 1초**(전: 59초·CPU 51%). 삭제 11,535행 |
+| B. `skipped.operations=d` | PUT 200, 커넥터 자체 재시작 후 RUNNING, 로그 오류 0 | 토픽 메시지 **+3,237 ≈ ClickHouse 적재 3,297**(창 정렬 차이). 전 같으면 삭제 11,535건이 토픽에 더 실렸다 → 삭제 이벤트 0 |
+| D. binlog 30일 | `expire_logs_days` 0 + `binlog_expire_logs_seconds` 2,592,000 SET PERSIST(mysqld-auto.cnf), compose 옵션 교체(다음 재기동부터 일치) | 변수 확인. 재기동 시 레거시 옵션과의 충돌은 다음 MySQL 재기동 때 확인 항목 |
+
+정정 기록: "binlog 무기한"은 오판이었다(레거시 `--expire-logs-days=3` 로 3일). 적용 중 SET PERSIST 의 오류 4113 이 알려 줬다. compose 옵션 줄에 주석을 넣어 config 를 깨뜨린 커밋 1회(즉시 수정).
+24h 뒤 확인: 토픽 일간 메시지 ≈ 적재 행, `dq_ingest_daily` 지연 불변, health_check insert 알림 없음.
+
 ## 4. #4 `markets` 마스터 — `dim_markets`
 - 왜 필요한가: ① 거래소 예외를 흉내 내려면 상장일이 필요(신규 상장 96시간 제외, docs/16) ② 대조 분모·커버리지 체크·규칙 평가가 각자 거래소 목록을 부르고 있다 → 한 곳으로 ③ BFC 사고(상장 후 6일 무수집)를 "우리가 처음 본 날 − 상장일" 로 표에 남길 수 있다.
 - 재료(실측): `/v1/market/all?is_details=true`(현재 목록·경보 플래그·한/영 이름), 일봉 200일 창에서 마켓별 첫 봉 = 상장일 근사(287 중 55 마켓이 창 안, 나머지는 "≤ 2026-03-01"), 우리 `crypto_trades` 의 마켓별 첫 체결.
