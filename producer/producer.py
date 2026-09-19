@@ -125,12 +125,13 @@ class Stats:
 # ============================================
 # MySQL 배치 INSERT
 # ============================================
+# 2026-09-19 (docs/28 A-2-1): recv_ms = WS 수신 시각(거래소→우리 구간과 우리 버퍼→INSERT 구간을 가른다), ingest_source = 행 단위 출처(ws|gapfill), stream_type = Upbit st(REALTIME|SNAPSHOT)
 INSERT_SQL = """
     INSERT IGNORE INTO crypto_trades
         (market, trade_price, trade_volume, trade_amount, ask_bid, upbit_timestamp, sequential_id,
-         best_ask_price, best_ask_size, best_bid_price, best_bid_size)
+         best_ask_price, best_ask_size, best_bid_price, best_bid_size, recv_ms, ingest_source, stream_type)
     VALUES
-        (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 class MySQLWriter:
@@ -280,7 +281,10 @@ def parse_trade(data):
     - ttms (trade_timestamp): 체결 시각 (Unix ms)
     - sid (sequential_id): 체결 고유 ID (문자열)
     - bap/bas/bbp/bbs (best_ask_price/size, best_bid_price/size): 체결 시점 최우선 호가 (2026-09 추가, 없으면 NULL)
+    - st (stream_type): REALTIME | SNAPSHOT (구독 직후 스냅샷 체결. 없으면 REALTIME)
+    recv_ms: 이 메시지를 받은 시각(epoch ms). 튜플 끝에 (recv_ms, 'ws', st) 를 붙인다 — 인덱스 5(upbit_timestamp)는 그대로.
     """
+    recv_ms = int(time.time() * 1000)
     market = data['cd']
     price = Decimal(str(data['tp']))
     volume = Decimal(str(data['tv']))
@@ -305,6 +309,9 @@ def parse_trade(data):
         _opt('bas'),
         _opt('bbp'),
         _opt('bbs'),
+        recv_ms,
+        'ws',
+        data.get('st') or 'REALTIME',
     )
 
 def fetch_krw_markets(retries=10):
@@ -367,7 +374,7 @@ def fetch_gap_rows(lo_ms, hi_ms, markets):
                     rest_n += 1
                     price = float(t['trade_price']); vol = float(t['trade_volume'])
                     rows.append((market, price, vol, price * vol, t['ask_bid'], int(t['timestamp']),
-                                 int(t['sequential_id']), None, None, None, None))
+                                 int(t['sequential_id']), None, None, None, None, None, 'gapfill', 'REALTIME'))
             if stop or len(data) < 500:
                 break
             cursor = data[-1]['sequential_id']

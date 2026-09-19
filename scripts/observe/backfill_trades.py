@@ -3,7 +3,8 @@
 체결 백필 — 업비트 REST /v1/trades/ticks(원장) vs MySQL (market, sequential_id) 대조 후 누락 체결을 MySQL에 INSERT (CDC 경유로 ClickHouse까지 전파).
 - --dry-run: 누락 집계만(INSERT 없음). 결과 CSV: out/backfill/<run>.csv (market, hour_utc, rest_n, mysql_n, missing_n, inserted_n)
 - 대상: --from/--to UTC ISO. REST는 daysAgo 0~7 (오늘=0). 초당 7요청 이하.
-- INSERT: 마켓 단위로 시간순 일괄(이상탐지 interleave 최소화), 배치 500, best_* NULL, INSERT IGNORE(새 유니크 (market, sequential_id))
+- INSERT: 마켓 단위로 시간순 일괄(이상탐지 interleave 최소화), 배치 500, best_* NULL, INSERT IGNORE(새 유니크 (market, sequential_id, upbit_timestamp)), ingest_source='backfill' (2026-09-19)
+- 조회: MySQL 은 (market, upbit_timestamp) 창으로 읽는다 → 체결 시각 일 파티션 프루닝 + idx_market_ts (2026-09-19 A-1 뒤). 보존 7일 = REST daysAgo 한도 7 과 같아 그보다 오래된 날은 건너뛴다
 """
 import argparse, csv, json, os, sys, time, urllib.parse, urllib.request, subprocess
 from datetime import datetime, timezone, timedelta
@@ -75,8 +76,8 @@ def main():
                     vals=[]
                     for t in miss[k:k+500]:
                         p=Decimal(str(t['trade_price'])); v=Decimal(str(t['trade_volume'])); amt=(p*v).quantize(Decimal('0.0001'))
-                        vals.append(f"('{m}',{p},{v},{amt},'{t['ask_bid']}',{t['timestamp']},{t['sequential_id']},NULL,NULL,NULL,NULL)")
-                    out=mysql("INSERT IGNORE INTO crypto_trades (market,trade_price,trade_volume,trade_amount,ask_bid,upbit_timestamp,sequential_id,best_ask_price,best_ask_size,best_bid_price,best_bid_size) VALUES "+",".join(vals)+"; SELECT ROW_COUNT();")
+                        vals.append(f"('{m}',{p},{v},{amt},'{t['ask_bid']}',{t['timestamp']},{t['sequential_id']},NULL,NULL,NULL,NULL,NULL,'backfill','REALTIME')")
+                    out=mysql("INSERT IGNORE INTO crypto_trades (market,trade_price,trade_volume,trade_amount,ask_bid,upbit_timestamp,sequential_id,best_ask_price,best_ask_size,best_bid_price,best_bid_size,recv_ms,ingest_source,stream_type) VALUES "+",".join(vals)+"; SELECT ROW_COUNT();")
                     ins+=int(out.strip().split()[-1]); time.sleep(0.5)   # ≤1,000 rows/s → 하류(2초 배치)에 부담 없음
             w.writerow([m,day.isoformat(),len(T),len(have),len(miss),ins]); tot_rest+=len(T); tot_my+=len(have); tot_miss+=len(miss); tot_ins+=ins
             day+=timedelta(days=1)

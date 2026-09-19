@@ -75,7 +75,7 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 | p_max 잔류 | 미래 시각 체결(시계 오류)이 p_max 에 남아 영원히 안 지워짐 | 유지보수 프로시저가 p_max 행 수를 기록, health_check 에 `p_max > 0` 알림(후속) |
 | 롤백 완전성 | 스왑 뒤 새 테이블에 들어간 행이 옛 테이블엔 없다 | 롤백 = 새 테이블 delta(trade_id > 스왑 시점 max) 를 옛 테이블로 INSERT IGNORE → RENAME 되돌림 → EVENT 복원 |
 | INSERT…SELECT 잠금 | 복사 중 producer 삽입이 막히나 | binlog ROW + RR 에서 INSERT…SELECT 는 일관 읽기(공유 잠금 없음). 드라이런 75초 동안 적재 지연 불변으로 실측 |
-| 도구 | backfill/reconcile 도구가 MySQL 을 created_at 창으로 읽음(09-18 600초 타임아웃) | 스왑 뒤 upbit_timestamp 창 + 파티션 프루닝으로 수정(후속, 도구만) |
+| 도구 | backfill/reconcile 도구가 MySQL 을 created_at 창으로 읽음(09-18 600초 타임아웃) | ✅ 09-19 07:29 A-8: backfill 은 (market, upbit_timestamp) 창(프루닝+idx_market_ts), reconcile 은 MySQL 을 안 읽음(ClickHouse vs REST). producer·backfill 이 새 컬럼을 채움 |
 | 파서·하류 | 새 컬럼 3개는 Debezium 이 실어 보내고 Flink 는 이름으로 읽어 무시 | 변경 없음. ClickHouse 컬럼 추가는 A-5 에서 |
 
 ### A-4. A-0 드라이런 결과 (09-19 01:35 ~ 01:42 UTC, 같은 MySQL, 캡처 대상 밖 복사본)
@@ -120,6 +120,17 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 | 프루닝 실측 | "최근 1시간" count: 옛 표 **39/39 파트·14,010/14,010 그래뉼·1.006s** → 새 표 **5/56 파트·59/14,020 그래뉼·0.103s**(약 10배). 옛 표는 월 파티션은 걸러도 정렬 키에 체결 시각이 없어 그래뉼을 못 건너뛰었다 |
 | 남은 것 | 옛 표는 `crypto_trades_v2` 이름으로 보존, **09-26 DROP**(롤백 = EXCHANGE 되돌리기 + 차이분). 같은 날 `crypto_trades_rmt`(09-25)도. 디스크 28%(3.8GiB×3) 문제 없음 |
 왜 일 단위 슬라이스인가: 어제 RMT 전환에서 24M 행 한 번에 INSERT 가 1.84GiB 로 서버 한도를 넘겼다(docs/25). 왜 uniqExact 를 일 단위로: 한 달 16M 키의 정확 집계는 쿼리 한도를 넘기고, 근사(uniq)는 "불일치 0" 을 말할 수 없다.
+
+### A-8. 도구 정리 기록 (09-19 07:25 ~ 07:32 UTC, producer 재기동 1회)
+| 항목 | 결과 |
+|---|---|
+| producer | 튜플 끝에 (recv_ms=WS 수신 epoch ms, ingest_source='ws', stream_type=Upbit `st` 없으면 REALTIME). gap-fill 행은 (NULL, 'gapfill', 'REALTIME'). 인덱스 5(upbit_timestamp) 의존 코드는 그대로 |
+| backfill 도구 | INSERT 에 (NULL, 'backfill', 'REALTIME'). MySQL 조회는 이미 (market, upbit_timestamp) 창 — A-1 뒤 파티션 프루닝 + idx_market_ts 로 09-18 의 600초 타임아웃 원인 제거. 보존 7일 = REST daysAgo 한도와 같음 |
+| reconcile DAG | MySQL 을 읽지 않는다(ClickHouse vs 거래소 REST). 수정 없음 — docs/28 A-3 의 "도구가 created_at 창" 은 backfill 에만 해당했고 그것도 upbit_timestamp 로 이미 바뀌어 있었다(정정) |
+| 재기동 | `compose build`(17초) → `up -d --no-deps` 07:29:04~07:29:21, WS 재연결, 기동 gap-fill 5.3초 창 289마켓: 원장 103 / 삽입 23 (전부 ingest_source='gapfill' 로 표시됨). Debezium RUNNING, 새 컬럼 포함 메시지 파싱 실패 0(parseFailures 는 주입 1 그대로) |
+| **시각 6개 첫 실측** (07:29~07:32, ws 행 1,788) | 거래소 체결 → 우리 수신(recv_ms − upbit_timestamp) **평균 82ms** / 수신 → MySQL INSERT(created_at − recv_ms) **1,083ms**(배치 간격 1초의 절반 + 실행) / MySQL → Flink 적재(flink_ts − source_ts) **1,697ms**(binlog → Debezium → Kafka → Flink 3초 배치). 이제 e2e 지연을 구간별로 행 단위에서 답한다 — 전엔 source_ts 부터만 보여 "거래소→우리" 82ms 와 "우리 버퍼" 1.1초를 구분 못 했다 |
+| SNAPSHOT | 3분간 0건. Upbit 는 요청 시에만 스냅샷을 보내고 우리 구독은 안 한다 — 컬럼은 계약상 보존 |
+왜 recv_ms 가 NULL 인 행이 남나: gap-fill·backfill 행은 REST 로 가져와 "수신 시각"이 없다. 억지로 조회 시각을 넣으면 지연 통계가 오염되므로 NULL 이 맞고, ingest_source 가 그 이유를 말한다.
 
 ## B. 가상 매매 원장 — CDC 를 제자리에
 ### B-1. 왜
