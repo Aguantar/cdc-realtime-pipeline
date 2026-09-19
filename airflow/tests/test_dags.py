@@ -60,6 +60,7 @@ def test_health_check_dag_structure(dag_bag):
         "check_source_busy",      # 2026-09-17 포화 선행 지표 (docs/23 §5)
         "check_insert_latency",
         "check_parse_failures",   # 2026-09-19 DLQ 카운터 (docs/29 창2)
+        "check_ledger_reconcile", # 2026-09-19 원장 3자 대조 (docs/28 B-5)
         "evaluate_health",
     }
     actual_tasks = {t.task_id for t in dag.tasks}
@@ -81,6 +82,7 @@ def test_health_check_dag_structure(dag_bag):
         "check_source_busy",      # 2026-09-17 포화 선행 지표 (docs/23 §5)
         "check_insert_latency",
         "check_parse_failures",   # 2026-09-19 DLQ 카운터 (docs/29 창2)
+        "check_ledger_reconcile", # 2026-09-19 원장 3자 대조 (docs/28 B-5)
     }
     # 커버리지 체크는 업비트 REST 풀로 직렬화되어야 한다 (한도 10/s, DAG 간 충돌 방지)
     assert dag.get_task("check_market_coverage").pool == "upbit_rest"

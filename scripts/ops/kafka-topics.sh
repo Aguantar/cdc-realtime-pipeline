@@ -12,6 +12,7 @@ declare -A TOPICS=(
   ["ledger.crypto_db.virtual_fills"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
   ["ledger.crypto_db.virtual_positions"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
   ["ledger.crypto_db.binance_user_events"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
+  ["ledger.crypto_db.ledger_reconcile"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
 )
 for t in "${!TOPICS[@]}"; do
   spec="${TOPICS[$t]}"; parts=$(echo "$spec" | grep -oE "partitions=[0-9]+" | cut -d= -f2); cfg=$(echo "$spec" | sed 's/partitions=[0-9]* //' | tr ' ' ',')

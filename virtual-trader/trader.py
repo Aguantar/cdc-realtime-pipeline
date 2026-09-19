@@ -119,12 +119,23 @@ STRATEGY_CODE = {v: k for k, v in STRATEGY_CODES.items()}
 
 
 def client_order_id(strategy: str, symbol: str, n: int, sec: int) -> str:
-    """Binance clientOrderId 규칙 ^[.A-Z:/a-z0-9_-]{1,36}$ 안에서 전략을 읽을 수 있게: <code>.<yyyymmdd>.<symbol>.<n>.<sec%100000> (≤ 30자)."""
-    return f"{STRATEGY_CODE[strategy]}.{time.strftime('%Y%m%d', time.gmtime(sec))}.{symbol}.{n}.{sec % 100000}"
+    """테스트넷 실측 규칙(09-19) ^[a-zA-Z0-9-_]{1,36}$ — 문서의 '.' ':' '/' 는 거부됐다 → '_' 구분: <code>_<yyyymmdd>_<symbol>_<n>_<sec%100000> (≤ 30자)."""
+    return f"{STRATEGY_CODE[strategy]}_{time.strftime('%Y%m%d', time.gmtime(sec))}_{symbol}_{n}_{sec % 100000}"
 
 
 def strategy_of(cid: str) -> str:
-    return STRATEGY_CODES.get(cid.split('.')[0], 'unknown') if cid else 'unknown'
+    return STRATEGY_CODES.get(cid.split('_')[0], 'unknown') if cid else 'unknown'
+
+
+def compare_ledger(ex_orders: list, ex_trades: list, my: dict) -> dict:
+    """거래소(REST allOrders/myTrades) vs 우리 원장 집계 → 대조 행. 상태별 수·수량 합이 전부 같아야 mismatch=0."""
+    open_st = {'NEW', 'PARTIALLY_FILLED', 'PENDING_NEW'}
+    ex = {'orders': len(ex_orders), 'filled': sum(1 for o in ex_orders if o['status'] == 'FILLED'),
+          'canceled': sum(1 for o in ex_orders if o['status'] in ('CANCELED', 'EXPIRED', 'EXPIRED_IN_MATCH', 'REJECTED')),
+          'open': sum(1 for o in ex_orders if o['status'] in open_st),
+          'exec_qty': sum(Decimal(o['executedQty']) for o in ex_orders), 'trades': len(ex_trades), 'trade_qty': sum(Decimal(t['qty']) for t in ex_trades)}
+    diffs = [k for k in ex if Decimal(str(ex[k])) != Decimal(str(my[k]))]
+    return {'ex': ex, 'my': my, 'mismatch': 1 if diffs else 0, 'detail': ','.join(f"{k}:ex={ex[k]}/my={my[k]}" for k in diffs)[:512] or None}
 
 
 def dedup_key(ev: dict) -> str:
@@ -203,6 +214,27 @@ class Ledger:
                         (day, b['asset'], b['free'], b['locked'], snapshot_ms, self.epoch))
         cur.close()
 
+    def my_summary(self, symbol: str, day_start_ms: int) -> dict:
+        cur = self._cur()
+        cur.execute("""SELECT count(*), SUM(status='FILLED'), SUM(status IN ('CANCELED','EXPIRED','EXPIRED_IN_MATCH','REJECTED')), SUM(status IN ('NEW','PARTIALLY_FILLED','PENDING_NEW')), COALESCE(SUM(executed_qty),0)
+                       FROM virtual_orders WHERE symbol=%s AND created_ms>=%s AND reset_epoch=%s""", (symbol, day_start_ms, self.epoch)); o = cur.fetchone()
+        cur.execute("SELECT count(*), COALESCE(SUM(qty),0) FROM virtual_fills WHERE symbol=%s AND filled_ms>=%s", (symbol, day_start_ms)); f = cur.fetchone(); cur.close()
+        return {'orders': int(o[0]), 'filled': int(o[1] or 0), 'canceled': int(o[2] or 0), 'open': int(o[3] or 0), 'exec_qty': Decimal(str(o[4])), 'trades': int(f[0]), 'trade_qty': Decimal(str(f[1]))}
+
+    def record_reconcile(self, symbol: str, day: str, r: dict, now_ms: int):
+        ex, my = r['ex'], r['my']; cur = self._cur()
+        cur.execute("""INSERT INTO ledger_reconcile (reconciled_ms,as_of_day,symbol,ex_orders,ex_filled,ex_canceled,ex_open,ex_exec_qty,ex_trades,ex_trade_qty,my_orders,my_filled,my_canceled,my_open,my_exec_qty,my_trades,my_trade_qty,mismatch,detail)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (now_ms, day, symbol, ex['orders'], ex['filled'], ex['canceled'], ex['open'], str(ex['exec_qty']), ex['trades'], str(ex['trade_qty']),
+                     my['orders'], my['filled'], my['canceled'], my['open'], str(my['exec_qty']), my['trades'], str(my['trade_qty']), r['mismatch'], r['detail']))
+        cur.close()
+
+    def is_open(self, order_id: int) -> bool:
+        cur = self._cur(); cur.execute("SELECT status IN ('NEW','PARTIALLY_FILLED') FROM virtual_orders WHERE order_id=%s", (order_id,)); r = cur.fetchone(); cur.close(); return bool(r and r[0])
+
+    def open_maker_orders(self):
+        cur = self._cur(); cur.execute("SELECT order_id, symbol, orig_qty FROM virtual_orders WHERE strategy='maker-probe' AND status IN ('NEW','PARTIALLY_FILLED')"); r = cur.fetchall(); cur.close(); return r
+
     def apply_reset(self, note: str, recv_ms: int) -> dict:
         """리셋 판정 뒤: 이전 세대 주문·체결 물리 삭제(CDC 가 op=d 로 실어 나른다), 세대 +1, 원문 로그에 남김."""
         cur = self._cur()
@@ -215,14 +247,20 @@ class Ledger:
 
 # ---------------------------------------------------------------- Binance 클라이언트
 def rest_get(path: str, params: dict | None = None, signed: bool = False, key=None) -> dict | list:
+    """서명 요청은 '서명한 문자열 = 보낸 쿼리 문자열' 이어야 한다(첫 실측 400: 정렬해 서명하고 삽입 순서로 보냈다). 정렬 순서로 만들어 그대로 보낸다."""
     params = dict(params or {})
     if signed:
         params['timestamp'] = int(time.time() * 1000); params['recvWindow'] = 10000
-        params['signature'] = ed25519_sign(key, sign_payload(params))
-    url = f"{REST_URL}{path}" + ('?' + urllib.parse.urlencode(params) if params else '')
-    req = urllib.request.Request(url, headers={'X-MBX-APIKEY': API_KEY} if signed else {})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.load(r)
+        qs = sign_payload(params)
+        qs += '&signature=' + urllib.parse.quote(ed25519_sign(key, qs), safe='')
+    else:
+        qs = urllib.parse.urlencode(params)
+    req = urllib.request.Request(f"{REST_URL}{path}" + ('?' + qs if qs else ''), headers={'X-MBX-APIKEY': API_KEY} if signed else {})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code} {e.read().decode()[:200]}") from None
 
 
 class WsApi:
@@ -235,7 +273,7 @@ class WsApi:
         self.ws = await websockets.connect(WS_API_URL, ping_interval=20, ping_timeout=20, max_size=2 ** 22)
         asyncio.create_task(self._reader())
         r = await self.call('session.logon', {'apiKey': API_KEY, 'timestamp': int(time.time() * 1000)}, sign=True)
-        log.info(f"logon ok: {r.get('result', {}).get('apiKey', '')[:6]}…")
+        log.info(f"logon: status={r.get('status')}")   # 키 조각도 로그에 남기지 않는다
         r = await self.call('userDataStream.subscribe', {})
         log.info(f"userDataStream.subscribe: status={r.get('status')} result={r.get('result')}")
 
@@ -290,6 +328,7 @@ class Trader:
             if ev.get('e') == 'executionReport':
                 r = self.ledger.apply_report(ev)
                 if r['fill']: self.stats.fills += 1
+                if ev.get('x') == 'REPLACED': self.stats.amends += 0
                 log.info(f"exec {ev['s']} {ev['c']} x={ev['x']} X={ev['X']} z={ev['z']}/{ev['q']} i={ev['i']} I={ev['I']}")
         except Exception as e:
             self.stats.errors += 1; log.error(f"event apply failed: {type(e).__name__}: {e} ev={str(ev)[:200]}")
@@ -312,6 +351,8 @@ class Trader:
 
     async def amend_then_cancel(self, symbol: str, order_id: int, qty: Decimal):
         await asyncio.sleep(CANCEL_AFTER_SEC)
+        if not self.ledger.is_open(order_id):
+            return   # 그 사이 체결·취소됨(재기동 인수 주문에서 -2038 'Unknown order' 가 났던 원인) — 거래소에 없는 주문을 건드리지 않는다
         f = self.filters[symbol]; half = quantize(qty / 2, f.step_size)
         if f.amend_allowed and half > 0 and half * Decimal('1') >= f.step_size:
             try:
@@ -320,6 +361,8 @@ class Trader:
             except Exception as e:
                 self.stats.errors += 1; log.warning(f"amend failed {symbol} {order_id}: {e}")
             await asyncio.sleep(CANCEL_AFTER_SEC)
+        if not self.ledger.is_open(order_id):
+            return
         try:
             await self.api.signed('order.cancel', {'symbol': symbol, 'orderId': order_id}); self.stats.cancels += 1
             log.info(f"canceled {symbol} orderId {order_id}")
@@ -362,24 +405,44 @@ class Trader:
         r = self.ledger.apply_reset(f"open {oid} and filled {last} missing on exchange", int(time.time() * 1000))
         log.warning(f"TESTNET RESET detected → {r}")
 
+    async def reconcile(self):
+        """시간당: 거래소 REST(allOrders·myTrades, 당일) vs 우리 원장 → ledger_reconcile. 정답은 거래소."""
+        day_start_ms = int(time.time() // 86400 * 86400 * 1000); day = time.strftime('%Y-%m-%d', time.gmtime()); now_ms = int(time.time() * 1000); bad = 0
+        for symbol in SYMBOLS:
+            try:
+                ex_orders = rest_get('/api/v3/allOrders', {'symbol': symbol, 'startTime': day_start_ms, 'limit': 1000}, signed=True, key=self.key)
+                ex_trades = rest_get('/api/v3/myTrades', {'symbol': symbol, 'startTime': day_start_ms, 'limit': 1000}, signed=True, key=self.key)
+                r = compare_ledger(ex_orders, ex_trades, self.ledger.my_summary(symbol, day_start_ms)); self.ledger.record_reconcile(symbol, day, r, now_ms); bad += r['mismatch']
+                if r['mismatch']: log.warning(f"reconcile MISMATCH {symbol}: {r['detail']}")
+            except Exception as e:
+                self.stats.errors += 1; log.warning(f"reconcile failed {symbol}: {e}")
+        log.info(f"reconcile done: {len(SYMBOLS)} symbols, mismatch {bad}")
+
+    async def adopt_open_orders(self):
+        """재기동 시 메모리의 amend→cancel 예약이 사라지므로, 원장의 열린 maker 주문을 다시 예약한다 (안 하면 영원히 NEW)."""
+        for oid, symbol, qty in self.ledger.open_maker_orders():
+            log.info(f"adopt open maker order {symbol} {oid} → amend/cancel 예약"); asyncio.create_task(self.amend_then_cancel(symbol, int(oid), Decimal(str(qty))))
+
     async def snapshot(self):
         try:
-            acct = await self.api.signed('account', {'omitZeroBalances': True}); self.ledger.snapshot_positions(acct['balances'], int(time.time() * 1000))
+            acct = await self.api.signed('account.status', {'omitZeroBalances': True}); self.ledger.snapshot_positions(acct['balances'], int(time.time() * 1000))
             log.info(f"positions snapshot: {len(acct['balances'])} assets")
         except Exception as e:
             self.stats.errors += 1; log.warning(f"account snapshot failed: {e}")
 
     async def run(self):
         self.ledger.connect(); self.load_filters()
-        last_stats = time.time(); last_cycle = 0.0; last_snapshot = 0.0; last_reset_check = 0.0
+        last_stats = time.time(); last_cycle = 0.0; last_snapshot = 0.0; last_reset_check = 0.0; last_reconcile = 0.0; adopted = False
         while not self.stop.is_set():
             if self.api.ws is None:
                 try:
                     await self.api.connect(); self.api.reconnects += 1
                 except Exception as e:
                     self.stats.errors += 1; log.warning(f"connect failed: {e}"); await asyncio.sleep(10); continue
+            if not adopted: await self.adopt_open_orders(); adopted = True
             now = time.time()
             if now - last_snapshot >= 3600: await self.snapshot(); last_snapshot = now
+            if now - last_reconcile >= 3600 and now - self.stats.started >= 120: await self.reconcile(); last_reconcile = now
             if now - last_reset_check >= 600: await self.check_reset(); last_reset_check = now
             if now - last_cycle >= CYCLE_SEC: await self.cycle(); last_cycle = now
             if now - last_stats >= STATS_INTERVAL:

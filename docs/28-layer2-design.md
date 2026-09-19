@@ -223,6 +223,19 @@ B 에 쓸 수 있는 "우리가 만들지 않은 상태 변경" 후보: (a) Bina
 - Upbit 마켓 상태(ticker market_state·delisting_date·market_event)·announcement(CREATED/UPDATED) 를 참조 dim SCD 로 — C 단계에서.
 - 원장 dq 결과를 health_check 에 연결(연속 불일치 알림).
 
+### B-7. 실행 기록 (09-19 08:12 ~ 08:35 UTC, 키 발급 뒤)
+| 단계 | 결과 |
+|---|---|
+| 키 | 사용자가 테스트넷에서 "Register Public Key" 로 Ed25519 공개키 등록(HMAC 아님). API 키는 .env, 개인키는 secrets/ — 둘 다 gitignore. 로그엔 키 조각도 남기지 않게 수정 |
+| 첫 기동 (08:12) | `session.logon` 200, `userDataStream.subscribe` 200. 첫 사이클 실패 2건: ① clientOrderId 에 `.` → -1100 (테스트넷 실측 규칙 `^[a-zA-Z0-9-_]{1,36}$`, 문서의 `.`·`:`·`/` 는 거부) → `_` 구분 ② WS-API 메서드 `account` 404 → `account.status` |
+| 전이 실증 (08:13~08:35) | 주문 71, 체결 59. executionReport 실행 타입: **NEW 71 · TRADE(FILLED) 59 · REPLACED 11(amend keepPriority, orderId 유지) · CANCELED 7 · EXPIRED 2**. 전략별: maker-probe 26(그중 16 체결 — 시장이 내려와 −5틱 지정가가 체결됨), taker-ioc 25(전부 체결), unwind 20 |
+| 재구성 | MySQL 주문 행 version 1→2→3 (NEW→REPLACED→CANCELED / NEW→TRADE→FILLED) = ClickHouse FINAL 동일. 같은 MV 플러시 블록 안의 c/u/u 는 RMT 가 삽입 시점에 이미 접어 최신만 남는다(정상) |
+| **3자 대조** (시간당, `ledger_reconcile` → CDC → dbt `dq_ledger_daily`) | 거래소 REST(allOrders·myTrades) = MySQL = ClickHouse FINAL: 5심볼 × (주문 수 14, FILLED, 취소, executedQty 합, 체결 수, qty 합) **전부 일치, 불일치 0**. health_check `check_ledger_reconcile`(불일치 또는 2시간 무대조 알림), DAG 테스트 11/11 |
+| 시각 사슬 (executionReport 행 단위, p50) | 거래소 이벤트 → 우리 수신 **21ms** → binlog **+6ms** → Debezium **+3ms** → Kafka append **+192ms**(p95 350). 거래소→Kafka 219ms. ClickHouse 도착 시각은 `ch_inserted_at`(DEFAULT now64) 이 **폴링 시작 시각**이라 행보다 최대 7.5초 앞서 쓸 수 없음을 실측(−3,011ms) → Kafka 엔진 가상 컬럼 `_timestamp_ms` 를 `kafka_ts_ms` 로 추가. 1층은 3초 배치라 1.7s 였는데 2층은 200ms — 경로에 Flink 배치가 없어서다 |
+| 실수·정정 | ① REST 서명 400: 정렬해 서명하고 삽입 순서로 보냈다 → "서명한 문자열 = 보낸 쿼리" 로 ② dbt 별칭 충돌(`max(reconciled_ms) AS reconciled_ms` 가 argMax 안의 열과 순환) ③ `_timestamp_ms` 를 Int64 에 넣으면 초 단위로 잘림 → toUnixTimestamp64Milli ④ `asset` VARCHAR(10) 부족(테스트넷 자산명 `这是测试币456`) ⑤ 재기동 뒤 인수한 maker 주문에 amend → -2038(이미 체결) → 열려 있을 때만 건드리게 ⑥ DAG 테스트 파일을 `docker cp` 로 두 번 복사하면 하위 폴더에 들어가 옛 파일이 돌았다 |
+| 잔여 | 리셋(월 1회) 실증은 리셋이 와야 함. 전이 커버리지 중 PARTIALLY_FILLED 는 아직 0(테스트넷 호가가 두꺼워 20 USDT 가 한 번에 찬다) — 수량을 최우선 잔량보다 크게 잡는 규칙 D 를 붙일지 결정. Demo Mode 전환은 보류 |
+왜 이 결과가 중요한가: "CDC 파이프라인"이 처음으로 **변경**을 캡처했다. 71개 주문의 UPDATE 가 순서대로 반영돼 세 저장소의 최종 상태가 같다는 것을 거래소라는 외부 정답으로 증명했고, 상태를 바꾼 주체는 우리가 아니라 매칭 엔진이다.
+
 ## C. 케이스 테이블과 내부 신호 (인계 층)
 - `cases`(MySQL, mirror): case_id, 근거(alert/rule/market/window), 상태(open→reviewing→closed), 판정(true/false/unknown), 담당, 메모. 규칙 평가의 라벨 보조(거래소 정답이 없는 유동성 플래그의 정답은 여기서 나온다).
 - 내부 신호 후보(dbt, docs/27 마트 + 원장): ① 우리 체결이 `volume_over_depth15 ≥ 1` 분에 겹친 비율 ② 주문/체결 비율·취소율 급변 ③ 같은 마켓 양방향 체결(자전 의심) ④ 우리 포지션 마켓의 거래소 지정 겹침. 정의는 케이스 판정으로 검증한 뒤 규칙으로 승격 — 1층과 같은 절차.

@@ -70,6 +70,8 @@ sources:
         description: "잔고 스냅샷(시간당·리셋 감지용)"
       - name: binance_user_events
         description: "거래소 유저 스트림 원문(executionReport 등). 재구성·3자 대조의 정답 원천"
+      - name: ledger_reconcile
+        description: "생성기가 시간당 기록한 거래소(REST) vs MySQL 대조. dq_ledger_daily 가 ClickHouse 수를 붙여 3자 완성"
 
       - name: anomaly_alerts
         description: "Flink 이상 탐지 알림 (4가지 룰: LARGE_TRADE, PRICE_SPIKE, VOLUME_SURGE, RAPID_TRADES)"

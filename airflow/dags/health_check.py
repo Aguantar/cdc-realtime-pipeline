@@ -263,6 +263,20 @@ with DAG(
         python_callable=_check_parse_failures,
     )
 
+    # ── 2층 원장 3자 대조 (2026-09-19, docs/28 B-5) ────────────
+    # 생성기가 시간당 거래소(REST) vs MySQL 을 ledger_reconcile 에 남긴다. 마지막 대조에서 mismatch 가 있으면 CDC 가 변경을 놓친 것.
+    check_ledger_reconcile = ClickHouseOperator(
+        task_id="check_ledger_reconcile",
+        sql="""
+            SELECT count() AS symbols, countIf(mismatch = 1) AS mismatched,
+                   dateDiff('minute', fromUnixTimestamp64Milli(max(reconciled_ms)), now()) AS minutes_since_last,
+                   arrayStringConcat(groupArrayIf(concat(symbol, ':', detail), mismatch = 1), '; ') AS detail
+            FROM cdc_pipeline.ledger_reconcile FINAL
+            WHERE reconciled_ms = (SELECT max(reconciled_ms) FROM cdc_pipeline.ledger_reconcile)
+        """,
+        result_type="first",
+    )
+
     check_insert_latency = ClickHouseOperator(
         task_id="check_insert_latency",
         sql="""
@@ -292,8 +306,16 @@ with DAG(
         busy_result = ti.xcom_pull(task_ids="check_source_busy")
         insert_result = ti.xcom_pull(task_ids="check_insert_latency")
         parse_result = ti.xcom_pull(task_ids="check_parse_failures")
+        ledger_result = ti.xcom_pull(task_ids="check_ledger_reconcile")
 
         unhealthy = []
+
+        # 원장 3자 대조: 마지막 대조에 불일치가 있으면 알린다 (대조가 2시간 넘게 없어도 — 생성기 정지)
+        if ledger_result and int(ledger_result.get("symbols", 0)) > 0:
+            if int(ledger_result.get("mismatched", 0)) > 0:
+                unhealthy.append({"name": "Ledger Reconcile", "message": f"{ledger_result['mismatched']}/{ledger_result['symbols']} symbols mismatch: {ledger_result.get('detail')}"})
+            elif int(ledger_result.get("minutes_since_last", 0)) > 120:
+                unhealthy.append({"name": "Ledger Reconcile Stale", "message": f"last reconcile {ledger_result['minutes_since_last']} min ago (> 120) — virtual-trader 정지?"})
 
         # 파싱 실패: 이전 실행보다 늘었으면 알린다. 원문은 DLQ 토픽에 있다 (docs/29 창2)
         if parse_result and parse_result.get("parse_failures") is not None:
@@ -435,6 +457,7 @@ with DAG(
             check_source_busy,
             check_insert_latency,
             check_parse_failures,
+            check_ledger_reconcile,
         ]
         >> evaluate_health
     )

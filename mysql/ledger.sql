@@ -79,11 +79,36 @@ CREATE TABLE IF NOT EXISTS virtual_fills (
 -- 잔고 스냅샷 (일 1회 + 리셋 감지). 대조용.
 CREATE TABLE IF NOT EXISTS virtual_positions (
     as_of_day    DATE          NOT NULL,
-    asset        VARCHAR(10)   NOT NULL,
+    asset        VARCHAR(32)   NOT NULL COMMENT '테스트넷 자산명은 10자를 넘는다(실측 09-19)',
     free         DECIMAL(24,8) NOT NULL,
     locked       DECIMAL(24,8) NOT NULL,
     snapshot_ms  BIGINT        NOT NULL,
     reset_epoch  INT UNSIGNED  NOT NULL DEFAULT 0,
     created_at   TIMESTAMP(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     PRIMARY KEY (as_of_day, asset)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 3자 대조 결과 (거래소 REST vs MySQL, 생성기가 시간당 기록). ClickHouse 쪽 수는 dbt 가 이 행에 붙여 3자를 완성한다 (docs/28 B-5).
+-- 왜 생성기가 하나: 거래소 조회에 키가 필요하고 키는 한 컨테이너에만 둔다. 결과는 원장처럼 CDC 로 흘러 ClickHouse 에 닿는다.
+CREATE TABLE IF NOT EXISTS ledger_reconcile (
+    reconciled_ms   BIGINT       NOT NULL,
+    as_of_day       DATE         NOT NULL,
+    symbol          VARCHAR(20)  NOT NULL,
+    ex_orders       INT          NOT NULL COMMENT '거래소 allOrders(당일) 수',
+    ex_filled       INT          NOT NULL,
+    ex_canceled     INT          NOT NULL,
+    ex_open         INT          NOT NULL,
+    ex_exec_qty     DECIMAL(24,8) NOT NULL COMMENT '거래소 executedQty 합',
+    ex_trades       INT          NOT NULL COMMENT '거래소 myTrades(당일) 수',
+    ex_trade_qty    DECIMAL(24,8) NOT NULL,
+    my_orders       INT          NOT NULL,
+    my_filled       INT          NOT NULL,
+    my_canceled     INT          NOT NULL,
+    my_open         INT          NOT NULL,
+    my_exec_qty     DECIMAL(24,8) NOT NULL,
+    my_trades       INT          NOT NULL,
+    my_trade_qty    DECIMAL(24,8) NOT NULL,
+    mismatch        TINYINT(1)   NOT NULL,
+    detail          VARCHAR(512) NULL,
+    PRIMARY KEY (as_of_day, symbol, reconciled_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

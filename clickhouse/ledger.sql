@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS cdc_pipeline.virtual_orders
     op              LowCardinality(String),
     source_ts_ms    Int64 COMMENT 'binlog 시각',
     dbz_ts_ms       Int64 COMMENT 'Debezium 처리 시각',
-    ch_inserted_at  DateTime64(3) DEFAULT now64(3)
+    kafka_ts_ms     Int64 COMMENT 'Kafka append 시각 (엔진 가상 컬럼 _timestamp_ms)',
+    ch_inserted_at  DateTime64(3) DEFAULT now64(3) COMMENT '폴링 시작 시각이라 행보다 최대 7.5초 앞선다 — 지연 계산에 쓰지 말 것(실측 09-19)'
 )
 ENGINE = ReplacingMergeTree(version, is_deleted)
 PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(created_ms))
@@ -90,7 +91,8 @@ CREATE TABLE IF NOT EXISTS cdc_pipeline.binance_user_events
     event_raw    String COMMENT '거래소 원문 JSON (큐 컬럼 raw 와 이름 충돌 → event_raw)',
     recv_ms      Int64,
     source_ts_ms Int64,
-    ch_inserted_at DateTime64(3) DEFAULT now64(3)
+    kafka_ts_ms  Int64 COMMENT 'Kafka append 시각 (_timestamp_ms)',
+    ch_inserted_at DateTime64(3) DEFAULT now64(3) COMMENT '폴링 시작 시각 — 지연 계산에 쓰지 말 것'
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(event_ms))
@@ -120,7 +122,7 @@ SELECT
     JSONExtractInt(r, 'created_ms') AS created_ms, JSONExtractInt(r, 'updated_ms') AS updated_ms, JSONExtractInt(r, 'last_exec_id') AS last_exec_id,
     toUInt32(JSONExtractUInt(r, 'version') + if(o = 'd', 1, 0)) AS version, JSONExtractUInt(r, 'reset_epoch') AS reset_epoch,
     if(o = 'd', 1, 0) AS is_deleted, o AS op,
-    JSONExtractInt(raw, 'source', 'ts_ms') AS source_ts_ms, JSONExtractInt(raw, 'ts_ms') AS dbz_ts_ms
+    JSONExtractInt(raw, 'source', 'ts_ms') AS source_ts_ms, JSONExtractInt(raw, 'ts_ms') AS dbz_ts_ms, toUnixTimestamp64Milli(_timestamp_ms) AS kafka_ts_ms
 FROM cdc_pipeline.ledger_orders_queue WHERE o IN ('c', 'u', 'd', 'r');
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS cdc_pipeline.mv_ledger_fills TO cdc_pipeline.virtual_fills AS
@@ -151,5 +153,30 @@ SELECT
     JSONExtractUInt(r, 'event_id') AS event_id, JSONExtractString(r, 'event_type') AS event_type, JSONExtractString(r, 'dedup_key') AS dedup_key,
     JSONExtractInt(r, 'event_ms') AS event_ms, JSONExtractString(r, 'symbol') AS symbol, JSONExtractUInt(r, 'order_id') AS order_id,
     JSONExtractString(r, 'exec_type') AS exec_type, JSONExtractString(r, 'order_status') AS order_status, JSONExtractString(r, 'raw') AS event_raw,
-    JSONExtractInt(r, 'recv_ms') AS recv_ms, JSONExtractInt(raw, 'source', 'ts_ms') AS source_ts_ms
+    JSONExtractInt(r, 'recv_ms') AS recv_ms, JSONExtractInt(raw, 'source', 'ts_ms') AS source_ts_ms, toUnixTimestamp64Milli(_timestamp_ms) AS kafka_ts_ms
 FROM cdc_pipeline.ledger_events_queue WHERE JSONExtractString(raw, 'op') IN ('c', 'r');
+
+-- 3자 대조 행 (생성기가 시간당 거래소 vs MySQL 을 기록, CDC 로 도착). dbt dq_ledger_daily 가 ClickHouse FINAL 수를 붙여 3자를 완성.
+CREATE TABLE IF NOT EXISTS cdc_pipeline.ledger_reconcile
+(
+    reconciled_ms Int64, as_of_day Date, symbol LowCardinality(String),
+    ex_orders UInt32, ex_filled UInt32, ex_canceled UInt32, ex_open UInt32, ex_exec_qty Decimal(24, 8), ex_trades UInt32, ex_trade_qty Decimal(24, 8),
+    my_orders UInt32, my_filled UInt32, my_canceled UInt32, my_open UInt32, my_exec_qty Decimal(24, 8), my_trades UInt32, my_trade_qty Decimal(24, 8),
+    mismatch UInt8, detail String, source_ts_ms Int64, ch_inserted_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(source_ts_ms)
+ORDER BY (as_of_day, symbol, reconciled_ms);
+
+CREATE TABLE IF NOT EXISTS cdc_pipeline.ledger_reconcile_queue (raw String)
+ENGINE = Kafka SETTINGS kafka_broker_list = 'kafka-1:29092', kafka_topic_list = 'ledger.crypto_db.ledger_reconcile', kafka_group_name = 'clickhouse-ledger-reconcile', kafka_format = 'JSONAsString', kafka_num_consumers = 1;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS cdc_pipeline.mv_ledger_reconcile TO cdc_pipeline.ledger_reconcile AS
+WITH JSONExtractRaw(raw, 'after') AS r
+SELECT
+    JSONExtractInt(r, 'reconciled_ms') AS reconciled_ms, toDate(JSONExtractInt(r, 'as_of_day')) AS as_of_day, JSONExtractString(r, 'symbol') AS symbol,
+    JSONExtractUInt(r, 'ex_orders') AS ex_orders, JSONExtractUInt(r, 'ex_filled') AS ex_filled, JSONExtractUInt(r, 'ex_canceled') AS ex_canceled, JSONExtractUInt(r, 'ex_open') AS ex_open,
+    toDecimal128OrZero(JSONExtractString(r, 'ex_exec_qty'), 8) AS ex_exec_qty, JSONExtractUInt(r, 'ex_trades') AS ex_trades, toDecimal128OrZero(JSONExtractString(r, 'ex_trade_qty'), 8) AS ex_trade_qty,
+    JSONExtractUInt(r, 'my_orders') AS my_orders, JSONExtractUInt(r, 'my_filled') AS my_filled, JSONExtractUInt(r, 'my_canceled') AS my_canceled, JSONExtractUInt(r, 'my_open') AS my_open,
+    toDecimal128OrZero(JSONExtractString(r, 'my_exec_qty'), 8) AS my_exec_qty, JSONExtractUInt(r, 'my_trades') AS my_trades, toDecimal128OrZero(JSONExtractString(r, 'my_trade_qty'), 8) AS my_trade_qty,
+    toUInt8(JSONExtractInt(r, 'mismatch')) AS mismatch, JSONExtractString(r, 'detail') AS detail, JSONExtractInt(raw, 'source', 'ts_ms') AS source_ts_ms
+FROM cdc_pipeline.ledger_reconcile_queue WHERE JSONExtractString(raw, 'op') IN ('c', 'r');

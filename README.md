@@ -507,6 +507,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] CDC 구간 재검토 (`docs/26`): 삭제 이벤트 46% 제거·정리 DELETE 59s→1s·binlog 30일, #1 철회, `dim_markets`(상장일 근사·커버리지 공백 BFC 6일)
 - [x] 체결×호가 분 단위 마트 (`docs/27`): 10일 3.78M 행, EURC 되튐의 원인은 스프레드가 아니라 체결/깊이(≥300bp 변동 분의 중앙값 1.0)
 - [x] 체결 테이블 재설계 (`docs/28` A): 체결 시각 일 파티션·시각 포함 키·recv_ms/ingest_source/stream_type, 무정지 RENAME 교체(Debezium 이어 받음), DELETE→DROP PARTITION, 체결 토픽 키 market·zstd·7일 보존
+- [x] 2층 원장 B (`docs/28`): Binance Testnet 주문 생애주기(실돈 없음)를 MySQL 거울 테이블에 반영 → 두 번째 Debezium 커넥터(삭제 유지) → ClickHouse RMT(version, is_deleted). 전이 5종 실증, 거래소=MySQL=ClickHouse 3자 대조 불일치 0, 거래소→Kafka 219ms
 - [ ] 이후: 섀도 승격 판단(동등성 10건) → A-5 ClickHouse 재생성 → 2층(가상 원장, 체결 시각 파티션 재설계 포함) → KRaft 컷오버(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
 ---
