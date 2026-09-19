@@ -108,6 +108,19 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 | Kafka 창1 | `message.key.columns=crypto_db.crypto_trades:market` 적용 → 키가 `{"market":"KRW-…"}`, 커넥터 RUNNING, 적재 지속. (zstd·7일 보존·DLQ 토픽은 02:00 적용) |
 남은 확인: 09-20 00:05 첫 자동 유지보수(p20260912 DROP·p20260922 생성), 내일 재정렬률(도착 순 ≠ 이벤트 순)이 5.87% → ~0 인지, `crypto_trades_old` 는 09-26 DROP. 도구(backfill·reconcile 의 MySQL 조회를 upbit_timestamp 창으로)·producer ingest_source 는 후속.
 
+### A-7. A-5 실행 기록 (09-19 06:39 ~ 06:57 UTC, 정지 없음, `scripts/ops/clickhouse-trades-v2-cutover.sh`)
+| 단계 | 결과 |
+|---|---|
+| create (06:39) | `crypto_trades_v2` = RMT(flink_ts), PARTITION BY 체결 시각 월, ORDER BY (market, upbit_timestamp, sequential_id), TTL 체결 시각 +365일, 새 컬럼 recv_ms·ingest_source('ws')·stream_type('REALTIME') |
+| copy (06:39~06:48, 9분) | 체결 시각 **일 단위 슬라이스 218일**(02-13~09-19), 114,151,318행. 원본 파티션이 binlog 월이라 upbit_timestamp 조건은 프루닝이 안 돼 슬라이스마다 전체를 훑지만 한 슬라이스 2~3초. 쿼리별 메모리 1.2GB·스레드 2 로 제한(서버 한도 1.75GiB). 복사 중 ClickHouse CPU 164%, 메모리 1.53GiB, 프로덕션 p95 4.5s(복사 전과 같음) |
+| verify (06:49~06:55) | ① 월별 원본 count = 새 count: 3~9월 전부 일치, **2월만 −4행** ② 일별 uniqExact(market, sequential_id) 원본 = 새 FINAL count: **218일 중 불일치 0**. 처음 검증은 월별 uniqExact 를 한 쿼리로 돌려 메모리 한도(1.12GiB) 초과 → 일 단위로 나눔 |
+| 2월 −4행 | 결함 아님. 같은 체결(trade_id 6·1·2·4,607,449)이 02-21·02-23 재스냅샷으로 source_ts 만 다르게 두 번 들어와 있었고, 옛 키 (market, source_ts, trade_id) 로는 중복이 아니어서 남아 있던 행. 새 키 (market, upbit_timestamp, sequential_id) 가 머지에서 1행(flink_ts 최대)으로 정리 — 키를 업무 정체성으로 바꾼 효과가 첫 검증에서 바로 드러남 |
+| cutover (06:56:33) | MV DETACH → 차이분 T1~T2 58,988행(새 = 옛) → **EXCHANGE 06:56:34** → 잔여 63행 → MV ATTACH(max minute 06:56 갱신). Flink 3잡 RUNNING, TM 예외 0, 교체 뒤 60초 적재 3,916행·p95 4.39s |
+| 새 컬럼 | 적재 행에 recv_ms=NULL, ingest_source='ws', stream_type='REALTIME'(기본값). Flink 가 채우는 것은 Kafka 창2 |
+| 프루닝 실측 | "최근 1시간" count: 옛 표 **39/39 파트·14,010/14,010 그래뉼·1.006s** → 새 표 **5/56 파트·59/14,020 그래뉼·0.103s**(약 10배). 옛 표는 월 파티션은 걸러도 정렬 키에 체결 시각이 없어 그래뉼을 못 건너뛰었다 |
+| 남은 것 | 옛 표는 `crypto_trades_v2` 이름으로 보존, **09-26 DROP**(롤백 = EXCHANGE 되돌리기 + 차이분). 같은 날 `crypto_trades_rmt`(09-25)도. 디스크 28%(3.8GiB×3) 문제 없음 |
+왜 일 단위 슬라이스인가: 어제 RMT 전환에서 24M 행 한 번에 INSERT 가 1.84GiB 로 서버 한도를 넘겼다(docs/25). 왜 uniqExact 를 일 단위로: 한 달 16M 키의 정확 집계는 쿼리 한도를 넘기고, 근사(uniq)는 "불일치 0" 을 말할 수 없다.
+
 ## B. 가상 매매 원장 — CDC 를 제자리에
 ### B-1. 왜
 - CDC 의 본래 자리는 회사가 소유한 트랜잭션 DB(docs/26 §6). 시세는 스트리밍+대조가 맞고, 우리에게 없는 것은 **내부 데이터**다. "누구나 받을 수 없는 플래그"는 여기서 나온다.
