@@ -1,4 +1,4 @@
-# 28. 2층 설계 — 체결 테이블 재설계 · 가상 매매 원장 · 케이스 (2026-09-19, 결정 대기)
+# 28. 2층 설계 — 체결 테이블 재설계(A 완료) · 가상 매매 원장 · 케이스 (2026-09-19)
 
 docs/19 §2-2 "DE 본업(구조)" 갈래의 본체. 세 단계이고 A 는 "PK·유니크 키에 시각이 없어 파티션 DROP 을 못 한다"고 인정한 설계 부채(docs/26 §3 정정)의 해소다. 실행은 사용자 결정 뒤, 단계별로.
 
@@ -93,6 +93,18 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 - 왜: 현재 `crypto_trades` 파티션이 binlog 월(toYYYYMM(source_ts))인데 조회는 전부 체결 시각(upbit_timestamp)으로 걸어 **파티션 프루닝이 안 된다**(마트·대조·재계산이 전 월을 훑음). 중복 키도 (market, source_ts, trade_id) 라 binlog 시각을 품는다.
 - 새 정의: `ReplacingMergeTree(flink_ts)`, `PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(upbit_timestamp))`, `ORDER BY (market, upbit_timestamp, sequential_id)`, TTL 은 체결 시각 기준 365일. 새 컬럼(recv_ms, ingest_source, stream_type)도 함께.
 - 절차: docs/25 와 동일(새 테이블 → 월 단위·일 단위 복사 → MV DETACH → 차이분 → EXCHANGE → 잔여 → ATTACH), 12분 실측 있음. A-1(MySQL) 다음 창에.
+
+### A-6. A-1 실행 기록 (09-19 01:50 ~ 06:37 UTC, 정지 없음)
+| 단계 | 결과 |
+|---|---|
+| prepare | 새 테이블(체결 시각 일 파티션 09-11~09-21 + p_max, 새 컬럼 3, ascii_bin, idx_market_ts). 프로시저는 `mysql -e` 가 본문 세미콜론에서 끊겨 실패 → DELIMITER 파일로. 프로시저 테스트를 **복사 중인 새 테이블에 걸어** p20260911 을 지우는 실수(09-10·11 재복사로 복구) |
+| copy | 10일 16.86M행, 하루 38~95초, `sql_log_bin=0`, 프로덕션 p95 불변 |
+| verify | 처음 규칙이 틀려 두 번 수정(보존 정리는 created_at 기준이라 어느 지난 날이든 src 가 줄 수 있음 → 지난 날 dst ≥ src, 오늘 src ≥ dst). PASS: 09-12 는 src 가 363,094 줄어 있었고(새 테이블이 보유), 오늘 차이분 672,016 |
+| swap (06:32:49) | 옛 EVENT DISABLE → AUTO_INCREMENT 119,940,919+100,000 → **RENAME 06:32:51** → 차이분 18초. 새 삽입 첫 id 120,040,919(여유값 이상, 충돌 없음). 스왑 전 오늘 행 old 1,419,753 = new 1,419,753 |
+| Debezium | RENAME 에 WARN 2줄(예상), RUNNING 유지, **새 메시지에 recv_ms·ingest_source·stream_type 실림**, ClickHouse 연속성 119,940,780 → +1, 적재 60초 3,311행·p95 4.54s |
+| finalize | `manage_trade_partitions_daily` EVENT(매일 00:05 UTC) 등록·1회 실행(p20260920 존재 확인, DROP 대상 없음), `cleanup_old_trades` 삭제. 파티션 8개 활성, p_max 0 |
+| Kafka 창1 | `message.key.columns=crypto_db.crypto_trades:market` 적용 → 키가 `{"market":"KRW-…"}`, 커넥터 RUNNING, 적재 지속. (zstd·7일 보존·DLQ 토픽은 02:00 적용) |
+남은 확인: 09-20 00:05 첫 자동 유지보수(p20260912 DROP·p20260922 생성), 내일 재정렬률(도착 순 ≠ 이벤트 순)이 5.87% → ~0 인지, `crypto_trades_old` 는 09-26 DROP. 도구(backfill·reconcile 의 MySQL 조회를 upbit_timestamp 창으로)·producer ingest_source 는 후속.
 
 ## B. 가상 매매 원장 — CDC 를 제자리에
 ### B-1. 왜
