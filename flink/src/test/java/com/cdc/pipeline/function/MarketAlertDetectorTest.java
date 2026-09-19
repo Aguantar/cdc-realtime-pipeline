@@ -75,7 +75,7 @@ public class MarketAlertDetectorTest {
         assertEquals(100.0, a.get(0).getRefPrice(), 0.001);
         assertTrue(a.get(0).getValue() > 50 && a.get(0).getValue() < 52);
         assertEquals(t + MIN, a.get(0).getEventTime());                 // event_time = 분 끝
-        assertEquals("v2.1-shadow", a.get(0).getRuleVersion());
+        assertEquals("v2.1.1-shadow", a.get(0).getRuleVersion());
     }
 
     @Test
@@ -137,6 +137,30 @@ public class MarketAlertDetectorTest {
         List<MarketAlert> a = out();
         assertEquals(1, a.size());
         assertEquals(100.0, a.get(0).getRefPrice(), 0.001);
+    }
+
+    @Test
+    public void closeIsLastByEventOrderEvenIfAnEarlierTradeArrivesLater() throws Exception {
+        // v2.1 까지는 도착 순 마지막이 종가였다 → 재정렬된 더 이른 체결(seq 작음)이 뒤에 오면 종가가 낮아져 경계에서 전이가 뒤집힘
+        live(1, 100, T0);
+        long t = T0 + 1_440 * MIN;
+        live(2, 152, t + 30_000);                                          // 이벤트 순 마지막(+30s), 먼저 도착: +52%
+        h.processElement(new StreamRecord<>(trade(3, "KRW-LSK", 148, t + 25_000, t + 31_000)));   // 더 이른 체결(+25s)이 늦게 도착: +48%
+        closeMinuteOf(t);
+        assertEquals(1, out().size());                                      // 종가 152 → 주의 (도착 순이었다면 148 → 0건)
+        assertEquals(152.0, out().get(0).getPrice(), 0.001);
+    }
+
+    @Test
+    public void reorderIntoPreviousOpenMinuteUsesEventOrderToo() throws Exception {
+        live(1, 100, T0);
+        long t = T0 + 1_440 * MIN;
+        live(2, 152, t + 50_000);            // 분 t 의 마지막 체결
+        live(3, 130, t + MIN + 1_000);       // 다음 분 시작 → 분 t 는 아직 열려 있음(타이머 전)
+        h.processElement(new StreamRecord<>(trade(4, "KRW-LSK", 140, t + 40_000, t + MIN + 2_000)));   // 분 t 의 더 이른 체결이 늦게 도착
+        closeMinuteOf(t);
+        assertEquals(1, out().size());
+        assertEquals(152.0, out().get(0).getPrice(), 0.001);              // 도착 순이었다면 140 → +40% → 전이 없음
     }
 
     @Test

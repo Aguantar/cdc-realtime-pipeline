@@ -36,7 +36,7 @@ import java.util.Arrays;
  *   MapState 대신 배열인 이유: 참조 조회가 O(1) 이어야 한다(피크 초당 59 체결). 체크포인트 크기 287 × 1,500 × 8B ≈ 3.4MB.
  *   v2 → v2.1 은 링·마지막 분·등급 상태를 그대로 이어받는다(새 상태 2개는 비어 있어도 됨) → savepoint 복원 후 워밍업 없음.
  * 늦은 이벤트 가드(docs/20): 적재 지연 > 60초인 행(백필·gap-fill)은 상태·판정 모두 건너뛴다.
- * 섀도: rule_version 'v2.1-shadow' 로 market_alerts 에만 기록, 발송 없음. dq_rule_eval_daily·dq_alert_parity_daily 가 승격을 결정한다.
+ * 섀도: rule_version 'v2.1.1-shadow' 로 market_alerts 에만 기록, 발송 없음. dq_rule_eval_daily·dq_alert_parity_daily 가 승격을 결정한다.
  */
 public class MarketAlertDetector extends KeyedProcessFunction<String, CryptoTradeEvent, MarketAlert> {
 
@@ -47,13 +47,15 @@ public class MarketAlertDetector extends KeyedProcessFunction<String, CryptoTrad
     static final int LOOKBACK = 1_440;           // 24h
     static final long TIMER_CHAIN_MINUTES = 1_440; // 마지막 체결 뒤 이 시간까지만 빈 분을 계속 닫는다
     static final double[] THRESHOLDS = {0.5, 1.0, 2.0};
-    static final String RULE_VERSION = "v2.1-shadow";
+    static final String RULE_VERSION = "v2.1.1-shadow";
 
     private transient ValueState<double[]> ring;
     private transient ValueState<Long> lastMinute;       // 링에 값이 있는 가장 최근 분 (체결 또는 채움)
     private transient ValueState<Integer> level;
     private transient ValueState<Long> evaluatedMinute;  // 이 분까지 종가 판정 완료
     private transient ValueState<Long> lastTradeMinute;  // 마지막 실제 체결의 분
+    private transient ValueState<Long> lastSeqCur;       // 현재 분(lastMinute)에서 본 가장 늦은 sequential_id — 종가는 이벤트 순 마지막이어야 한다
+    private transient ValueState<Long> lastSeqPrev;      // 직전 분(lastMinute−1, 아직 안 닫힘)의 같은 값
     private transient Counter lateEventsSkipped;
     private transient Counter transitions;
     private transient Counter minutesEvaluated;
@@ -65,6 +67,8 @@ public class MarketAlertDetector extends KeyedProcessFunction<String, CryptoTrad
         level = getRuntimeContext().getState(new ValueStateDescriptor<>("level", Types.INT));
         evaluatedMinute = getRuntimeContext().getState(new ValueStateDescriptor<>("evaluatedMinute", Types.LONG));
         lastTradeMinute = getRuntimeContext().getState(new ValueStateDescriptor<>("lastTradeMinute", Types.LONG));
+        lastSeqCur = getRuntimeContext().getState(new ValueStateDescriptor<>("lastSeqCur", Types.LONG));
+        lastSeqPrev = getRuntimeContext().getState(new ValueStateDescriptor<>("lastSeqPrev", Types.LONG));
         lateEventsSkipped = getRuntimeContext().getMetricGroup().counter("lateEventsSkipped");
         transitions = getRuntimeContext().getMetricGroup().counter("levelTransitions");
         minutesEvaluated = getRuntimeContext().getMetricGroup().counter("minutesEvaluated");
@@ -105,17 +109,24 @@ public class MarketAlertDetector extends KeyedProcessFunction<String, CryptoTrad
         } else {
             Long ev = evaluatedMinute.value();
             if (ev == null) evaluatedMinute.update(lm - 1); // v2 savepoint 에서 복원: 이력은 있고 판정 분만 없음 → 현재 분부터
+            // 2026-09-19 v2.1.1: 분 종가 = 이벤트 순(sequential_id) 마지막 체결. 도착 순으로 덮으면 재정렬(5.87%, ≤4.8s) 때
+            // 더 이른 체결이 종가가 되어 ±임계 경계에서 1분짜리 전이가 생긴다(첫 동등성 판정 66/68, 미매칭 6 = KRW-G ±100% 경계 3쌍).
+            long seq = e.getSequentialId();
             if (m > lm) {                                  // 빈 분을 직전 종가로 채운다 (가장 최근 RING 분까지만)
                 double last = r[idx(lm)];
                 long from = Math.max(lm + 1, m - RING + 1);
                 for (long k = from; k < m; k++) r[idx(k)] = last;
                 r[idx(m)] = p;
+                lastSeqPrev.update(m == lm + 1 ? lastSeqCur.value() : null);
+                lastSeqCur.update(seq);
                 lastMinute.update(m);
             } else if (m == lm) {
-                r[idx(m)] = p;                             // 같은 분: 종가 갱신
-            } else if (m > (evaluatedMinute.value())) {
-                r[idx(m)] = p;                             // 재정렬로 아직 안 닫힌 과거 분에 도착: 종가 갱신 (도착 순 마지막 = 종가, 편차 ≤ 4.8s)
-            }                                              // 이미 닫힌 분에 도착: 무시
+                Long cur = lastSeqCur.value();
+                if (cur == null || seq > cur) { r[idx(m)] = p; lastSeqCur.update(seq); }   // 같은 분: 이벤트 순으로 더 늦을 때만 종가 갱신
+            } else if (m == lm - 1 && m > evaluatedMinute.value()) {
+                Long prev = lastSeqPrev.value();
+                if (prev == null || seq > prev) { r[idx(m)] = p; lastSeqPrev.update(seq); } // 재정렬로 직전(아직 안 닫힌) 분에 도착: 같은 규칙
+            }                                              // 더 오래된 분·이미 닫힌 분에 도착: 무시
             ring.update(r);
         }
         lastTradeMinute.update(m);
