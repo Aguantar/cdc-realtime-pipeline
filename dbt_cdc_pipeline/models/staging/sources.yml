@@ -50,7 +50,7 @@ sources:
             description: "ClickHouse 적재 시각"
 
       - name: trade_aggregations
-        description: "Flink 5분 윈도우 집계 결과 (Flink이 실시간 관리, DBT는 읽기만)"
+        description: "Flink 5분 처리 시간 집계 — 2026-09-19 폐기(docs/29 창2), 이후 행 없음. 이력 조회 전용. 대체: mart_trade_orderbook_1m(체결 시각)"
         columns:
           - name: market
             description: "마켓 코드"

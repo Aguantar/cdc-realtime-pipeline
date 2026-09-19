@@ -80,8 +80,8 @@
 | 패널 | 위치 | 데이터 소스 | 설명 |
 |------|------|-----------|------|
 | **BTC Price (실시간 BTC 가격)** | 좌상 | `crypto_trades` | 분 단위 평균/최저/최고 + 🔴 **이상 탐지 빨간 점선** (Grafana Annotation) |
-| **Bid vs Ask (매수/매도 비율)** | 우상 | `trade_aggregations` | 마켓별 매수/매도 건수 막대 차트 (1시간 집계, 자동 갱신) |
-| **Trade Volume (5분 총 거래금액)** | 좌하 | `trade_aggregations` | 5개 코인 합산 거래금액 라인 차트 (₩ 단위, Flink 5분 윈도우 집계) |
+| **Bid vs Ask (매수/매도 비율)** | 우상 | `crypto_trades` (2026-09-19, 체결 시각) | 마켓별 매수/매도 건수 막대 차트 (1시간 집계, 자동 갱신) |
+| **Trade Volume (5분 총 거래금액)** | 좌하 | `crypto_trades` 5분 버킷 (2026-09-19, 체결 시각) | 5개 코인 합산 거래금액 라인 차트 (₩ 단위, Flink 5분 윈도우 집계) |
 | **CDC Latency (CDC 지연시간)** | 우하 | `crypto_trades` | 평균(녹색)/최대(주황) 레이턴시 추이 (ms 단위) |
 | **Pipeline Status (파이프라인 상태)** | 우하 끝 | `crypto_trades` | 5분 내 데이터 유입 여부 (🟢 LIVE / 🔴 STALE, 글씨색 표시) |
 
@@ -218,7 +218,7 @@
 ### 파이프라인 흐름
 ```
 [실시간 스트리밍 — 체결: CDC 경로]
-Upbit WebSocket → MySQL → Debezium CDC → Kafka (3-broker) → Flink → ClickHouse → Grafana
+Upbit WebSocket → MySQL → Debezium CDC → Kafka (1-broker, 2026-09-18 축소) → Flink → ClickHouse → Grafana
                                                                           │
 [실시간 스트리밍 — 호가: 직접 발행 경로 (2026-09)]                            │
 Upbit WebSocket → orderbook-collector → Kafka upbit.orderbook.v1 → Flink → ClickHouse (raw 7일 / 1분 파생 365일)
@@ -276,11 +276,11 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
                              │
                              ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │                  Kafka Cluster (3 Brokers)                    │
-  │  ┌──────────┐  ┌──────────┐  ┌──────────┐                   │
-  │  │ Broker 1 │  │ Broker 2 │  │ Broker 3 │  RF=3, 72h 보존  │
-  │  │  512MB   │  │  512MB   │  │  512MB   │                   │
-  │  └──────────┘  └──────────┘  └──────────┘                   │
+  │                  Kafka (1 Broker, 2026-09-18 축소 — docs/24)      │
+  │  ┌──────────┐                                                 │
+  │  │ Broker 1 │  RF=1, 체결 토픽 zstd·7일 보존, DLQ 토픽         │
+  │  │  512MB   │  (3 브로커·RF3 는 24h 실측 뒤 "형식뿐" 으로 축소)  │
+  │  └──────────┘                                                 │
   └──────────────────────┬───────────────────────────────────────┘
                          │
                          ▼
@@ -397,8 +397,8 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 |----------|------|------|------|
 | Source DB | MySQL | 8.0 | CDC 소스 (binlog) |
 | CDC | Debezium | 2.5 | 실시간 변경 캡처 |
-| Message Queue | Apache Kafka | 3.6 | 이벤트 스트리밍 (3-broker) |
-| Stream Processing | Apache Flink | 1.18 | 실시간 집계 + 이상 탐지 |
+| Message Queue | Apache Kafka | 3.6 | 이벤트 스트리밍 (3-broker → 1-broker, docs/24) |
+| Stream Processing | Apache Flink | 1.18 | 체결 적재·PRICE_24H 등급 전이·호가 1분 집계·파싱 DLQ (5분 집계는 2026-09-19 폐기) |
 | OLAP | ClickHouse | 24.1 | 분석 쿼리 + 대시보드 백엔드 |
 | Orchestration | Apache Airflow | 2.8.1 | 배치 오케스트레이션 (2 DAGs, Custom Operator) |
 | Data Transform | dbt | 1.7.9 | ClickHouse 데이터 변환 (3계층: staging → intermediate → marts) |
@@ -420,7 +420,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 ### Phase 1: 인프라 구축 ✅
 - [x] Docker Compose 구성 (12개 컨테이너, 메모리 최적화)
 - [x] MySQL binlog 설정 (ROW 포맷, server-id, gtid)
-- [x] Kafka 3-broker 클러스터 (RF=3, 72시간 보존)
+- [x] Kafka 3-broker 클러스터 (RF=3, 72시간 보존) → 2026-09-18 1-broker·RF1 로 축소 (docs/24), 체결 토픽 zstd·7일 보존 (docs/29)
 - [x] Zookeeper + 전체 healthcheck 구성
 
 ### Phase 2: CDC 파이프라인 ✅
@@ -431,7 +431,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 
 ### Phase 3: Flink 스트리밍 ✅
 - [x] Java DataStream API Job 개발
-- [x] 5분 윈도우 집계 (거래량, 체결건수, 매수/매도)
+- [x] 5분 윈도우 집계 (거래량, 체결건수, 매수/매도) → 2026-09-19 폐기(처리 시간 창 왜곡, docs/29 §7). 분 마트(docs/27)·Grafana 원본 조회로 대체
 - [x] 이상 탐지 4가지 룰 설계 (LARGE_TRADE, PRICE_SPIKE, VOLUME_SURGE, RAPID_TRADES)
 - [x] ClickHouse JDBC Sink (3개 테이블)
 - [x] NullSafeStringSchema (Debezium tombstone 방어)
@@ -660,7 +660,7 @@ cdc-realtime-pipeline/
 │       ├── function/
 │       │   ├── CdcEventParser.java      # Debezium JSON 파싱 (null-safe)
 │       │   ├── AnomalyDetector.java     # FDS 이상 탐지 3가지 룰 (RAPID_TRADES 비활성화)
-│       │   ├── TradeAggregator.java     # 5분 윈도우 집계
+│       │   ├── CdcEventParser.java      # Debezium JSON 파싱, 실패 → DLQ 사이드 아웃풋 + 카운터 (2026-09-19)
 │       │   └── NullSafeStringSchema.java # Tombstone 방어 Deserializer
 │       ├── sink/
 │       │   └── ClickHouseSinks.java     # 원본/집계/이상탐지 JDBC Sink (best bid/ask 포함)
@@ -773,8 +773,9 @@ cdc-realtime-pipeline/
 ### Q5. 왜 Debezium CDC를 선택했나요? 체결은 CDC가 꼭 필요한가요?
 > "솔직히 체결 피드 자체는 실무라면 호가처럼 Kafka에 직접 넣는 게 정답입니다. CDC는 이미 업무용으로 존재하는 DB의 변경을 서비스 코드를 건드리지 않고 뽑을 때 쓰는 기술이고, 이 프로젝트에서는 그 운영 경험을 끝까지 겪어 보려고 체결을 MySQL 경유로 두었습니다. 그 대가로 스키마 변경 추적(온라인 ADD COLUMN을 Debezium이 추적), 대량 삭제 폭주로 인한 46시간 장애, 봉투 오버헤드 +34%, 삭제 부산물이 토픽 트래픽의 84%라는 비용을 전부 실측했고, 그래서 신규 데이터인 호가는 직접 발행으로 갔습니다. 관찰이 끝나면 CDC가 진짜 필요한 자리(가상 매매 원장, 이상탐지 케이스 관리 같은 상태 테이블)로 옮길 계획입니다."
 
-### Q6. Kafka를 3-broker로 구성한 이유는?
+### Q6. Kafka를 3-broker로 구성했다가 1-broker로 줄인 이유는?
 > "단일 호스트라 진짜 고가용성은 아닙니다. 디스크가 하나라 내구성 이득도 없습니다. 그래도 복제·ISR·min.insync.replicas·리더 선출·컨슈머 페일오버가 실제로 동작하는 환경이 필요했고, 재생 증폭 실험에서 브로커 1대를 죽였을 때의 동작을 실측하려고 유지합니다. 비용은 브로커 3개 RAM 약 1.9GB와 RF3 디스크 쓰기 3배로 재 두었고, 실험이 끝나면 1브로커 KRaft combined 모드로 축소할 계획입니다."
+> (2026-09-18 추가) 그 확인이 끝난 뒤 24시간 실측에서 3대는 같은 호스트·같은 NVMe 라 내구성이 형식뿐이었고 CPU·디스크만 썼다. 브로커 1대·RF1 로 무정지 재할당해 줄였고, 재기동 정지 14초·유실 0 을 실측했다(docs/24). 우리가 쓰는 Kafka 의 의의는 분산이 아니라 로그(오프셋 재개·생산자/소비자 분리·다중 소비자·키 순서)다(docs/29).
 
 ### Q7. n8n 알림을 왜 추가했나요?
 > "탐지만 하고 끝나면 운영 의미가 없습니다. FDS 이상거래는 즉시 Slack + Gmail로 상세 내역을 발송하고, 파이프라인 장애는 별도 채널로 복구 가이드와 함께 알림합니다. 이전 FDS Pipeline Lab 프로젝트에서도 같은 패턴으로 SLA 모니터링을 구축한 경험이 있습니다."

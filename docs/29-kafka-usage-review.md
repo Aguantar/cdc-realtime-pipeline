@@ -38,8 +38,8 @@
 |---|---|---|---|---|
 | 1 ✅ 06:36 적용 | 체결 키 market | 한 마켓의 체결이 순서대로 와야 24h 규칙·분 종가·마트가 맞는데 지금은 파티션 3개에 흩어져 5.87% 가 뒤바뀌고 그게 종가 버그를 만들었다 | `message.key.columns=crypto_db.crypto_trades:market` | 하루 재정렬률 5.87% → 0 |
 | 1 ✅ 02:00 적용 | zstd + 7일 시간 보존 | 재처리엔 "며칠치가 있다"는 약속이 필요한데 바이트 상한은 날짜를 보장 못 하고 800B JSON 그대로 10GB | 토픽 `compression.type=zstd`, `retention.ms=7d`(bytes 는 안전장치) | 디스크 3~5배 감소, 7일 전 오프셋 읽힘 |
-| 2 (Flink 재배포 1회) | 파싱 실패 카운터 + DLQ | 잘못된 메시지가 로그 한 줄로 사라져 하루 뒤 대조에서 "빠졌다"만 알고 "왜"는 못 찾는다 | 원문을 `cdc.dlq.crypto_trades` 로, 카운터 노출, health_check 감시 | 깨진 메시지 1건 주입 → DLQ 도착 + 알림 |
-| 2 | 체결 5분 집계 이벤트 시간화 또는 폐기 | 정지 뒤 따라붙는 행이 "지금" 창에 섞여 과거 5분이 왜곡되고, 호가는 이벤트 시간이라 기준이 둘 | 분 마트가 같은 값을 내므로 폐기 추천(남기면 워터마크 5s) | 읽는 곳 0 확인 후 제거 |
+| 2 ✅ 07:19 적용 | 파싱 실패 카운터 + DLQ | 잘못된 메시지가 로그 한 줄로 사라져 하루 뒤 대조에서 "빠졌다"만 알고 "왜"는 못 찾는다 | 원문을 `cdc.dlq.crypto_trades` 로, 카운터 노출, health_check 감시 | 깨진 메시지 1건 주입 → DLQ 도착 + 알림 |
+| 2 ✅ 07:19 폐기 | 체결 5분 집계 이벤트 시간화 또는 폐기 | 정지 뒤 따라붙는 행이 "지금" 창에 섞여 과거 5분이 왜곡되고, 호가는 이벤트 시간이라 기준이 둘 | 분 마트가 같은 값을 내므로 폐기 추천(남기면 워터마크 5s) | 읽는 곳 0 확인 후 제거 |
 | 3 (계약·관측) | 스키마 계약 | A-1 이 컬럼 3개를 추가하는데 생산자 변경이 하류를 런타임에 깨뜨리는 걸 막는 장치가 dbt 테스트뿐 | 토픽별 버전 JSON 스키마 파일 + CI(생산자·파서 양쪽). 레지스트리는 KRaft 컷오버와 | 컬럼 삭제 PR 이 CI 에서 막힘 |
 | 3 | JMX exporter | 브로커 지표를 CLI 로 찍다 실험을 오염(CPU 147% 착시) | exporter → Prometheus, CLI 호출 제거 | 브로커 CPU 가 exporter 값과 일치 |
 | 정정 | 격리·보안 | "비용"은 근거가 아니다 → 위협 모델로 다시 판단(§5). 실측: Kafka 9092·ZooKeeper 2181·Connect 8083·Flink 8081 이 0.0.0.0 → LAN 에서 무인증 접근·**조작** 가능 | 방화벽(DOCKER-USER)으로 즉시 차단 → 다음 재기동 창에 127.0.0.1 바인딩. TLS·ACL·쿼터는 위협이 없어 안 함 | LAN IP 로 접속 실패 |
@@ -66,3 +66,16 @@
 | zstd·7일 보존 | **다시 적용** — 새 클러스터엔 토픽이 새로 생기므로 | 토픽 설정은 클러스터 안에 산다 → **토픽 정의를 코드로**(`scripts/ops/kafka-topics.sh`: 이름·파티션·RF·압축·보존)로 두고 지금과 컷오버 때 같은 스크립트를 실행 |
 | 파싱 DLQ·스키마 계약·JMX exporter | 유지 | 코드·CI·exporter 는 클러스터와 무관(exporter 는 대상 주소만) |
 결론: 다시 하는 건 없다. "토픽 설정을 코드로" 한 가지를 지금 갖춰 두면 컷오버는 그 스크립트를 한 번 더 돌리는 일이 된다.
+
+## 7. 창2 실행 기록 (09-19 07:05 ~ 07:25 UTC, Flink 재배포 1회, 정지 51초)
+| 항목 | 결과 |
+|---|---|
+| 파서 | `CdcEventParser` 를 FlatMap → ProcessFunction 으로. 실패(깨진 JSON, op 없음, c 인데 after 없음)는 사이드 아웃풋 `{"error","raw","failed_at"}` → `KafkaSink`(at-least-once) → `cdc.dlq.crypto_trades`. 카운터 `parseFailures`·`skipped`(tombstone·d). 테스트 5개(새 컬럼 통과, recv_ms null 유지·ingest_source 기본값, 깨진 JSON → DLQ 원문+사유, after 없는 c 는 실패, tombstone·d 는 skip) |
+| 새 컬럼 | recv_ms·ingest_source·stream_type 을 파서→싱크로 통과. 실측: 적재 행 ingest_source=ws, stream_type=REALTIME, recv_ms 는 producer 가 아직 안 채워 NULL(도구 정리 단계) |
+| 5분 집계 폐기 | `TradeAggregator`·`TradeAggResult`·집계 싱크 삭제. 테이블 `trade_aggregations` 는 이력용으로 보존(마지막 창 07:10). Grafana 패널 2개(Bid vs Ask, Trade Volume)를 원본 테이블 체결 시각 5분 버킷으로 다시 씀 — 이제 이벤트 시각 |
+| uid | 소스·파서·원본 싱크·DLQ 싱크에 uid 명시. 이유: 자동 uid 는 체인 해시라 연산자 하나만 빼도 바뀐다 |
+| 재배포 | savepoint-49d1fd-cae7191e0907(07:19:20) → 새 잡 696c9170(07:20:09), `--allowNonRestoredState`(집계 창 상태 폐기). MarketAlertDetector 상태 복원(체크포인트 3.5MB 유지). 재시작 창 MySQL 2,665 = ClickHouse 2,665, 중복 0 |
+| DLQ 실증 | 깨진 JSON 1건을 체결 토픽에 주입 → TM WARN 1줄, `cdc.dlq.crypto_trades` 오프셋 0→1, 원문+사유 확인, parseFailures=1, 적재 지속(60초 1,842행), KRW-TEST 행 0 |
+| health_check | `check_parse_failures`: Flink REST 로 카운터 읽고 **이전 실행보다 늘었을 때만** 알림(카운터는 재시작에 0 이 되므로 절대값 판정은 옛 사고를 반복 알림). DAG 테스트 11/11 |
+| 실수 2건 | ① 첫 주입이 조용히 실패 — `docker exec` 에 `-i` 가 없어 stdin 이 안 넘어갔다(producer 는 오류 없이 종료). ② 메트릭 id 를 `CDC Event Parser.parseFailures` 로 조회 → n/a. 실제 id 는 공백이 `_` 로 바뀐 `CDC_Event_Parser.parseFailures` 이고 합산은 `/subtasks/metrics`. 둘 다 "안 나옴 = 안 됨"으로 단정하지 않고 TM 로그와 id 목록으로 원인을 찾았다 |
+| 왜 DLQ 인가 (24h 실제 실패 0건인데) | 관찰된 사고의 수리가 아니라 다음 사고의 원인 보존. 생산자 스키마가 바뀌거나 Debezium 설정이 틀어지면 지금은 "하루 뒤 대조에서 빠졌다"만 남고 원문은 없다. 실무 표준(원문 보존 + 카운터 알림)과 같다 |

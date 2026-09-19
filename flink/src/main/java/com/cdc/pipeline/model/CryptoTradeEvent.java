@@ -27,6 +27,10 @@ public class CryptoTradeEvent implements Serializable {
     private Double bestAskSize;     // 최우선 매도 잔량
     private Double bestBidPrice;    // 체결 시점 최우선 매수호가
     private Double bestBidSize;     // 최우선 매수 잔량
+    // 2026-09-19 (docs/28 A-1·A-5, docs/29 창2): MySQL·ClickHouse 양쪽에 추가된 컬럼 3개를 그대로 흘린다
+    private Long recvMs;            // producer WS 수신 epoch ms (producer 가 채우기 전엔 null)
+    private String ingestSource;    // ws | gapfill | backfill
+    private String streamType;      // Upbit stream_type: REALTIME | SNAPSHOT
 
     // --- Getters & Setters ---
 
@@ -77,6 +81,15 @@ public class CryptoTradeEvent implements Serializable {
 
     public Double getBestBidSize() { return bestBidSize; }
     public void setBestBidSize(Double bestBidSize) { this.bestBidSize = bestBidSize; }
+
+    public Long getRecvMs() { return recvMs; }
+    public void setRecvMs(Long recvMs) { this.recvMs = recvMs; }
+
+    public String getIngestSource() { return ingestSource; }
+    public void setIngestSource(String ingestSource) { this.ingestSource = ingestSource; }
+
+    public String getStreamType() { return streamType; }
+    public void setStreamType(String streamType) { this.streamType = streamType; }
 
     @Override
     public String toString() {

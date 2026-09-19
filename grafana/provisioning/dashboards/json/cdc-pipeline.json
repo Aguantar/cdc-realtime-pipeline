@@ -385,7 +385,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT \n    market,\n    sum(bid_count) as bid,\n    sum(ask_count) as ask\nFROM cdc_pipeline.trade_aggregations \nWHERE window_start >= now() - INTERVAL 1 HOUR \nGROUP BY market \nORDER BY bid + ask DESC",
+          "rawSql": "-- 2026-09-19: Flink 5분 처리 시간 집계 폐기(docs/29 창2) → 원본 테이블을 체결 시각으로 직접\nSELECT market, countIf(ask_bid = 'BID') AS bid, countIf(ask_bid = 'ASK') AS ask\nFROM cdc_pipeline.crypto_trades\nWHERE upbit_timestamp >= toUnixTimestamp(now() - INTERVAL 1 HOUR) * 1000\nGROUP BY market ORDER BY bid + ask DESC",
           "refId": "A",
           "format": 1
         }
@@ -462,7 +462,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT \n    window_start as time,\n    sum(total_amount) as total_volume\nFROM cdc_pipeline.trade_aggregations \nWHERE window_start >= now() - INTERVAL 1 HOUR \nGROUP BY window_start\nORDER BY window_start",
+          "rawSql": "-- 2026-09-19: Flink 5분 처리 시간 집계 폐기(docs/29 창2) → 체결 시각 5분 버킷으로 직접\nSELECT toStartOfFiveMinutes(fromUnixTimestamp64Milli(upbit_timestamp)) AS time, sum(trade_amount) AS total_volume\nFROM cdc_pipeline.crypto_trades\nWHERE upbit_timestamp >= toUnixTimestamp(now() - INTERVAL 1 HOUR) * 1000\nGROUP BY time ORDER BY time",
           "refId": "A",
           "format": 1
         }

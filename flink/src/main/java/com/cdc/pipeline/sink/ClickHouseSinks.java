@@ -1,7 +1,6 @@
 package com.cdc.pipeline.sink;
 
 import com.cdc.pipeline.model.CryptoTradeEvent;
-import com.cdc.pipeline.model.TradeAggResult;
 import com.cdc.pipeline.model.MarketAlert;
 
 import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
@@ -33,7 +32,7 @@ public class ClickHouseSinks {
     /** tablePrefix: 부하 실험 격리용("load_test_"). 프로덕션은 "" (docs/15). */
     public static SinkFunction<CryptoTradeEvent> rawTradeSink(String clickhouseUrl, String tablePrefix) {
         return JdbcSink.sink(
-            "INSERT INTO " + tablePrefix + "crypto_trades (op, trade_id, market, trade_price, trade_volume, trade_amount, ask_bid, upbit_timestamp, sequential_id, source_ts, cdc_ts, cdc_latency_ms, flink_ts, best_ask_price, best_ask_size, best_bid_price, best_bid_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO " + tablePrefix + "crypto_trades (op, trade_id, market, trade_price, trade_volume, trade_amount, ask_bid, upbit_timestamp, sequential_id, source_ts, cdc_ts, cdc_latency_ms, flink_ts, best_ask_price, best_ask_size, best_bid_price, best_bid_size, recv_ms, ingest_source, stream_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ps, event) -> {
                 ps.setString(1, event.getOp());
                 ps.setLong(2, event.getTradeId());
@@ -52,6 +51,9 @@ public class ClickHouseSinks {
                 setNullableDouble(ps, 15, event.getBestAskSize());
                 setNullableDouble(ps, 16, event.getBestBidPrice());
                 setNullableDouble(ps, 17, event.getBestBidSize());
+                if (event.getRecvMs() == null) ps.setNull(18, java.sql.Types.BIGINT); else ps.setLong(18, event.getRecvMs());
+                ps.setString(19, event.getIngestSource());
+                ps.setString(20, event.getStreamType());
             },
             executionOptions(),
             connectionOptions(clickhouseUrl)
@@ -62,34 +64,7 @@ public class ClickHouseSinks {
         if (v == null) ps.setNull(idx, java.sql.Types.DOUBLE); else ps.setDouble(idx, v);
     }
 
-    /**
-     * 5분 윈도우 집계 → trade_aggregations 테이블
-     */
-    public static SinkFunction<TradeAggResult> aggregationSink(String clickhouseUrl) {
-        return aggregationSink(clickhouseUrl, "");
-    }
-
-    public static SinkFunction<TradeAggResult> aggregationSink(String clickhouseUrl, String tablePrefix) {
-        return JdbcSink.sink(
-            "INSERT INTO " + tablePrefix + "trade_aggregations (market, window_start, window_end, trade_count, bid_count, ask_count, total_amount, total_volume, avg_price, min_price, max_price, vwap) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (ps, agg) -> {
-                ps.setString(1, agg.getMarket());
-                ps.setTimestamp(2, new Timestamp(agg.getWindowStart()));
-                ps.setTimestamp(3, new Timestamp(agg.getWindowEnd()));
-                ps.setLong(4, agg.getTradeCount());
-                ps.setLong(5, agg.getBidCount());
-                ps.setLong(6, agg.getAskCount());
-                ps.setDouble(7, agg.getTotalAmount());
-                ps.setDouble(8, agg.getTotalVolume());
-                ps.setDouble(9, agg.getAvgPrice());
-                ps.setDouble(10, agg.getMinPrice());
-                ps.setDouble(11, agg.getMaxPrice());
-                ps.setDouble(12, agg.getVwap());
-            },
-            executionOptions(),
-            connectionOptions(clickhouseUrl)
-        );
-    }
+    // 5분 처리 시간 집계 싱크는 2026-09-19 폐기 (docs/29 창2): 정지 뒤 따라붙는 행이 "지금" 창에 섞여 과거 5분을 왜곡했고, 분 마트(docs/27)가 이벤트 시각으로 같은 값을 낸다.
 
     /**
      * 이상탐지 v2 — 마켓 등급 전이 → market_alerts (docs/22). 섀도 기간엔 이 테이블만 쓰고 발송은 없다.

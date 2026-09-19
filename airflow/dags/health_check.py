@@ -238,6 +238,31 @@ with DAG(
         python_callable=_check_source_busy,
     )
 
+    # ── 파싱 실패 카운터 (2026-09-19, docs/29 창2) ────────────
+    # 파서가 실패 원문을 cdc.dlq.crypto_trades 로 보내고 parseFailures 카운터를 올린다. 카운터는 잡 재시작에 0 이 되므로
+    # "이전 실행보다 늘었나"로 판정한다(절대값 > 0 은 재시작 전 사고를 10분마다 다시 알리게 된다).
+    def _check_parse_failures(**context) -> dict:
+        import requests
+        base = "http://flink-jobmanager:8081"
+        jobs = requests.get(f"{base}/jobs/overview", timeout=10).json()["jobs"]
+        js = [j for j in jobs if j["name"] == "CDC Realtime Pipeline" and j["state"] == "RUNNING"]
+        if not js:
+            return {"parse_failures": None, "error": "prod CDC job not running"}
+        jid = js[0]["jid"]
+        vertices = requests.get(f"{base}/jobs/{jid}", timeout=10).json()["vertices"]
+        src = [v for v in vertices if v["name"].startswith("Source")][0]["id"]
+        # 연산자 메트릭 id 는 공백이 _ 로 바뀌고, 서브태스크 합산은 /subtasks/metrics 가 준다 (vertex /metrics 는 "0.…" 접두 id)
+        m = requests.get(f"{base}/jobs/{jid}/vertices/{src}/subtasks/metrics",
+                         params={"get": "CDC_Event_Parser.parseFailures", "agg": "sum"}, timeout=10).json()
+        cur = int(float(m[0]["sum"])) if m else None
+        prev = context["ti"].xcom_pull(task_ids="check_parse_failures", include_prior_dates=True) or {}
+        return {"parse_failures": cur, "prev": prev.get("parse_failures"), "job_id": jid}
+
+    check_parse_failures = PythonOperator(
+        task_id="check_parse_failures",
+        python_callable=_check_parse_failures,
+    )
+
     check_insert_latency = ClickHouseOperator(
         task_id="check_insert_latency",
         sql="""
@@ -266,8 +291,16 @@ with DAG(
         coverage_result = ti.xcom_pull(task_ids="check_market_coverage")
         busy_result = ti.xcom_pull(task_ids="check_source_busy")
         insert_result = ti.xcom_pull(task_ids="check_insert_latency")
+        parse_result = ti.xcom_pull(task_ids="check_parse_failures")
 
         unhealthy = []
+
+        # 파싱 실패: 이전 실행보다 늘었으면 알린다. 원문은 DLQ 토픽에 있다 (docs/29 창2)
+        if parse_result and parse_result.get("parse_failures") is not None:
+            cur = int(parse_result["parse_failures"]); prev = parse_result.get("prev")
+            if prev is not None and cur > int(prev):
+                unhealthy.append({"name": "CDC Parse Failures",
+                                  "message": f"parseFailures {prev} → {cur} (+{cur - int(prev)}) — 원문: kafka topic cdc.dlq.crypto_trades"})
 
         # 포화 선행 지표 (docs/23 §5): 유실 전에, 실시간이 깨지기 전에 알린다
         if busy_result and busy_result.get("busy_max_ms") is not None and float(busy_result["busy_max_ms"]) > 500:
@@ -401,6 +434,7 @@ with DAG(
             check_market_coverage,
             check_source_busy,
             check_insert_latency,
+            check_parse_failures,
         ]
         >> evaluate_health
     )

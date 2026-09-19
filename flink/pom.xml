@@ -60,6 +60,14 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- KafkaSink 의 DeliveryGuarantee (flink-dist 에 포함 → provided). 2026-09-19 DLQ 싱크 -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-base</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Kafka Connector -->
         <dependency>
             <groupId>org.apache.flink</groupId>

@@ -3,8 +3,11 @@ package com.cdc.pipeline.function;
 import com.cdc.pipeline.model.CryptoTradeEvent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.Counter;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.OutputTag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,43 +18,57 @@ import org.slf4j.LoggerFactory;
  * - null/빈 메시지 무시 (Debezium tombstone)
  * - DELETE(op=d) 이벤트 스킵 (우리 파이프라인에서 불필요)
  * - 모든 필드 null-safe 처리
+ *
+ * 2026-09-19 (docs/29 창2): 파싱 실패를 로그 한 줄로 흘리지 않는다.
+ * - 실패 원문 + 사유를 사이드 아웃풋 {@link #DLQ} 로 내보내 Kafka DLQ 토픽에 쌓는다 (하루 뒤 대조에서 "빠졌다"만 알고 "왜"를 못 찾던 문제).
+ * - 카운터 parseFailures / skipped 를 Flink 메트릭으로 노출해 health_check 가 10분마다 본다.
+ * 기준: 24시간 TM 로그에 실제 파싱 실패는 0건이었다(09-19 확인). 이 장치는 관찰된 사고의 수리가 아니라 다음 사고의 원인 보존이다.
  */
-public class CdcEventParser implements FlatMapFunction<String, CryptoTradeEvent> {
+public class CdcEventParser extends ProcessFunction<String, CryptoTradeEvent> {
 
     private static final Logger LOG = LoggerFactory.getLogger(CdcEventParser.class);
+    /** 파싱 실패 원문: {"error":..., "raw":..., "failed_at": epoch ms} */
+    public static final OutputTag<String> DLQ = new OutputTag<String>("parse-dlq") {};
+
     private transient ObjectMapper mapper;
+    private transient Counter parseFailures;
+    private transient Counter skipped;
 
     @Override
-    public void flatMap(String json, Collector<CryptoTradeEvent> out) throws Exception {
+    public void open(Configuration parameters) {
+        mapper = new ObjectMapper();
+        parseFailures = getRuntimeContext().getMetricGroup().counter("parseFailures");
+        skipped = getRuntimeContext().getMetricGroup().counter("skipped");
+    }
+
+    @Override
+    public void processElement(String json, Context ctx, Collector<CryptoTradeEvent> out) {
         // null/빈 메시지 방어 (Debezium tombstone 대응)
         if (json == null || json.isEmpty() || json.equals("null")) {
+            skipped.inc();
             return;
-        }
-
-        if (mapper == null) {
-            mapper = new ObjectMapper();
         }
 
         try {
             JsonNode root = mapper.readTree(json);
-            if (root == null || root.isNull()) return;
+            if (root == null || root.isNull()) { skipped.inc(); return; }
 
             // payload가 있으면 Debezium envelope, 없으면 직접 데이터
             JsonNode payload = root.has("payload") ? root.get("payload") : root;
-            if (payload == null || payload.isNull()) return;
+            if (payload == null || payload.isNull()) { skipped.inc(); return; }
 
             String op = payload.has("op") ? payload.get("op").asText() : null;
-            if (op == null) return;
+            if (op == null) { fail(json, "no op field", ctx); return; }
 
-            // DELETE 이벤트 스킵 — MySQL cleanup의 대량 DELETE가 CDC로 오면
-            // before 데이터만 있고, 우리 파이프라인에서는 불필요
+            // DELETE 이벤트 스킵 — 커넥터가 skipped.operations=d 로 이미 거르지만(docs/26 §3) 방어로 남긴다
             if ("d".equals(op)) {
+                skipped.inc();
                 return;
             }
 
             // after 데이터 추출
             JsonNode data = payload.get("after");
-            if (data == null || data.isNull()) return;
+            if (data == null || data.isNull()) { fail(json, "op=" + op + " without after", ctx); return; }
 
             // CDC 타임스탬프
             long cdcTs = payload.has("ts_ms") ? payload.get("ts_ms").asLong() : System.currentTimeMillis();
@@ -83,11 +100,29 @@ public class CdcEventParser implements FlatMapFunction<String, CryptoTradeEvent>
             event.setBestAskSize(parseNullableDecimal(data, "best_ask_size"));
             event.setBestBidPrice(parseNullableDecimal(data, "best_bid_price"));
             event.setBestBidSize(parseNullableDecimal(data, "best_bid_size"));
+            // 2026-09-19 새 컬럼 3개. 스왑 이전 메시지(없음)는 테이블 기본값과 같은 값으로
+            event.setRecvMs(data.has("recv_ms") && !data.get("recv_ms").isNull() ? data.get("recv_ms").asLong() : null);
+            event.setIngestSource(safeGetString(data, "ingest_source", "ws"));
+            event.setStreamType(safeGetString(data, "stream_type", "REALTIME"));
 
             out.collect(event);
 
         } catch (Exception e) {
-            LOG.warn("CDC 이벤트 파싱 실패: {}", e.getMessage());
+            fail(json, e.getClass().getSimpleName() + ": " + e.getMessage(), ctx);
+        }
+    }
+
+    private void fail(String raw, String reason, Context ctx) {
+        parseFailures.inc();
+        LOG.warn("CDC 이벤트 파싱 실패 → DLQ: {}", reason);
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode n = mapper.createObjectNode();
+            n.put("error", reason);
+            n.put("raw", raw);
+            n.put("failed_at", System.currentTimeMillis());
+            ctx.output(DLQ, mapper.writeValueAsString(n));
+        } catch (Exception e) {
+            LOG.error("DLQ 직렬화 실패 (원문 유실): {}", e.getMessage());
         }
     }
 
