@@ -740,6 +740,7 @@ cdc-realtime-pipeline/
     ├── 20-deployment-1.md              # 배포 1: 늦은 이벤트 가드·gap-fill·수리 계보·10분 커버리지·CI — 설계 변경 근거와 실측 검증
     ├── 21-backup-and-access-control.md # 백업(Oracle 오프사이트, 복원 리허설 79초)·접근 통제(사용자 분리, 컷오버 런북) — 판단 오류 2건 정정 포함
     ├── 22-rules-v2-and-quality-layer.md # 이상탐지 v2(PRICE_24H 등급 전이 섀도, VOLUME_24H dbt 규칙) + dq_* 품질 층 + 규칙 평가 모델 + 승격 기준
+    ├── 28-layer2-design.md           # 2층 설계: 체결 시각 파티션 재설계(설계 부채 해소)·가상 매매 원장(CDC 제자리)·케이스/내부 신호 (결정 대기)
     ├── 27-trade-orderbook-mart.md    # 체결×호가 분 결합 마트: 우리만의 데이터, volume_over_depth15, EURC 되튐 = 깊이 대비 체결량(500배)
     ├── 26-cdc-segment-review.md      # CDC 구간 재검토: 삭제 이벤트가 토픽의 46%·정리 DELETE 풀스캔·binlog 무기한 → skipped.operations/인덱스/보존, #1 철회, dim_markets (결정 대기)
     ├── 25-replacing-merge-tree.md    # 싱크 중복을 저장 층에서: RMT 전환 무정지, 재전송 중복 239→0, 메모리 한도 실패와 슬라이스 복사
