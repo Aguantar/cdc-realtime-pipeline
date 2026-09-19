@@ -133,6 +133,20 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 왜 recv_ms 가 NULL 인 행이 남나: gap-fill·backfill 행은 REST 로 가져와 "수신 시각"이 없다. 억지로 조회 시각을 넣으면 지연 통계가 오염되므로 NULL 이 맞고, ingest_source 가 그 이유를 말한다.
 
 ## B. 가상 매매 원장 — CDC 를 제자리에
+### B-0. 착수 전 재검증 — "UPDATE·DELETE 는 정말 못 받나" (사용자 요청, 09-19 07:35~07:45 UTC)
+사용자: "전에 네 말만 믿었다가 아니었던 적이 많다. 다른 루트로도 확인해라." 방법 = 공식 문서(WebFetch) + **실제 소켓 구독**(producer 이미지의 websockets 로 6~20초 수신) 두 갈래, 둘이 맞을 때만 결론.
+| 질문 | 내가 했던 말 | 실측·문서 | 판정 |
+|---|---|---|---|
+| Upbit 체결에 UPDATE/DELETE 가 있나 | 없다 | trade 스트림 필드: ask_bid, best_*, sequential_id, stream_type, trade_* — 정정·취소 개념 없음. 31건 중 `st` SNAPSHOT 3(구독 직후)·REALTIME 28 | **맞음**. 우리 stream_type 컬럼이 SNAPSHOT 을 실제로 받는다는 것도 확인 |
+| Upbit 에 UPDATE 모양 데이터가 전혀 없나 | (말한 적 없지만 그렇게 들릴 수 있었음) | **candle.1m**: 같은 candle_date_time_utc 07:37 이 8번, 07:38 이 4번 반복 수신, 값(trade_price·acc_volume)이 매번 바뀜 — 문서도 "같은 candle_date_time 이 여러 번 전송, 최신을 취하라". **ticker**: 6초에 20건, market_state·delisting_date·is_trading_suspended·market_warning 필드 = 마켓 단위 상태 레코드(DELISTED = 삭제 모양). **orderbook**: 항상 전체 스냅샷(docs/09 실측) = 마켓 단위 상태 | **불완전했음**. 공개 스트림에 키 단위 갱신(캔들·티커·호가)은 있다. 없는 것은 "주문 생애주기"뿐 |
+| Upbit 주문 생애주기(진짜 UPDATE/DELETE) | — | private `myOrder`: wait/watch/trade/done/cancel/prevented 를 이벤트 발생 시 푸시(문서). 단 **API 키 + 실제 주문(실돈)** 필요. 테스트넷 없음. 2025-10-27 "주문 테스트 API"는 검증만 하고 "주문이 실제로 생성되지는 않으며 UUID 는 조회·취소에 쓸 수 없다"(문서) | 실돈 금지 규칙 아래서는 **못 받는다** |
+| Binance 확장이 "같은 범주(불변 체결)"인가 | 같은 범주 | **depth diff**: 6초 7메시지 1,632 레벨 갱신 중 **762 건이 quantity 0 = 그 가격 레벨 삭제**(문서: 로컬 호가장 관리용, U/u 순번). **kline_1m**: 같은 캔들 4번 갱신, x=false. 즉 키 단위 UPDATE/DELETE 가 공개 스트림에 있다 | **틀렸음**. 체결만 보면 같은 범주지만 Binance 는 증분 호가(삭제 포함)가 있어 범주가 다르다 |
+| 실돈 없이 주문 생애주기를 받을 길 | 없다(가상 매매기로 만든다) | **Binance Spot Testnet**: "모든 자금은 가상, 입출금 불가", 사이트 로그인으로 API 키, `executionReport`(NEW/TRADE/CANCELED/REPLACED/EXPIRED…) 를 유저 데이터 스트림으로. 우리 호스트에서 `stream.testnet.binance.vision` 수신 확인. 시세는 프로덕션과 동일 호가(best 81045.90/81045.91 양쪽 일치), 호가 깊이는 더 두껍고(상위5 20.3 vs 4.4 BTC) 체결은 0.9/s vs 13.3/s. 약 월 1회 예고 없이 전체 리셋(미체결·체결 전부 삭제) | **틀렸음**. 거래소 매칭 엔진이 만든 주문 상태 전이를 실돈 없이 받을 수 있다 |
+**결론과 B 설계에 미치는 영향**
+1. Upbit 로는 주문 생애주기를 실돈 없이 못 받는다 — 이 부분은 원래 판단대로.
+2. Binance 테스트넷은 B 의 대안이 된다: 주문은 우리 규칙이 내지만 **체결·상태 전이는 거래소 엔진이 만든다**. 자체 가상 체결(그 분 VWAP)보다 "꾸며낸 데이터" 비판에 강하다. 비용: Binance 상시 사용 결정(지금 규칙 "부하 실험 전용"), API 키 보관, 월 1회 리셋 처리(= 대량 DELETE 의 CDC 실증 기회이기도 함), 테스트넷 유동성이 얇아 체결률이 낮음.
+3. 규모 확장 답도 정정: Binance 증분 호가는 "같은 양을 더"가 아니라 "삭제가 있는 상태 스트림"이라 새 범주다. 다만 그건 Kafka 직행 스트리밍이지 CDC 가 아니다.
+4. 정정 기록: 09-19 07:35 답변의 "Binance 는 같은 범주" 는 틀렸고, "Upbit 은 불변 체결뿐" 은 체결에 한해 맞다. 두 번 다 "실제로 구독해 보기 전에 말했다"가 원인.
 ### B-1. 왜
 - CDC 의 본래 자리는 회사가 소유한 트랜잭션 DB(docs/26 §6). 시세는 스트리밍+대조가 맞고, 우리에게 없는 것은 **내부 데이터**다. "누구나 받을 수 없는 플래그"는 여기서 나온다.
 - 원칙: Faker 없음. 주문은 우리 실시간 시세 위에서 **규칙으로 결정되는 가상 매매**(paper trading)이고 실제 돈은 쓰지 않는다. 데이터가 "가상"인 것은 표시하되 생성 방식은 결정적이라 재현된다.
