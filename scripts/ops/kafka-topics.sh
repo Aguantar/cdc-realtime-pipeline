@@ -7,6 +7,11 @@ declare -A TOPICS=(
   ["cdc.crypto_db.crypto_trades"]="partitions=3 compression.type=zstd retention.ms=604800000 retention.bytes=8589934592 min.insync.replicas=1"
   ["upbit.orderbook.v1"]="partitions=6 compression.type=producer retention.ms=86400000 retention.bytes=6442450944 min.insync.replicas=1"
   ["cdc.dlq.crypto_trades"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
+  # 2층 원장 (docs/28 B, 2026-09-19): 하루 수백 행 → 1 파티션이면 키 순서가 곧 토픽 순서. 30일 보존 = 테스트넷 리셋 주기(월 1회)보다 길게
+  ["ledger.crypto_db.virtual_orders"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
+  ["ledger.crypto_db.virtual_fills"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
+  ["ledger.crypto_db.virtual_positions"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
+  ["ledger.crypto_db.binance_user_events"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
 )
 for t in "${!TOPICS[@]}"; do
   spec="${TOPICS[$t]}"; parts=$(echo "$spec" | grep -oE "partitions=[0-9]+" | cut -d= -f2); cfg=$(echo "$spec" | sed 's/partitions=[0-9]* //' | tr ' ' ',')

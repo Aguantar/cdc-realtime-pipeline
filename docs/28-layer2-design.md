@@ -178,18 +178,50 @@ B 에 쓸 수 있는 "우리가 만들지 않은 상태 변경" 후보: (a) Bina
 4. **B 설계 권고**: 주문 규칙은 우리 것, 주문 상태 전이는 Binance 엔진(Testnet 우선 — 계정·KYC 없이 시작, 월 리셋은 "대량 DELETE 의 CDC 실증"으로 쓴다), 여기에 Upbit 마켓 상태(ticker market_state·market_event)와 announcement 를 참조 dim 의 SCD 로 붙인다. 원안(자체 가상 체결)은 "체결까지 우리가 만든다"는 약점이 있어 폐기 권고. 데모 모드는 실계정이 필요해 사용자 결정 사항.
 5. 남는 결정: ① "Binance 는 부하 실험 전용" 규칙 해제 ② Testnet vs Demo ③ API 키 보관 방식(.env, 커밋 금지).
 
-### B-1. 왜
-- CDC 의 본래 자리는 회사가 소유한 트랜잭션 DB(docs/26 §6). 시세는 스트리밍+대조가 맞고, 우리에게 없는 것은 **내부 데이터**다. "누구나 받을 수 없는 플래그"는 여기서 나온다.
-- 원칙: Faker 없음. 주문은 우리 실시간 시세 위에서 **규칙으로 결정되는 가상 매매**(paper trading)이고 실제 돈은 쓰지 않는다. 데이터가 "가상"인 것은 표시하되 생성 방식은 결정적이라 재현된다.
-### B-2. 테이블 (MySQL, 처음부터 체결 시각 파티션 + 시각 포함 키)
-| 테이블 | 성격 | 키 | 비고 |
+### B-1. 왜 (B-0 재검증 뒤 확정, 09-19)
+- 1층 원장은 INSERT 만 있어 Debezium 이 잡는 변경이 전부 "새 행"이다. 큐로 대체되는 사용이고, 캡처의 의의(UPDATE·DELETE 를 키 순서로 따라가 최종 상태를 재구성)를 보여주는 사례가 없다.
+- 상태를 바꾸는 주체를 우리가 아닌 거래소로 둔다: **Binance Spot Testnet**(가상 자금, 실돈 없음)에 규칙대로 주문을 내면 체결·부분체결·취소·만료·수량 수정(amend)은 매칭 엔진이 결정한다. 우리가 만든 것은 주문 규칙뿐이고 규칙은 `virtual-trader/trader.py` 상단에 고정.
+- 원안(자체 가상 체결 = 그 분 VWAP)은 "체결까지 네가 만든 데이터"라는 비판에 답이 없어 폐기. Demo Mode 는 Binance 실계정이 필요해 사용자 결정 전엔 보류.
+
+### B-2. 테이블 (MySQL crypto_db, `mysql/ledger.sql`)
+| 테이블 | 성격 | 키 | CDC 모드 |
 |---|---|---|---|
-| `virtual_orders` | 주문(생성·부분체결·취소 = **업데이트 있음**) | (order_id, created_ms) | 상태 전이가 있으므로 CDC 는 **거울(mirror)** 모드 — ClickHouse 는 ReplacingMergeTree(ver, is_deleted) |
-| `virtual_fills` | 체결(불변) | (fill_id, filled_ms), UNIQUE(order_id, seq, filled_ms) | 시세 체결과 같은 **보관소** 모드 |
-| `virtual_positions` | 포지션 스냅샷(일 1회) | (market, as_of_day) | 집계 검증용 |
-- 생성기 `scripts/virtual_trader.py`: 우리 ClickHouse 결합 마트(docs/27)와 실시간 체결을 입력으로 단순 전략 2개(예: 24h 변화율 역추세, 거래대금 급증 추종), 마켓당 일 주문 상한, 체결가는 그 분의 우리 VWAP. 전략은 문서에 고정.
-- Debezium: `table.include.list` 에 3개 추가 → 토픽 `cdc.crypto_db.virtual_*`(RF1). 소비: ClickHouse **Kafka 엔진 테이블 + MV**(circuit-connect 와 같은 방식, Flink 잡 추가 없음). orders 는 mirror(is_deleted), fills 는 append.
-- 검증: 원장 대조 = MySQL count/uniq vs ClickHouse FINAL(일 1회 dq), 상태 전이 이력이 ClickHouse 에서 재구성되는지.
+| `binance_user_events` | 거래소 원문(executionReport 등), append | event_id, UNIQUE dedup_key(`exec:<I>`) | 보관소 |
+| `virtual_orders` | 주문 = **변경되는 행** (status·executed_qty·version 이 바뀜) | order_id, UNIQUE client_order_id | **거울** (op u·d 가 흐름) |
+| `virtual_fills` | 체결 = 불변 행 | (symbol, fill_id) | 보관소 (리셋 때만 d) |
+| `virtual_positions` | 잔고 스냅샷(시간당) | (as_of_day, asset) | 거울 |
+- 파티션 없음(하루 수백 행). A 의 "시각 포함 키"는 프루닝용이었으므로 여기선 PK 만. `version` = 우리 갱신 순번(ClickHouse RMT 버전), `reset_epoch` = 테스트넷 리셋 세대.
+- 갱신은 `last_exec_id`(거래소 실행 id I) 비교로만 적용 → at-least-once 재수신·순서 뒤바뀜에서 옛 이벤트가 새 상태를 못 덮는다. 누적값(z, Z)은 거래소가 준 값을 그대로(우리 계산 아님).
+- 전용 MySQL 사용자 `ledger`(4 테이블 DML 만, 비밀번호 .env `LEDGER_MYSQL_PASSWORD`).
+
+### B-3. 배관 (키 없이 완성, 09-19 08:20~08:40)
+| 구간 | 구현 | 왜 |
+|---|---|---|
+| Debezium | **두 번째 커넥터** `ledger-cdc-connector`(server.id 184055, prefix `ledger`, 4 테이블, 삭제 유지, `debezium/ledger-connector-config.json`) | 체결 커넥터는 `skipped.operations=d`(보관소)라 삭제를 못 살린다. 같은 binlog 를 두 커넥터가 각자 오프셋으로 읽는 것이 표준 |
+| Kafka | `ledger.crypto_db.*` 4토픽, 1 파티션, zstd, 30일(`scripts/ops/kafka-topics.sh`) | 하루 수백 행 → 1 파티션이면 토픽 순서 = 키 순서. 30일 > 리셋 주기 |
+| ClickHouse | Kafka 엔진(JSONAsString) + MV 4개 → `virtual_orders`/`virtual_fills`/`virtual_positions` = **ReplacingMergeTree(version, is_deleted)**, `binance_user_events` MergeTree (`clickhouse/ledger.sql`) | Flink 잡 추가 없이(circuit-connect 와 같은 방식). op=d 는 before 를 값으로 is_deleted=1·version+1 → FINAL 에서 사라짐 |
+| 스모크 (키 없음) | MySQL 에 주문 삽입 → 갱신 2회(PARTIALLY_FILLED→CANCELED, version 1→3) → 삭제: ClickHouse FINAL = CANCELED/v3/executed 0.0005/fill_count 1 → 삭제 뒤 FINAL 0행, 체결·원문도 동일 | 거울 경로 c/u/d 가 끝까지 통한다는 증거. 첫 판 실수 2건: Debezium 봉투에 payload 래퍼가 없는데(`schemas.enable=false`) MV 가 payload 경로 → 0행; 원문 컬럼 `raw` 가 큐 컬럼과 충돌(CYCLIC_ALIASES) → `event_raw` |
+
+### B-4. 생성기 `virtual-trader/` (코드·테스트 완료, 실행은 키 뒤)
+- 인증 Ed25519(WS-API `session.logon` 뒤 서명 생략), 유저 스트림 `userDataStream.subscribe` 를 같은 연결에서(2026-03 listenKey 폐지).
+- 규칙(CYCLE_SEC=300 마다 심볼 5개): A maker-probe = 최우선 매수 −5틱 LIMIT GTC → 90초 뒤 **amend keepPriority(수량 절반)** → 90초 뒤 취소 (NEW·REPLACED·CANCELED) / B taker-ioc = 최우선 매도가 LIMIT IOC (TRADE→FILLED 또는 PARTIALLY_FILLED→EXPIRED) / C unwind = 순매수 잔량을 IOC 매도. 금액 20 USDT, 거래소 필터(tick·step·minNotional) 양자화, 심볼당 일 60건 상한.
+- clientOrderId = `<mkr|ioc|unw>.<yyyymmdd>.<symbol>.<n>.<sec>` (Binance 규칙 36자 안에서 전략을 읽게). 첫 구현이 `-` 구분자를 써서 전략 이름의 `-` 와 충돌 → 테스트가 잡음.
+- 리셋 감지(10분마다): 우리 열린 주문이 거래소에 -2013(없음) **이고** 최근 FILLED 주문도 없음 → 세대 +1, 이전 세대 주문·체결 물리 DELETE(→ CDC op=d), 원문 로그에 RESET_DETECTED. 하나만 없으면 단순 취소·만료일 수 있어 둘 다 요구.
+- 테스트 7개(네트워크·DB 없음): 서명 payload 정렬, Ed25519 검증, 필터 양자화·지수표기 방지, 규칙 A/B/C 계획, minNotional 미달 스킵, executionReport→주문/체결 행, 취소 이벤트의 원 주문 id·dedup 키.
+- 배포: compose `virtual-trader` (profile `ledger`, 키 없으면 안 뜸), 개인키는 `secrets/`(gitignore) 마운트, API 키는 .env.
+- **사용자 할 일**: `scripts/ops/binance-testnet-key.sh` 실행 → 출력 공개키를 testnet.binance.vision(GitHub 로그인)에 Ed25519 로 등록 → 받은 API Key 를 .env `BINANCE_API_KEY=` 에.
+
+### B-5. 검증 계획 (키 뒤)
+1. 기동 → logon·subscribe 200, 첫 사이클에서 심볼 5개 × 주문 2~3건, 원문 이벤트가 MySQL→Kafka→ClickHouse 로 흐름(60초 안).
+2. 전이 커버리지: NEW·TRADE(FILLED)·PARTIALLY_FILLED·EXPIRED·REPLACED·CANCELED 가 하루 안에 전부 1회 이상.
+3. **3자 대조** dq(일 1회, Airflow `reconcile_ledger`): 거래소 REST `allOrders`/`myTrades` = MySQL = ClickHouse FINAL (주문 수·상태별 수·executed_qty 합·체결 수·qty 합). 불일치 0 이 목표이고, 불일치는 CDC 가 변경을 놓친 것.
+4. 지연: 거래소 E → 우리 recv_ms → binlog(source_ts) → ClickHouse 적재, 행 단위.
+5. 리셋(월 1회): 감지 → DELETE → ClickHouse FINAL 0행, 원문·대조 기록.
+
+### B-6. 남은 결정·후속
+- Demo Mode 전환 여부(실계정 필요, 라이브급 유동성). 테스트넷 체결률이 낮으면 검토.
+- Upbit 마켓 상태(ticker market_state·delisting_date·market_event)·announcement(CREATED/UPDATED) 를 참조 dim SCD 로 — C 단계에서.
+- 원장 dq 결과를 health_check 에 연결(연속 불일치 알림).
 
 ## C. 케이스 테이블과 내부 신호 (인계 층)
 - `cases`(MySQL, mirror): case_id, 근거(alert/rule/market/window), 상태(open→reviewing→closed), 판정(true/false/unknown), 담당, 메모. 규칙 평가의 라벨 보조(거래소 정답이 없는 유동성 플래그의 정답은 여기서 나온다).

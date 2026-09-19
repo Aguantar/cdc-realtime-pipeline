@@ -333,6 +333,37 @@ services:
     networks:
       - cdc-network
 
+  # 2층 원장 생성기 (docs/28 B, 2026-09-19): Binance Spot Testnet 주문 → 유저 스트림 → MySQL 원장. 키가 있어야 하므로 profile 로 격리.
+  #   실행: docker compose --profile ledger up -d --build virtual-trader
+  virtual-trader:
+    build: ./virtual-trader
+    container_name: cdc-virtual-trader
+    restart: unless-stopped
+    profiles: ["ledger"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      BINANCE_API_KEY: ${BINANCE_API_KEY}
+      BINANCE_ED25519_PRIVATE_KEY_PATH: /run/secrets/binance_ed25519.pem
+      MYSQL_HOST: cdc-mysql
+      MYSQL_USER: ledger
+      MYSQL_PASSWORD: ${LEDGER_MYSQL_PASSWORD}
+      MYSQL_DATABASE: crypto_db
+      SYMBOLS: BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT
+      CYCLE_SEC: "300"
+      CANCEL_AFTER_SEC: "90"
+      ORDER_NOTIONAL_USDT: "20"
+      MAX_ORDERS_PER_SYMBOL_PER_DAY: "60"
+    volumes:
+      - ./secrets/binance_testnet_ed25519.pem:/run/secrets/binance_ed25519.pem:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - cdc-network
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: cdc-kafka-ui

@@ -28,3 +28,4 @@ airflow/logs/
 # 백필 결과 CSV (로컬 산출물) — gitignore는 같은 줄 주석을 지원하지 않으므로 분리
 out/
 docs/portfolio-*.md
+secrets/

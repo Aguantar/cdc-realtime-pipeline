@@ -61,6 +61,16 @@ sources:
           - name: vwap
             description: "거래량 가중 평균 가격"
 
+      # 2층 원장 (docs/28 B, 2026-09-19): MySQL 거울/보관소 → Debezium(ledger.*) → Kafka 엔진 MV → RMT(version, is_deleted). 조회는 FINAL.
+      - name: virtual_orders
+        description: "가상 매매 주문(거울 모드). 상태 전이는 Binance Testnet 매칭 엔진이 만든다. FINAL 로 최종 상태, is_deleted=1 은 테스트넷 리셋 삭제"
+      - name: virtual_fills
+        description: "가상 매매 체결(보관소 모드, 불변). 리셋 시 is_deleted"
+      - name: virtual_positions
+        description: "잔고 스냅샷(시간당·리셋 감지용)"
+      - name: binance_user_events
+        description: "거래소 유저 스트림 원문(executionReport 등). 재구성·3자 대조의 정답 원천"
+
       - name: anomaly_alerts
         description: "Flink 이상 탐지 알림 (4가지 룰: LARGE_TRADE, PRICE_SPIKE, VOLUME_SURGE, RAPID_TRADES)"
         columns:
