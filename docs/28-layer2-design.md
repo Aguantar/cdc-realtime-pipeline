@@ -19,6 +19,29 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 - 컬럼은 그대로(producer INSERT 는 컬럼명으로 쓰므로 변경 없음). `idx_created_at` 은 불필요 → 제거. 정리 EVENT 는 `DELETE` 대신 **`ALTER TABLE … DROP PARTITION`**(7일 지난 파티션) + 다음 날 파티션 선생성(`ADD PARTITION`, 일 1회).
 - Debezium: 키가 복합 PK 가 되므로 `message.key.columns=crypto_db.crypto_trades:trade_id` 로 Kafka 키를 trade_id 에 고정(파티션 분배·하류 키 의미 불변). 스키마 변경(DDL)은 `include.schema.changes=true` 라 이력에 남는다. Flink 파서는 컬럼명으로 읽으므로 무변경.
 
+### A-2-1. 스키마 검토표 — 다시 안 바꾸기 위해 (사용자 요구, 09-19)
+원칙: ① 시각은 전부 epoch ms(UTC, 시간대 모호성 없음) ② 각 시각은 "누가 찍었나"가 다르고 그 차이가 곧 구간 지연이다 ③ 행의 출처를 행에 남긴다 ④ 키·파티션은 이벤트 시각 기준 ⑤ 추가는 되지만 변경·삭제는 없는 컬럼만.
+
+| 컬럼 | 타입 | 누가 언제 찍나 | 왜 필요한가 | 지금 |
+|---|---|---|---|---|
+| trade_id | BIGINT AUTO_INCREMENT | MySQL 삽입 순서 | 연속성 검증(정지 실험의 "+1"), Kafka 키 | 있음 |
+| market | VARCHAR(20) | 거래소 | 키·파티션 축 | 있음 |
+| trade_price / trade_volume / trade_amount | DECIMAL(20,8)/(20,8)/(20,4) | 거래소 | 문자열로 CDC 되는 정밀 소수(decimal.handling.mode=string) | 있음 |
+| ask_bid | CHAR(3) | 거래소 | 매수/매도 비율 | 있음(VARCHAR) |
+| **upbit_timestamp** | BIGINT ms | **거래소 체결 시각** | 이벤트 시각 = 파티션·유니크 키·규칙 판정의 기준 | 있음 |
+| sequential_id | BIGINT | 거래소 | 체결 유일성(= ts×10,000+n) | 있음 |
+| **recv_ms** | BIGINT ms | **producer 가 WS 로 받은 순간** | 구간 지연 1 = 거래소→우리 수신(네트워크·거래소 지연). 지금은 못 잰다 | **없음 → 추가** |
+| **created_at** | TIMESTAMP(3) | MySQL 삽입 | 구간 지연 2 = 수신→저장(producer 배치 2s). 삽입 시각 기준 보존 정리는 이제 안 함 | 있음 |
+| best_ask/bid price·size | DECIMAL | 거래소(체결 시점 최우선 호가) | 체결 시점 스프레드 | 있음 |
+| **ingest_source** | ENUM('ws','gapfill','backfill') | producer/도구 | 행 단위 출처. 창 단위 계보(ingest_repairs)와 함께 "이 행이 수리된 것인가"에 즉답. 늦은 이벤트 가드는 그대로 시각 차로 판정 | **없음 → 추가** |
+| **stream_type** | ENUM('REALTIME','SNAPSHOT') | 거래소 WS 메시지 | 구독 직후 오는 스냅샷 체결과 실시간을 구분 | **없음 → 추가** |
+
+하류에서 이어지는 시각(ClickHouse): source_ts(binlog = 구간 3 MySQL→Kafka), flink_ts(구간 4 Kafka→Flink→적재), inserted_at. 다섯 시각이 있으면 e2e 를 네 구간으로 쪼개 "어느 구간이 늘었나"를 표로 만들 수 있다(지금의 dq_ingest_daily 는 source_ts − upbit 만 본다 → recv_ms 가 오면 구간별 p95 열 추가).
+
+호환성: 추가 컬럼 3개는 DEFAULT 가 있어 producer·Debezium·Flink 를 한 번에 안 바꿔도 된다 — Debezium 은 새 컬럼을 그대로 실어 보내고, Flink 파서는 모르는 필드를 무시하므로 ClickHouse 쪽 컬럼 추가·파서 수정은 별도 배포로. 이 순서가 "4시스템 동시 변경"을 피하는 길이다.
+키·파티션: PK (trade_id, upbit_timestamp), UNIQUE (market, sequential_id, upbit_timestamp), RANGE 일 파티션(upbit_timestamp DIV 86400000), 보존 7일(ClickHouse 가 365일 보관소). 시간대: 서버 UTC, TIMESTAMP 는 UTC 로만 해석.
+하지 않기로 한 것: 문자열 시각 컬럼(파싱·시간대 모호), 삽입 시각 파티션(gap-fill 중복), 파생값 컬럼(VWAP 등은 마트에서).
+
 ### A-3. 교체 절차 (정지 없음, 롤백 = 이름 되돌리기)
 | 단계 | 내용 | 검증 |
 |---|---|---|
