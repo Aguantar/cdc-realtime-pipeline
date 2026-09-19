@@ -160,6 +160,24 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 **결론(전수 조사 뒤)**: ① 체결(trade) 에는 취소·정정·삭제 필드가 문서·실측·우리 대조 10일 어디에도 없다 → "체결은 불변" 은 진짜다. ② 그러나 Upbit 에 상태 변경 데이터는 많다: 공개로 candle·ticker(market_state/DELISTED)·orderbook·market_event, 키만 있으면 announcement(CREATED/UPDATED)·service-status(wallet_state), 실돈이 있어야 myOrder·myAsset·입출금 state. ③ 주문 생애주기를 실돈 없이 받는 길은 Upbit 에 없고(테스트넷 없음, order-test 는 생성 안 함) Binance Spot Testnet 에는 있다.
 B 에 쓸 수 있는 "우리가 만들지 않은 상태 변경" 후보: (a) Binance 테스트넷 주문 생애주기(실돈 없음), (b) Upbit ticker market_state·delisting_date 와 market_event(마켓 dim 의 SCD), (c) Upbit announcement CREATED/UPDATED(키만 필요, 공지 dim). (b)(c) 는 CDC 가 아니라 스트리밍·REST 이지만 "갱신·삭제가 있는 참조 데이터" 라 원장 없이도 SCD 실증이 된다.
 
+#### B-0-3. Binance 전수 조사 (사용자 "바이낸스도 한 번 더 훑어보자", 09-19 08:00~08:10)
+방법: 공식 저장소(binance-spot-api-docs) 파일 목록 전부 → rest-api·web-socket-streams·user-data-stream·enums·testnet/·demo-mode/ 를 읽고, 우리 호스트에서 각 환경에 **실제 접속**.
+| 영역 | 전수 | 상태 변경 뜻 | 실돈 없이 |
+|---|---|---|---|
+| 시세 WS 스트림 15종 | aggTrade, trade, blockTrade, kline(16간격, 1s 포함), miniTicker, !miniTicker@arr, ticker, !ticker@arr, ticker_{1h,4h,1d}, bookTicker, avgPrice, depth{5,10,20}@{100ms,1000ms}, **depth@{100ms,1000ms}(diff)**, referencePrice | diff depth: 문서 "quantity 0 인 레벨은 제거, U/u 연속성 검증" — 실측 762/1,632. kline `x`(닫힘). trade/aggTrade: 취소·정정 필드 **없음** | 예 |
+| 거래 REST 14종 | order, order/test, order(DELETE), openOrders(DELETE), **order/amend/keepPriority(PUT)**, order/cancelReplace, orderList/{oco,opo,opoco,oto,otoco}, orderList(DELETE), order/sor, order/sor/test | **amend keepPriority = 진짜 in-place UPDATE**: "수량만 줄이고 orderId 와 큐 우선순위 유지"(Upbit 의 cancel-and-new 는 취소+신규라 새 uuid). cancelReplace 모드 STOP_ON_FAILURE/ALLOW_FAILURE. 주문 상태 enum 9종: NEW, PENDING_NEW, PARTIALLY_FILLED, FILLED, CANCELED, PENDING_CANCEL, REJECTED, EXPIRED, EXPIRED_IN_MATCH. 실행 타입 7종: NEW, CANCELED, **REPLACED**(amend), REJECTED, TRADE, EXPIRED, TRADE_PREVENTION. STP 6종 | 테스트넷·데모 |
+| 유저 데이터 스트림 | executionReport(34필드: i orderId, x 실행타입, X 상태, l/z 체결량, L 체결가, t tradeId, T 시각, W working time, V STP…), outboundAccountPosition(잔고), balanceUpdate(입출금 delta), listStatus(주문 리스트 상태 RESPONSE/EXEC_STARTED/UPDATED/ALL_DONE), eventStreamTerminated, externalLockUpdate | 주문 생애주기 전체 + 잔고 변화. 구독은 2026-03 부터 WebSocket API `userDataStream.subscribe`(listenKey 폐지) | 테스트넷·데모 |
+| 심볼 상태 | exchangeInfo symbol status: TRADING, END_OF_DAY, HALT, BREAK, CANCEL_ONLY; `amendAllowed`, STP 허용 목록 | 마켓 상태 dim | 예 |
+| **Spot Testnet** | REST testnet.binance.vision/api, WS-API ws-api.testnet.binance.vision, 스트림 stream.testnet.binance.vision, FIX. 1,363 심볼 TRADING, BTCUSDT amendAllowed=true | "모든 자금 가상·입출금 불가", 키는 사이트 로그인(GitHub), **약 월 1회 예고 없이 전체 리셋(주문 전부 삭제, 키는 보존)**, /sapi 없음, 기능이 프로덕션보다 먼저/늦게 갈 수 있음, 주문 요청 weight 0. 시세는 프로덕션과 같은 호가(best 일치)지만 체결 0.9/s vs 13.3/s | 실돈 없음. 우리 호스트에서 스트림·WS-API ping·exchangeInfo 전부 **수신 확인** |
+| **Demo Mode (새로 발견)** | REST demo-api.binance.com/api(HTTP 200 확인), WS-API demo-ws-api.binance.com, 스트림 demo-stream.binance.com(5초 7체결 수신 확인 — 테스트넷 2건보다 프로덕션에 가까움) | 문서: "가격·호가는 라이브 거래소와 유사, 체결은 라이브 시세 기반 시뮬레이션, 실제 자산 이동 없음", "기능·제한이 라이브와 동일", 잔고 월 1회 리셋 + UI 에서 언제든 리셋, 키는 Binance 계정 로그인 후 Demo Trading 에서 발급(프로덕션 키와 별개, demo 엔드포인트에서만 유효) | 실돈 없음. 단 **Binance 실계정 필요**(KYC) |
+
+### B-0 최종 결론 (두 거래소 전수 조사 + 실접속 뒤, 09-19 08:10 UTC)
+1. **체결 자체의 취소·정정·삭제는 두 거래소 모두 없다.** 문서 필드 전수(Upbit 18/10필드, Binance trade/aggTrade), 우리 대조 68,088셀 "우리>거래소" 0. 이건 진짜다.
+2. **상태 변경 데이터는 두 곳 다 있고, 나는 그걸 빠뜨렸었다.** Upbit: candle 갱신, ticker market_state(DELISTED)·delisting_date·is_trading_suspended, market_event, announcement CREATED/UPDATED(키만), myOrder 6상태(실돈). Binance: diff depth(레벨 삭제), kline, 심볼 status 5종, executionReport 9상태·7실행타입, **amend keepPriority(orderId 유지 in-place 수정)**.
+3. **실돈 없이 "거래소 엔진이 만든 주문 생애주기"를 받는 길은 Binance 에만 있고, 두 갈래다.** Testnet(계정 불필요, GitHub 로그인, 월 리셋·얇은 유동성) / Demo Mode(Binance 실계정 필요, 라이브 시세 기반 시뮬레이션 체결, 기능·제한 라이브 동일). Upbit 은 없다(테스트넷 없음, order-test 는 생성 안 함, cancel-and-new 도 취소+신규).
+4. **B 설계 권고**: 주문 규칙은 우리 것, 주문 상태 전이는 Binance 엔진(Testnet 우선 — 계정·KYC 없이 시작, 월 리셋은 "대량 DELETE 의 CDC 실증"으로 쓴다), 여기에 Upbit 마켓 상태(ticker market_state·market_event)와 announcement 를 참조 dim 의 SCD 로 붙인다. 원안(자체 가상 체결)은 "체결까지 우리가 만든다"는 약점이 있어 폐기 권고. 데모 모드는 실계정이 필요해 사용자 결정 사항.
+5. 남는 결정: ① "Binance 는 부하 실험 전용" 규칙 해제 ② Testnet vs Demo ③ API 키 보관 방식(.env, 커밋 금지).
+
 ### B-1. 왜
 - CDC 의 본래 자리는 회사가 소유한 트랜잭션 DB(docs/26 §6). 시세는 스트리밍+대조가 맞고, 우리에게 없는 것은 **내부 데이터**다. "누구나 받을 수 없는 플래그"는 여기서 나온다.
 - 원칙: Faker 없음. 주문은 우리 실시간 시세 위에서 **규칙으로 결정되는 가상 매매**(paper trading)이고 실제 돈은 쓰지 않는다. 데이터가 "가상"인 것은 표시하되 생성 방식은 결정적이라 재현된다.
