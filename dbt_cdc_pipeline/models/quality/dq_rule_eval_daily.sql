@@ -55,16 +55,16 @@ vol_day AS (
     FROM ours_vol o LEFT JOIN ex_vol e ON o.market = e.market AND o.day = e.day GROUP BY o.day
 ),
 ex_vol_day AS (SELECT day, count() AS exchange FROM ex_vol GROUP BY day)
-SELECT p.day, p.rule, p.ours, p.matched, x.exchange,
+SELECT p.day AS day, p.rule AS rule, p.ours AS ours, p.matched AS matched, x.exchange AS exchange,   -- 별칭 필수: p.day 는 열 이름이 'p.day' 가 되어 ORDER BY (day, rule) 실패
        round(if(p.ours > 0, p.matched / p.ours, 0), 3)      AS precision,
        round(if(x.exchange > 0, p.matched / x.exchange, 0), 3) AS recall,
        CAST(round(if(x.exchange > 0, st.exchange_with_our_state / x.exchange, 0), 3) AS Nullable(Float64)) AS state_recall,
-       p.lead_median_s
-FROM price_day p LEFT JOIN ex_price_day x USING day LEFT JOIN ex_price_state st USING day
+       p.lead_median_s AS lead_median_s
+FROM price_day AS p LEFT JOIN ex_price_day AS x ON x.day = p.day LEFT JOIN ex_price_state AS st ON st.day = p.day   -- ClickHouse: USING 두 번 불가
 UNION ALL
-SELECT v.day, v.rule, v.ours, v.matched, x.exchange,
-       round(if(v.ours > 0, v.matched / v.ours, 0), 3),
-       round(if(x.exchange > 0, v.matched / x.exchange, 0), 3),
-       CAST(NULL AS Nullable(Float64)),
-       v.lead_median_s
-FROM vol_day v LEFT JOIN ex_vol_day x USING day
+SELECT v.day AS day, v.rule AS rule, v.ours AS ours, v.matched AS matched, x.exchange AS exchange,
+       round(if(v.ours > 0, v.matched / v.ours, 0), 3) AS precision,
+       round(if(x.exchange > 0, v.matched / x.exchange, 0), 3) AS recall,
+       CAST(NULL AS Nullable(Float64)) AS state_recall,
+       v.lead_median_s AS lead_median_s
+FROM vol_day AS v LEFT JOIN ex_vol_day AS x ON x.day = v.day
