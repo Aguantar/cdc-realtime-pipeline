@@ -67,6 +67,17 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 | 6 | 대조 DAG 100%, 24h 관찰, 옛 테이블 7일 뒤 DROP | — |
 위험: RENAME 을 Debezium 이 "새 테이블 = 캡처 대상" 으로 이어 받지 못하면 재시작·오프셋 확인이 필요하다 → 드라이런(0)에서 include.list 안의 테이블을 RENAME 하는 경우를 먼저 실험한다(작은 더미 테이블로).
 
+### A-3-1. 실행 직전 냉정 점검에서 잡은 것 (09-19, 사용자 요청)
+| 점 | 위험 | 반영 |
+|---|---|---|
+| **trade_id 충돌** | 새 테이블 AUTO_INCREMENT 를 생성 시점 값으로 두면 스왑 직후 새 삽입이 옛 테이블이 그 사이 쓴 번호를 재사용 → 같은 trade_id 두 행(연속성·키 의미 파괴) | 스왑 **직전** `ALTER TABLE … AUTO_INCREMENT = 옛 max + 100,000`. 차이분 복사는 옛 id 를 그대로 옮기므로 충돌 없음 |
+| 옛 정리 EVENT | 스왑 뒤에도 `cleanup_old_trades` 가 새 테이블에 created_at DELETE(인덱스 없음 → 풀스캔 59초) | 스왑 전 EVENT DISABLE → 파티션 유지보수 프로시저 `manage_trade_partitions()`(다음 날 파티션 REORGANIZE + 7일 지난 파티션 DROP) 를 EVENT 로 매일 00:05 UTC |
+| p_max 잔류 | 미래 시각 체결(시계 오류)이 p_max 에 남아 영원히 안 지워짐 | 유지보수 프로시저가 p_max 행 수를 기록, health_check 에 `p_max > 0` 알림(후속) |
+| 롤백 완전성 | 스왑 뒤 새 테이블에 들어간 행이 옛 테이블엔 없다 | 롤백 = 새 테이블 delta(trade_id > 스왑 시점 max) 를 옛 테이블로 INSERT IGNORE → RENAME 되돌림 → EVENT 복원 |
+| INSERT…SELECT 잠금 | 복사 중 producer 삽입이 막히나 | binlog ROW + RR 에서 INSERT…SELECT 는 일관 읽기(공유 잠금 없음). 드라이런 75초 동안 적재 지연 불변으로 실측 |
+| 도구 | backfill/reconcile 도구가 MySQL 을 created_at 창으로 읽음(09-18 600초 타임아웃) | 스왑 뒤 upbit_timestamp 창 + 파티션 프루닝으로 수정(후속, 도구만) |
+| 파서·하류 | 새 컬럼 3개는 Debezium 이 실어 보내고 Flink 는 이름으로 읽어 무시 | 변경 없음. ClickHouse 컬럼 추가는 A-5 에서 |
+
 ### A-4. A-0 드라이런 결과 (09-19 01:35 ~ 01:42 UTC, 같은 MySQL, 캡처 대상 밖 복사본)
 | 검증 | 결과 |
 |---|---|
