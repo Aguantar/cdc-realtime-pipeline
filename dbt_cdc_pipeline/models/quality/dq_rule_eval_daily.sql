@@ -28,6 +28,15 @@ price_day AS (
            CAST(round(medianIf(dateDiff('second', ours_t, ex_t), ex_t IS NOT NULL AND ex_t <= ours_t + INTERVAL 10 MINUTE), 0) AS Nullable(Float64)) AS lead_median_s
     FROM price_match GROUP BY day
 ),
+-- 상태 기준 재현율 (2026-09-19): 거래소는 경계에서 몇 분마다 재지정한다(KRW-G 하루 39건). 전이 기준(0→N 만 셈)은 그 습관을 우리에게 요구하는 것이라
+-- "지정 시각(+10분 안)에 우리 등급이 이미 > 0 이었나"도 같이 센다. 09-18 실측: 전이 기준 0.283 vs 상태 기준 0.817
+ex_price_state AS (
+    SELECT toDate(e.t) AS day, countIf(o.level > 0) AS exchange_with_our_state
+    FROM (SELECT market, t, t + INTERVAL 10 MINUTE AS t_hi FROM ex_price) AS e
+    ASOF LEFT JOIN (SELECT market, event_time, level FROM {{ source('reference', 'market_alerts') }} WHERE alert_type = 'PRICE_24H') AS o
+        ON o.market = e.market AND o.event_time <= e.t_hi
+    GROUP BY day
+),
 ex_price_day AS (
     SELECT toDate(t) AS day, count() AS exchange FROM ex_price GROUP BY day
 ),
@@ -49,11 +58,13 @@ ex_vol_day AS (SELECT day, count() AS exchange FROM ex_vol GROUP BY day)
 SELECT p.day, p.rule, p.ours, p.matched, x.exchange,
        round(if(p.ours > 0, p.matched / p.ours, 0), 3)      AS precision,
        round(if(x.exchange > 0, p.matched / x.exchange, 0), 3) AS recall,
+       CAST(round(if(x.exchange > 0, st.exchange_with_our_state / x.exchange, 0), 3) AS Nullable(Float64)) AS state_recall,
        p.lead_median_s
-FROM price_day p LEFT JOIN ex_price_day x USING day
+FROM price_day p LEFT JOIN ex_price_day x USING day LEFT JOIN ex_price_state st USING day
 UNION ALL
 SELECT v.day, v.rule, v.ours, v.matched, x.exchange,
        round(if(v.ours > 0, v.matched / v.ours, 0), 3),
        round(if(x.exchange > 0, v.matched / x.exchange, 0), 3),
+       CAST(NULL AS Nullable(Float64)),
        v.lead_median_s
 FROM vol_day v LEFT JOIN ex_vol_day x USING day
