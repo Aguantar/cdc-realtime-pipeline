@@ -42,10 +42,23 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 키·파티션: PK (trade_id, upbit_timestamp), UNIQUE (market, sequential_id, upbit_timestamp), RANGE 일 파티션(upbit_timestamp DIV 86400000), 보존 7일(ClickHouse 가 365일 보관소). 시간대: 서버 UTC, TIMESTAMP 는 UTC 로만 해석.
 하지 않기로 한 것: 문자열 시각 컬럼(파싱·시간대 모호), 삽입 시각 파티션(gap-fill 중복), 파생값 컬럼(VWAP 등은 마트에서).
 
+### A-2-2. 추가 검토에서 잡은 점 (사용자 질문 "놓친 게 있나", 09-19)
+| 관점 | 점 | 반영 |
+|---|---|---|
+| 운영 | MySQL 은 파티션을 자동 생성하지 않는다 → 파티션이 없으면 INSERT 실패 | `p_max` (MAXVALUE) 상시 + 매일 다음 날 파티션 `REORGANIZE` 로 선생성. INSERT 는 절대 파티션 때문에 실패하지 않게 |
+| CDC | Debezium 은 캡처 대상이 아닌 테이블의 DDL 도 스키마 이력용으로 파싱한다 → 파티션 DDL 을 못 읽으면 커넥터가 멈춘다 | **드라이런에서 ADD/DROP PARTITION 을 실제로 걸고 커넥터 상태·로그 확인** (가장 큰 위험) |
+| 성능 | market 이 utf8mb4_0900_ai_ci(대소문자 무시) → 유니크 인덱스가 크고 비교가 느림 | 키 컬럼 `market` 을 `ascii_bin` 으로 |
+| 조회 | 대조·백필 도구는 (market, 시각 구간) 으로 읽는데 인덱스가 없어 09-18 dry-run 이 600초 타임아웃 | `KEY idx_market_ts (market, upbit_timestamp)` + 파티션 프루닝 |
+| 시각 | recv_ms(우리 시계) − upbit_timestamp(거래소 시계) 는 시계 어긋남에 민감 | 호스트 NTP 상태를 health_check 항목에(음수 지연이 나오면 시계부터) |
+| 보존 경계 | 7일 전 파티션 DROP 과 그날 백필이 겹칠 수 있음 | 백필 도구에 보존 하한(7일) — 그보다 오래된 창은 거부 |
+| 하류 키 | ClickHouse RMT 정렬 키 (market, source_ts, trade_id) 는 binlog 시각을 품는다. 같은 체결이 다른 binlog 시각으로 두 번 오는 경로는 지금 없다(INSERT IGNORE) | 이벤트 시각 키 (market, upbit_timestamp, sequential_id) 가 더 정직 — **결정 사항으로 남김**(테이블 재생성 필요, A 와 같은 창에 할지) |
+| 계약 | 컬럼 이름 `upbit_timestamp` 는 `_ms` 규칙과 어긋남 | 4시스템이 쓰는 이름이라 유지, 문서에 명시 |
+| 백업 | MySQL 은 백업 대상이 아니다(7일 완충, 원본은 ClickHouse+백업) | 유지, 명시 |
+
 ### A-3. 교체 절차 (정지 없음, 롤백 = 이름 되돌리기)
 | 단계 | 내용 | 검증 |
 |---|---|---|
-| 0 | **드라이런**: 같은 MySQL 에 `crypto_trades_p` 를 만들고 하루치를 복사 → INSERT IGNORE 중복 차단·DROP PARTITION·Debezium 이 캡처하지 않음(include.list 밖) 확인 | 유니크 위반 시도 0건 통과, DROP 1초 |
+| 0 | **드라이런**: 같은 MySQL 에 `crypto_trades_p` 를 만들고 하루치를 복사(sql_log_bin=0) → INSERT IGNORE 재삽입 0건 삽입·DROP/ADD/REORGANIZE PARTITION 소요·**Debezium 이 그 DDL 을 파싱하고 RUNNING 유지** 확인 | 재삽입 0, DROP 초 단위, 커넥터 RUNNING·로그 오류 0 |
 | 1 | 새 테이블 생성, `AUTO_INCREMENT` 를 현재 max+1 이상으로 | trade_id 연속성 준비 |
 | 2 | **`SET sql_log_bin=0` 세션**에서 7일치 복사(일 단위) — binlog 에 안 남겨 Debezium 이 복사본을 재발행하지 않게 | 복사 행 = 원본 행(파티션별) |
 | 3 | `RENAME TABLE crypto_trades TO crypto_trades_old, crypto_trades_p TO crypto_trades` (원자적). producer 는 이름으로 쓰므로 다음 배치부터 새 테이블 | Debezium 이 RENAME DDL 을 처리하고 계속 캡처하는지(스키마 이력·오프셋), Flink 적재 지속, trade_id +1 |
