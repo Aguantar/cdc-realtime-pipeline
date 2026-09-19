@@ -236,9 +236,28 @@ B 에 쓸 수 있는 "우리가 만들지 않은 상태 변경" 후보: (a) Bina
 | 잔여 | 리셋(월 1회) 실증은 리셋이 와야 함. 전이 커버리지 중 PARTIALLY_FILLED 는 아직 0(테스트넷 호가가 두꺼워 20 USDT 가 한 번에 찬다) — 수량을 최우선 잔량보다 크게 잡는 규칙 D 를 붙일지 결정. Demo Mode 전환은 보류 |
 왜 이 결과가 중요한가: "CDC 파이프라인"이 처음으로 **변경**을 캡처했다. 71개 주문의 UPDATE 가 순서대로 반영돼 세 저장소의 최종 상태가 같다는 것을 거래소라는 외부 정답으로 증명했고, 상태를 바꾼 주체는 우리가 아니라 매칭 엔진이다.
 
-## C. 케이스 테이블과 내부 신호 (인계 층)
-- `cases`(MySQL, mirror): case_id, 근거(alert/rule/market/window), 상태(open→reviewing→closed), 판정(true/false/unknown), 담당, 메모. 규칙 평가의 라벨 보조(거래소 정답이 없는 유동성 플래그의 정답은 여기서 나온다).
-- 내부 신호 후보(dbt, docs/27 마트 + 원장): ① 우리 체결이 `volume_over_depth15 ≥ 1` 분에 겹친 비율 ② 주문/체결 비율·취소율 급변 ③ 같은 마켓 양방향 체결(자전 의심) ④ 우리 포지션 마켓의 거래소 지정 겹침. 정의는 케이스 판정으로 검증한 뒤 규칙으로 승격 — 1층과 같은 절차.
+## C. 인계 층 — 참조 이력(SCD)·케이스·교차 거래소 신호 (09-19 08:50 ~ 09:10 UTC, 사용자 승인)
+### C-0. 범위 결정 (냉정 평가 뒤)
+- 한계 효용이 꺾인 단계라 하루 안에: ① Upbit 경보 플래그 SCD ② 케이스 최소(자동 생성만, 판정은 SQL) ③ 교차 거래소 신호 1개. Binance 시장 데이터 수집기는 **안 함**(신호 하나에 컨테이너·토픽·감시가 하나씩 늘어 손해). 자전거래 의심 신호는 우리 주문이 한 계정이라 성립 안 해 **뺌**.
+- 시세(Upbit KRW)×원장(Binance USDT)은 "같은 시장"이 아니다 → 가격·체결 품질은 비교하지 않고 **같은 코인** 단위로만, 모델 이름·note 에 cross-venue 명시.
+
+### C-1. `dim_market_flag_scd` — 경보 플래그 이력 (SCD type 2)
+- 원천 둘: 거래소 공개 지정/해제 이력 `upbit_market_event_records`(2026-03-23~, 한 행 = 구간 [trigger, expiration], caution 5종) + 우리 1분 폴링 `upbit_market_events`(2026-09-16~, WARNING(유의)은 여기에만). 폴링분은 snapshot·transition 을 시간순으로 놓고 **상태가 바뀐 행만** 골라 1→0 을 구간으로 접는다(첫 구간 valid_from 은 관측 시작 = "적어도 그때부터").
+- 실측: 거래소 이력 16,202 구간(292 마켓, 중앙값 4분 — 대부분 몇 분짜리 주의 지정), 현재 진행 61. 폴링 WARNING 6 마켓(ZIL·SAND·ICX·RVN·…) 09-16 09:45 부터 진행 중.
+- 첫 판 실수: 폴링분을 `kind='transition'` 으로만 걸러 WARNING 이 0행(WARNING 은 transition 행이 아직 없고 snapshot 에만 있었다) → 상태 변화 검출로 수정.
+- 왜 SCD 인가: `dim_markets` 는 지금 상태뿐이라 "그때 그 코인이 경보 중이었나"에 답을 못 한다. 규칙 평가·교차 신호가 그 질문을 한다.
+
+### C-2. `cases` — 케이스 (거울 모드 두 번째 사례)
+- MySQL `cases`(case_id, case_type, subject, evidence_key UNIQUE, evidence JSON, status open→reviewing→closed, verdict, note, assignee, version) → 원장 커넥터 include → `ledger.crypto_db.cases` → ClickHouse RMT(version, is_deleted).
+- 생성: Airflow `cases_hourly`(매시 :20) 가 ClickHouse 에서 근거 셋을 읽어 INSERT IGNORE — ① 마지막 3자 대조 mismatch ② RESET_DETECTED(24h) ③ 우리가 거래한 코인의 KRW 마켓에 경보 전이(2h). Airflow 가 MySQL 에 쓰는 첫 DAG(x-airflow-common 에 `LEDGER_MYSQL_PASSWORD`, 컨테이너 재생성 — `depends_on airflow-init` 때문에 `--no-deps` 로).
+- 판정은 사람: `mysql --default-character-set=utf8mb4 … -e "UPDATE cases SET status='closed', verdict='true_positive', note='…', updated_ms=UNIX_TIMESTAMP()*1000, version=version+1 WHERE case_id=N"` (CLI 기본 문자셋으로 넣으면 한글이 깨져 ClickHouse 까지 깨진 채 간다 — 스모크에서 확인).
+- 실측: 첫 실행 근거 0(불일치 0·리셋 0·거래 코인 경보 0) → 케이스 0. 거울 경로 스모크: 생성 → reviewing → closed/false_positive(version 3) 가 ClickHouse FINAL 에 동일 → 삭제 → FINAL 0. DAG 테스트 12/12.
+- 정직한 한계: 판정을 안 하면 open 만 쌓인다. 주 1회 판정을 사용자가 하기로 한 전제.
+
+### C-3. `sig_cross_venue_flag_overlap` — 교차 거래소 신호
+- 우리 Binance 주문(virtual_orders FINAL)의 코인(USDT 뗀 기준 자산 → KRW-<자산>)이 Upbit 경보 구간(C-1) 안에 있었던 건수·체결·금액. 같은 시장이 아니므로 가격은 비교하지 않는다.
+- 실측: 0행. 우리 코인 4개(BTC·ETH·SOL·XRP; BNB 는 Upbit 에 없음)의 9월 경보는 4건(BTC 09-18 01:00, XRP 09-16, SOL 09-03) 이고 오늘 거래 시간과 겹치지 않았다 — 조인은 맞고 겹침이 없는 것.
+- 실무의 자리: 리스크·컴플라이언스의 "외부 신호 ↔ 내부 활동" 결합.
 
 ## D. 순서와 결정 요청
 1. A-0 드라이런(반나절) → 결과 보고 → A 실행(사용자 결정, 정지 없음).

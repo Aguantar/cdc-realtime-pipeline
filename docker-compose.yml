@@ -432,6 +432,7 @@ services:
       CLICKHOUSE_PIPELINE_PASSWORD: ${CLICKHOUSE_PIPELINE_PASSWORD}
       CLICKHOUSE_ICEPUSH_USER: ${CLICKHOUSE_ICEPUSH_USER}            # icepush dbt DAG 용 (타 프로젝트, docs/21)
       CLICKHOUSE_ICEPUSH_PASSWORD: ${CLICKHOUSE_ICEPUSH_PASSWORD}
+      LEDGER_MYSQL_PASSWORD: ${LEDGER_MYSQL_PASSWORD}                # cases_hourly DAG 가 MySQL cases 테이블에 쓴다 (docs/28 C)
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     entrypoint: /bin/bash
     command:

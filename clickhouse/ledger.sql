@@ -180,3 +180,27 @@ SELECT
     toDecimal128OrZero(JSONExtractString(r, 'my_exec_qty'), 8) AS my_exec_qty, JSONExtractUInt(r, 'my_trades') AS my_trades, toDecimal128OrZero(JSONExtractString(r, 'my_trade_qty'), 8) AS my_trade_qty,
     toUInt8(JSONExtractInt(r, 'mismatch')) AS mismatch, JSONExtractString(r, 'detail') AS detail, JSONExtractInt(raw, 'source', 'ts_ms') AS source_ts_ms
 FROM cdc_pipeline.ledger_reconcile_queue WHERE JSONExtractString(raw, 'op') IN ('c', 'r');
+
+-- C. 케이스 (거울 모드 두 번째 사례): 사람이 바꾸는 status·verdict 가 CDC 로 온다.
+CREATE TABLE IF NOT EXISTS cdc_pipeline.cases
+(
+    case_id UInt64, case_type LowCardinality(String), subject LowCardinality(String), evidence_key String, evidence String,
+    opened_ms Int64, status LowCardinality(String), verdict LowCardinality(String), note String, assignee String, updated_ms Int64,
+    version UInt32, is_deleted UInt8, op LowCardinality(String), source_ts_ms Int64, kafka_ts_ms Int64, ch_inserted_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(version, is_deleted)
+ORDER BY (case_id);
+
+CREATE TABLE IF NOT EXISTS cdc_pipeline.ledger_cases_queue (raw String)
+ENGINE = Kafka SETTINGS kafka_broker_list = 'kafka-1:29092', kafka_topic_list = 'ledger.crypto_db.cases', kafka_group_name = 'clickhouse-ledger-cases', kafka_format = 'JSONAsString', kafka_num_consumers = 1;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS cdc_pipeline.mv_ledger_cases TO cdc_pipeline.cases AS
+WITH JSONExtractString(raw, 'op') AS o,
+     if(o = 'd', JSONExtractRaw(raw, 'before'), JSONExtractRaw(raw, 'after')) AS r
+SELECT
+    JSONExtractUInt(r, 'case_id') AS case_id, JSONExtractString(r, 'case_type') AS case_type, JSONExtractString(r, 'subject') AS subject,
+    JSONExtractString(r, 'evidence_key') AS evidence_key, JSONExtractString(r, 'evidence') AS evidence, JSONExtractInt(r, 'opened_ms') AS opened_ms,
+    JSONExtractString(r, 'status') AS status, JSONExtractString(r, 'verdict') AS verdict, JSONExtractString(r, 'note') AS note, JSONExtractString(r, 'assignee') AS assignee,
+    JSONExtractInt(r, 'updated_ms') AS updated_ms, toUInt32(JSONExtractUInt(r, 'version') + if(o = 'd', 1, 0)) AS version, if(o = 'd', 1, 0) AS is_deleted, o AS op,
+    JSONExtractInt(raw, 'source', 'ts_ms') AS source_ts_ms, toUnixTimestamp64Milli(_timestamp_ms) AS kafka_ts_ms
+FROM cdc_pipeline.ledger_cases_queue WHERE o IN ('c', 'u', 'd', 'r');

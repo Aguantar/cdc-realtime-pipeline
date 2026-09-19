@@ -112,3 +112,25 @@ CREATE TABLE IF NOT EXISTS ledger_reconcile (
     detail          VARCHAR(512) NULL,
     PRIMARY KEY (as_of_day, symbol, reconciled_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- C. 케이스 (docs/28 C, 2026-09-19): 확인이 필요한 건을 자동 생성(Airflow cases_hourly)하고 사람이 판정한다. 상태가 바뀌는 행 → CDC 거울 모드 두 번째 사례.
+-- 판정은 SQL 한 줄: UPDATE cases SET status='closed', verdict='true_positive', note='...', updated_ms=UNIX_TIMESTAMP()*1000, version=version+1 WHERE case_id=N;
+CREATE TABLE IF NOT EXISTS cases (
+    case_id      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    case_type    VARCHAR(40)  NOT NULL COMMENT 'LEDGER_MISMATCH | TESTNET_RESET | MARKET_FLAG_ON_TRADED_COIN',
+    subject      VARCHAR(40)  NOT NULL COMMENT '심볼·마켓',
+    evidence_key VARCHAR(120) NOT NULL COMMENT '같은 근거로 두 번 열지 않는다',
+    evidence     JSON         NOT NULL,
+    opened_ms    BIGINT       NOT NULL,
+    status       ENUM('open','reviewing','closed') NOT NULL DEFAULT 'open',
+    verdict      ENUM('unknown','true_positive','false_positive') NOT NULL DEFAULT 'unknown',
+    note         VARCHAR(500) NULL,
+    assignee     VARCHAR(40)  NULL,
+    updated_ms   BIGINT       NOT NULL,
+    version      INT UNSIGNED NOT NULL DEFAULT 1,
+    created_at   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (case_id),
+    UNIQUE KEY uq_evidence (evidence_key),
+    KEY idx_status (status), KEY idx_opened (opened_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

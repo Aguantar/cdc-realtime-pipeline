@@ -38,7 +38,7 @@ def test_no_import_errors(dag_bag):
 
 def test_expected_dags_loaded(dag_bag):
     """필수 DAG들이 로드되었는지 확인."""
-    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades", "backup_daily", "rules_daily"}
+    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades", "backup_daily", "rules_daily", "cases_hourly"}
     loaded_dags = set(dag_bag.dag_ids)
     missing = expected_dags - loaded_dags
     assert not missing, f"Missing DAGs: {missing}"
@@ -184,3 +184,12 @@ def test_backup_daily_dag_structure(dag_bag):
                                               "apply_remote_retention", "prune_local", "verify_remote_in_sync"}
     assert {t.task_id for t in dag.get_task("sync_to_oracle").upstream_list} == {"clickhouse_backup", "export_orderbook_parquet"}
     assert {t.task_id for t in dag.get_task("verify_remote_in_sync").upstream_list} == {"prune_local"}
+
+
+def test_cases_hourly_dag_structure(dag_bag):
+    """cases_hourly (2026-09-19, docs/28 C): 근거 수집 → 케이스 열기, 한 시간에 한 번."""
+    dag = dag_bag.get_dag("cases_hourly")
+    assert dag is not None
+    assert {t.task_id for t in dag.tasks} == {"collect_evidence", "open_cases"}
+    assert {t.task_id for t in dag.get_task("open_cases").upstream_list} == {"collect_evidence"}
+    assert dag.max_active_runs == 1

@@ -10,7 +10,7 @@
         "database.server.id": "184055",
         "topic.prefix": "ledger",
         "database.include.list": "crypto_db",
-        "table.include.list": "crypto_db.virtual_orders,crypto_db.virtual_fills,crypto_db.virtual_positions,crypto_db.binance_user_events,crypto_db.ledger_reconcile",
+        "table.include.list": "crypto_db.virtual_orders,crypto_db.virtual_fills,crypto_db.virtual_positions,crypto_db.binance_user_events,crypto_db.ledger_reconcile,crypto_db.cases",
         "schema.history.internal.kafka.bootstrap.servers": "kafka-1:29092",
         "schema.history.internal.kafka.topic": "_schema-history-ledger",
         "include.schema.changes": "false",
