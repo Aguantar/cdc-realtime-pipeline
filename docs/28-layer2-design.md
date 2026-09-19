@@ -93,6 +93,8 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 - 왜: 현재 `crypto_trades` 파티션이 binlog 월(toYYYYMM(source_ts))인데 조회는 전부 체결 시각(upbit_timestamp)으로 걸어 **파티션 프루닝이 안 된다**(마트·대조·재계산이 전 월을 훑음). 중복 키도 (market, source_ts, trade_id) 라 binlog 시각을 품는다.
 - 새 정의: `ReplacingMergeTree(flink_ts)`, `PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(upbit_timestamp))`, `ORDER BY (market, upbit_timestamp, sequential_id)`, TTL 은 체결 시각 기준 365일. 새 컬럼(recv_ms, ingest_source, stream_type)도 함께.
 - 절차: docs/25 와 동일(새 테이블 → 월 단위·일 단위 복사 → MV DETACH → 차이분 → EXCHANGE → 잔여 → ATTACH), 12분 실측 있음. A-1(MySQL) 다음 창에.
+- 왜 이렇게 (사용자 질문, 09-19 06:45): ① 파티션 = 체결 시각 월 — 조회가 전부 체결 시각 조건이라 지금(binlog 월)은 프루닝이 안 돼 전 월을 훑고, MySQL 과 기준이 같아진다 ② 정렬 키 = (market, upbit_timestamp, sequential_id) — 체결의 정체성은 (마켓, sequential_id) 이지 binlog 시각이 아니고, (마켓, 시간) 정렬이 조회·분 집계 패턴과 같다 ③ 컬럼 3개는 MySQL 이 이미 보내는 값을 받을 자리(Flink 가 채우는 건 창2). 바꾸지 않는 것: 이름·RMT(flink_ts)·기존 컬럼·dbt·Flink 싱크(창2까지).
+- 실무 대비: ClickHouse 표준 원칙 그대로 — 파티션 키 = 필터·삭제 기준(이벤트 시각), 정렬 키 = 낮은 카디널리티 → 시간, RMT 중복 키 = 업무 정체성, 수신·적재 시각은 키가 아닌 컬럼. 처음 표는 "언제 들어왔나"(적재 관점), 이번은 "언제 일어났나"(이벤트 관점).
 
 ### A-6. A-1 실행 기록 (09-19 01:50 ~ 06:37 UTC, 정지 없음)
 | 단계 | 결과 |

@@ -457,3 +457,4 @@
 - 09-19 02:05 UTC 사용자 지시: 복사 완료 + verify 결과까지만 보고하고 정지. 스왑 이후는 사용자 승인 뒤 진행(복사가 잘됐는지 먼저 확인)
 - 09-19 02:05~02:15 UTC A-1 copy 완료(10일 16.86M행, 하루 38~95초, 프로덕션 p95 불변). verify: 09-10·09-11 은 내 테스트 DROP 탓 dst 0 → 재복사로 일치. 남은 불일치 2건은 정상 — 09-12 는 옛 테이블이 보존 DELETE 로 줄어 dst ≥ src(23,480), 09-19 는 복사 뒤 유입으로 src ≥ dst(차이분은 swap 이 옮김) → verify 판정 규칙에 반영. p_max 0. **스왑은 사용자 승인 대기**
 - 09-19 06:32~06:37 UTC **A-1 스왑 완료**(사용자 승인, docs/28 A-6): EVENT disable → AUTO_INCREMENT 120,040,919 → RENAME 06:32:51 → 차이분 672k 18초. 검증: 새 첫 id 120,040,919, 스왑 전 오늘 행 old=new 1,419,753, Debezium WARN 2줄·RUNNING·새 컬럼 3개 실림, CH 연속성 +1, 적재 3,311/60s p95 4.54. finalize: 유지보수 EVENT 매일 00:05, cleanup_old_trades 삭제. Kafka 창1 마무리: message.key.columns=market 적용, 키 {"market":…} 확인, 적재 지속. 남은 확인: 09-20 00:05 첫 자동 DROP/ADD, 재정렬률, 09-26 옛 테이블 DROP
+- 09-19 06:45 UTC 사용자 "A-5 는 뭘 어떻게 바꾸나, 이유·실무" → docs/28 A-5 보강(파티션=체결 시각 월, 키=(market, upbit_timestamp, sequential_id), 컬럼 3 추가, 바꾸지 않는 것, 실무 원칙 대비). 승인 대기
