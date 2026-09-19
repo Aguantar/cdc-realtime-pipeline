@@ -56,10 +56,11 @@ verify)
     a=$(MYN "SELECT count(*) FROM crypto_db.crypto_trades WHERE upbit_timestamp >= $LO AND upbit_timestamp < $HI"); b=$(MYN "SELECT count(*) FROM crypto_db.crypto_trades_p WHERE upbit_timestamp >= $LO AND upbit_timestamp < $HI")
     # 09-19 실측으로 정한 판정 규칙: 가장 오래된 날은 옛 테이블이 보존 정리(10분마다 DELETE)로 줄어드니 dst ≥ src 면 정상,
     # 오늘은 복사 뒤에도 옛 테이블에 계속 들어오니 src ≥ dst 면 정상(차이분은 swap 이 옮김). 그 사이 날들은 정확히 일치해야 한다.
-    today=$(date -u +%Y-%m-%d); oldest=$(MYN "SELECT FROM_UNIXTIME(min(upbit_timestamp) DIV 1000, '%Y-%m-%d') FROM crypto_db.crypto_trades")
+    # 정정(02:16): 옛 테이블의 보존 정리는 created_at 기준이라 어느 날이든 줄 수 있다(09-12 가 줄고 09-10·11 백필 행은 아직). 복사는 INSERT IGNORE 라 dst 가 src 에 없던 행을 가질 수 없다
+    # → 지난 날: dst ≥ src 면 정상(줄어든 만큼은 보존 정리), 오늘: src ≥ dst 면 정상(차이분은 swap 이 옮김)
+    today=$(date -u +%Y-%m-%d)
     if [ "$d" = "$today" ]; then [ "$a" -ge "$b" ] && ok="ok(delta $((a-b)) → swap)" || { ok=MISMATCH; BAD=1; }
-    elif [ "$d" = "$oldest" ]; then [ "$b" -ge "$a" ] && ok="ok(retention shrank src by $((b-a)))" || { ok=MISMATCH; BAD=1; }
-    else [ "$a" = "$b" ] && ok=ok || { ok=MISMATCH; BAD=1; }; fi
+    else [ "$b" -ge "$a" ] && { [ "$a" = "$b" ] && ok=ok || ok="ok(retention shrank src by $((b-a)))"; } || { ok=MISMATCH; BAD=1; }; fi
     say "  $d src=$a dst=$b $ok" | tee -a $LOG
   done
   [ $BAD = 0 ] && say "  verify PASS" | tee -a $LOG || { say "  verify FAIL → copy 를 다시(INSERT IGNORE, 멱등)"; exit 1; }
