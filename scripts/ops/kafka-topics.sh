@@ -13,7 +13,8 @@ for t in "${!TOPICS[@]}"; do
   if $K kafka-topics $BS --describe --topic "$t" >/dev/null 2>&1; then
     $K kafka-configs $BS --entity-type topics --entity-name "$t" --alter --add-config "$cfg" >/dev/null && echo "updated $t: $cfg"
   else
-    $K kafka-topics $BS --create --topic "$t" --partitions "$parts" --replication-factor 1 --config "$(echo $cfg | sed 's/,/ --config /g')" >/dev/null && echo "created $t ($parts p): $cfg"
+    args=(); for kv in ${cfg//,/ }; do args+=(--config "$kv"); done
+    $K kafka-topics $BS --create --topic "$t" --partitions "$parts" --replication-factor 1 "${args[@]}" >/dev/null && echo "created $t ($parts p): $cfg"
   fi
 done
 for t in "${!TOPICS[@]}"; do echo -n "$t → "; $K kafka-configs $BS --entity-type topics --entity-name "$t" --describe 2>/dev/null | grep -oE "(compression.type|retention.ms|retention.bytes)=[^ ,]+" | tr '\n' ' '; echo; done
