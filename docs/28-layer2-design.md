@@ -67,6 +67,22 @@ PARTITION BY RANGE (upbit_timestamp DIV 86400000) (일 파티션 p20260919 … +
 | 6 | 대조 DAG 100%, 24h 관찰, 옛 테이블 7일 뒤 DROP | — |
 위험: RENAME 을 Debezium 이 "새 테이블 = 캡처 대상" 으로 이어 받지 못하면 재시작·오프셋 확인이 필요하다 → 드라이런(0)에서 include.list 안의 테이블을 RENAME 하는 경우를 먼저 실험한다(작은 더미 테이블로).
 
+### A-4. A-0 드라이런 결과 (09-19 01:35 ~ 01:42 UTC, 같은 MySQL, 캡처 대상 밖 복사본)
+| 검증 | 결과 |
+|---|---|
+| 파티션 경계 | **처음 만든 경계가 날짜와 5일 어긋남**(09-18 → 20719 로 적음, 실제 일 번호 20714) → 코드로 계산해 재생성. 드라이런이 잡은 첫 오류 |
+| 복사 | 09-18 하루 2,676,324행, 75초, `sql_log_bin=0`. 전부 p20260918, p_max 0. 그 사이 프로덕션 지연 p95 4.4~4.6s 불변, MySQL 신규 12,328 vs ClickHouse 12,210(창 경계) → **복사본이 CDC 로 새지 않음** |
+| 유니크 키 | 같은 체결 1,000행을 created_at 다르게 INSERT IGNORE → **0 삽입**(gap-fill 재삽입 차단 유지) |
+| 파티션 DDL | REORGANIZE(p_max→새 날+p_max) 0초, DROP 빈 파티션 0초, **DROP 2.68M 행 0초**(DELETE 59초와 비교). Debezium RUNNING, 로그 오류 0 |
+| **RENAME 이어 받기(최대 위험)** | 더미 테이블을 include.list 에 넣고 같은 방식으로 스왑(`RENAME a→a_old, a_p→a`). Debezium 은 WARN 2줄("included → non-included", "non-included → included, schema inconsistency 가능")을 남기고 **계속 캡처** — 스왑 뒤 INSERT 가 같은 토픽에 table=dbz_rename_test 로 도착. 커넥터 RUNNING |
+| 정리 | include.list 복원, 더미·복사본 테이블·토픽 삭제, 적재 지속 확인 |
+결론: A-3 절차는 그대로 실행 가능. RENAME 의 WARN 은 예상된 것이고, 스왑 직후 스키마 이력이 새 DDL 로 갱신되는지(컬럼 3개 추가분이 이벤트에 실리는지)를 실행 검증 항목에 추가한다.
+
+### A-5. ClickHouse 쪽 재생성 (A-2, 사용자 결정 "전부 포함")
+- 왜: 현재 `crypto_trades` 파티션이 binlog 월(toYYYYMM(source_ts))인데 조회는 전부 체결 시각(upbit_timestamp)으로 걸어 **파티션 프루닝이 안 된다**(마트·대조·재계산이 전 월을 훑음). 중복 키도 (market, source_ts, trade_id) 라 binlog 시각을 품는다.
+- 새 정의: `ReplacingMergeTree(flink_ts)`, `PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(upbit_timestamp))`, `ORDER BY (market, upbit_timestamp, sequential_id)`, TTL 은 체결 시각 기준 365일. 새 컬럼(recv_ms, ingest_source, stream_type)도 함께.
+- 절차: docs/25 와 동일(새 테이블 → 월 단위·일 단위 복사 → MV DETACH → 차이분 → EXCHANGE → 잔여 → ATTACH), 12분 실측 있음. A-1(MySQL) 다음 창에.
+
 ## B. 가상 매매 원장 — CDC 를 제자리에
 ### B-1. 왜
 - CDC 의 본래 자리는 회사가 소유한 트랜잭션 DB(docs/26 §6). 시세는 스트리밍+대조가 맞고, 우리에게 없는 것은 **내부 데이터**다. "누구나 받을 수 없는 플래그"는 여기서 나온다.
