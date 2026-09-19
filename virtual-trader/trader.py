@@ -233,7 +233,7 @@ class Ledger:
         cur = self._cur(); cur.execute("SELECT status IN ('NEW','PARTIALLY_FILLED') FROM virtual_orders WHERE order_id=%s", (order_id,)); r = cur.fetchone(); cur.close(); return bool(r and r[0])
 
     def open_maker_orders(self):
-        cur = self._cur(); cur.execute("SELECT order_id, symbol, orig_qty FROM virtual_orders WHERE strategy='maker-probe' AND status IN ('NEW','PARTIALLY_FILLED')"); r = cur.fetchall(); cur.close(); return r
+        cur = self._cur(); cur.execute("SELECT order_id, symbol, orig_qty, price FROM virtual_orders WHERE strategy='maker-probe' AND status IN ('NEW','PARTIALLY_FILLED')"); r = cur.fetchall(); cur.close(); return r
 
     def apply_reset(self, note: str, recv_ms: int) -> dict:
         """리셋 판정 뒤: 이전 세대 주문·체결 물리 삭제(CDC 가 op=d 로 실어 나른다), 세대 +1, 원문 로그에 남김."""
@@ -349,12 +349,13 @@ class Trader:
         except Exception as e:
             self.stats.errors += 1; log.warning(f"order.place failed {symbol} {p['strategy']}: {e}"); return None
 
-    async def amend_then_cancel(self, symbol: str, order_id: int, qty: Decimal):
+    async def amend_then_cancel(self, symbol: str, order_id: int, qty: Decimal, price: Decimal):
         await asyncio.sleep(CANCEL_AFTER_SEC)
         if not self.ledger.is_open(order_id):
             return   # 그 사이 체결·취소됨(재기동 인수 주문에서 -2038 'Unknown order' 가 났던 원인) — 거래소에 없는 주문을 건드리지 않는다
         f = self.filters[symbol]; half = quantize(qty / 2, f.step_size)
-        if f.amend_allowed and half > 0 and half * Decimal('1') >= f.step_size:
+        # 절반이 minNotional(가격×수량) 아래면 거래소가 -2038 'Filter failure: NOTIONAL' 로 거부(실측 09-19) → amend 건너뛰고 취소만
+        if f.amend_allowed and half > 0 and half * price >= f.min_notional:
             try:
                 await self.api.signed('order.amend.keepPriority', {'symbol': symbol, 'orderId': order_id, 'newQty': fmt(half)}); self.stats.amends += 1
                 log.info(f"amended {symbol} orderId {order_id} qty → {fmt(half)} (keepPriority)")
@@ -384,7 +385,7 @@ class Trader:
                 n += 1
                 r = await self.place(symbol, p, n)
                 if r and p['strategy'] == 'maker-probe':
-                    asyncio.create_task(self.amend_then_cancel(symbol, int(r['orderId']), p['qty']))
+                    asyncio.create_task(self.amend_then_cancel(symbol, int(r['orderId']), p['qty'], p['price']))
                 await asyncio.sleep(1)
 
     async def check_reset(self):
@@ -420,8 +421,8 @@ class Trader:
 
     async def adopt_open_orders(self):
         """재기동 시 메모리의 amend→cancel 예약이 사라지므로, 원장의 열린 maker 주문을 다시 예약한다 (안 하면 영원히 NEW)."""
-        for oid, symbol, qty in self.ledger.open_maker_orders():
-            log.info(f"adopt open maker order {symbol} {oid} → amend/cancel 예약"); asyncio.create_task(self.amend_then_cancel(symbol, int(oid), Decimal(str(qty))))
+        for oid, symbol, qty, price in self.ledger.open_maker_orders():
+            log.info(f"adopt open maker order {symbol} {oid} → amend/cancel 예약"); asyncio.create_task(self.amend_then_cancel(symbol, int(oid), Decimal(str(qty)), Decimal(str(price))))
 
     async def snapshot(self):
         try:
