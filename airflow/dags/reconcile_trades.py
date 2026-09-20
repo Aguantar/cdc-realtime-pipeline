@@ -198,6 +198,7 @@ with DAG(
 
     summarize = PythonOperator(
         task_id="summarize",
+        sla=timedelta(hours=2),   # 2026-09-20 (docs/39 §2 ⑤): 대조가 2시간 넘게 안 끝나면 그 날 유실 판정이 늦어진다,
         python_callable=_summarize,
         trigger_rule=TriggerRule.ALL_DONE,  # dbt 가 실패해도 요약·알림은 수행
         retries=0,

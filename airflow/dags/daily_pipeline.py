@@ -21,7 +21,9 @@ from datetime import datetime, timedelta
 
 from airflow import DAG, Dataset
 from airflow.operators.bash import BashOperator
+from airflow.exceptions import AirflowFailException
 from airflow.operators.python import PythonOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.macros import ds_add
 
 from callbacks.slack_callbacks import (
@@ -30,6 +32,8 @@ from callbacks.slack_callbacks import (
     task_failure_callback,
 )
 from operators.clickhouse_operator import ClickHouseOperator
+
+QUALITY_GATE_MIN_PASS_RATE = 90.0   # % (docs/39 §2 ⑧)
 
 # Dataset: dbt 완료를 나타내는 논리적 데이터셋
 DBT_COMPLETED = Dataset("clickhouse://cdc_pipeline/dbt_models")
@@ -240,6 +244,22 @@ with DAG(
         if failed:
             ti.log.warning("Failed coins: %s", gate_result["failed_coins"])
 
+        # 2026-09-20 (docs/39 §2 ⑧): 여기서 예외를 던지지 않아 **이름만 게이트**였다.
+        # 검증 실패 코인이 있어도 generate_report >> slack_daily_report 가 그대로 돌아
+        # 틀린 값이 Slack 으로 나갔다. 게이트는 막아야 게이트다.
+        #
+        # 임계를 '0건 실패'가 아니라 비율로 두는 이유: 얇은 마켓 한두 개가 순간적으로 조건을 못 맞추는 일은
+        # 늘 있고, 그때마다 리포트를 막으면 사람이 게이트를 꺼 버린다. 90% 는 '대부분 멀쩡한데 몇 개가 이상'과
+        # '전반이 깨짐'을 가르는 선이다.
+        if gate_result["total"] > 0 and gate_result["pass_rate"] < QUALITY_GATE_MIN_PASS_RATE:
+            raise AirflowFailException(
+                f"품질 게이트 미달: {gate_result['passed']}/{gate_result['total']} "
+                f"({gate_result['pass_rate']:.1f}% < {QUALITY_GATE_MIN_PASS_RATE}%) "
+                f"실패 코인 {gate_result['failed_coins'][:10]} — 리포트를 보내지 않는다"
+            )
+        if dup_rows > 0:
+            raise AirflowFailException(f"당일 중복 적재 {dup_rows}건 — 리포트를 보내지 않는다")
+
         return gate_result
 
     quality_gate = PythonOperator(
@@ -402,6 +422,17 @@ with DAG(
     )
 
     # ── DAG 의존성 ───────────────────────────────────────────
+    # 2026-09-20 (docs/39 §2 ②): dbt 가 끝났다는 사실을 품질 판정에 **직접 전달**한다.
+    # 전에는 quality_alerts 가 매시 :50 에 돌며 "그때쯤 끝났겠지"라고 추측했고, dbt 가 늦으면 옛 데이터로 판정했다.
+    # wait_for_completion=False: 판정이 이 DAG 을 붙잡지 않게(리포트가 판정을 기다릴 이유가 없다).
+    trigger_quality = TriggerDagRunOperator(
+        task_id="trigger_quality_alerts",
+        trigger_dag_id="quality_alerts",
+        wait_for_completion=False,
+        reset_dag_run=True,
+    )
+
     dbt_source_freshness >> dbt_run >> dbt_test >> get_coins >> validate_coins >> quality_gate
+    dbt_test >> trigger_quality
     dbt_test >> check_duplicates >> quality_gate
     quality_gate >> generate_report >> slack_report

@@ -27,7 +27,10 @@ from airflow.operators.python import PythonOperator
 
 from callbacks.slack_callbacks import send_health_alert, task_failure_callback
 
-default_args = {"owner": "calme", "retries": 1, "retry_delay": timedelta(minutes=2), "on_failure_callback": task_failure_callback}
+default_args = {"owner": "calme", "retries": 1, "retry_delay": timedelta(minutes=2),
+    # 2026-09-20 (docs/39 §2 ⑥): 외부 API·컨테이너가 흔들릴 때 고정 간격 재시도는 같은 실패를 반복한다
+    "retry_exponential_backoff": True,
+    "max_retry_delay": timedelta(minutes=10), "on_failure_callback": task_failure_callback}
 
 LEVEL_NAME = {1: "주의", 2: "경고", 3: "위험"}
 
@@ -94,4 +97,9 @@ with DAG(
     tags=["alert", "rules"],
     max_active_runs=1,
 ) as dag:
-    PythonOperator(task_id="notify_market_alerts", python_callable=_notify)
+    PythonOperator(
+        task_id="notify_market_alerts",
+        python_callable=_notify,
+        # 10분 주기 발송이 5분을 넘으면 알림이 밀린다(docs/39 §2 ⑤)
+        sla=timedelta(minutes=5),
+    )

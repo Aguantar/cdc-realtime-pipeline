@@ -38,7 +38,7 @@ def test_no_import_errors(dag_bag):
 
 def test_expected_dags_loaded(dag_bag):
     """필수 DAG들이 로드되었는지 확인."""
-    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades", "backup_daily", "rules_daily", "cases_hourly", "reconcile_binance", "quality_alerts", "weekly_digest"}
+    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades", "backup_daily", "rules_daily", "cases_hourly", "reconcile_binance", "quality_alerts", "weekly_digest", "market_alerts_notify", "log_retention"}
     loaded_dags = set(dag_bag.dag_ids)
     missing = expected_dags - loaded_dags
     assert not missing, f"Missing DAGs: {missing}"
@@ -102,6 +102,8 @@ def test_daily_pipeline_dag_structure(dag_bag):
         "get_coin_list",
         "validate_coin",
         "quality_gate",
+        # 2026-09-20 (docs/39 §2 ②): dbt 완료를 품질 판정에 직접 전달하는 트리거
+        "trigger_quality_alerts",
         "check_duplicates",
         "generate_report",
         "slack_daily_report",
@@ -247,3 +249,39 @@ def test_topic_schema_rule_fires_on_violation_and_on_staleness():
     # 경계: 3시간(180분) 이하는 정상 — 매시 도는 cron 이 한 번 걸러도 울리지 않는다
     assert violated({**ok, "stale_min": 180}) is False
     assert violated({**ok, "stale_min": 181}) is True
+
+
+# ── 파이프라인 단계 매핑 (2026-09-20, docs/41) ─────────
+# 알럿이 안 울리면 이 함수는 안 돈다. 안 도는 코드는 믿을 수 없으므로 테스트로 증명한다.
+def test_incident_stage_maps_alerts_to_pipeline_stages():
+    from health_check import _incident_stage, INCIDENT_STAGE
+
+    # 실시간 경로가 단계 순서대로 다 덮이는지
+    stages = {v[0] for v in INCIDENT_STAGE.values()}
+    for s in ("collect", "mysql", "debezium", "kafka", "flink", "clickhouse"):
+        assert s in stages, f"{s} 단계를 덮는 알럿이 없다"
+
+    assert _incident_stage("Kafka Connect")[0] == "debezium"
+    assert _incident_stage("Flink Source Saturation")[0] == "flink"
+    # 접두사 매칭: 메시지가 덧붙어도 같은 단계로 간다
+    assert _incident_stage("Market Coverage (3 markets behind)")[0] == "collect"
+    # 모르는 이름은 unknown — 아는 척하지 않는다
+    assert _incident_stage("Something New")[0] == "unknown"
+
+
+# ── 호스트 cron 신선도 판정 (2026-09-20, docs/39 §2 ③) ─────────
+def test_cron_freshness_rule_fires_only_when_stale():
+    from quality_alerts import RULES
+
+    _, _, violated, msg, _ = next(r for r in RULES if r[0] == "Cron Freshness")
+    ok = {"day_s": "2026-09-20", "stale_list": "", "ops_min": 1, "state_min": 312, "notice_min": 46, "flag_min": 11}
+    assert violated(ok) is False, "전부 신선한데 울리면 거짓 경보"
+
+    # 5분 cron 이 30분 넘게 조용하면 멈춘 것이다
+    stale = {**ok, "stale_list": "ops_metrics_5m 90분", "ops_min": 90}
+    assert violated(stale) is True
+    assert "ops_metrics_5m" in msg(stale) and "정지 의심" in msg(stale)
+
+    # 상태 폴러는 '전이가 있을 때만' 쓰므로 허용 지연이 길다 — 312분에 울리면 안 된다
+    assert violated({**ok, "state_min": 312}) is False
+    assert violated({**ok, "stale_list": "market_state 1600분", "state_min": 1600}) is True

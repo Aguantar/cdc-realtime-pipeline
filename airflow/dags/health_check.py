@@ -18,6 +18,36 @@ from callbacks.slack_callbacks import send_health_alert, task_failure_callback
 from operators.clickhouse_operator import ClickHouseOperator
 from operators.flink_health_operator import FlinkHealthOperator
 
+# 알럿 이름 → 파이프라인 단계 매핑 (docs/41, 2026-09-20).
+# 왜 필요한가: 사람이 묻는 질문은 "어제 새벽에 **어느 단계가** 왜 깨졌나"인데,
+# 지금까지 이력은 alert_events(이름만) · ingest_repairs · DLQ · Flink 메트릭으로 흩어져 있었다.
+# 이름에 단계를 붙여 한 표(pipeline_incidents)에 모으면 단계 축으로 되짚을 수 있다.
+INCIDENT_STAGE = {
+    "Producer Activity":        ("collect",    "cdc-upbit-producer"),
+    "Binance Ingest":           ("collect",    "cdc-binance-collector"),
+    "Market Coverage":          ("collect",    "upbit-websocket"),
+    "Ingest Lag":               ("mysql",      "crypto_db.crypto_trades"),
+    "Kafka Connect":            ("debezium",   "mysql-cdc-connector"),
+    "Kafka Health":             ("kafka",      "cdc-kafka-1"),
+    "CDC Parse Failures":       ("flink",      "CDC Realtime Pipeline"),
+    "Flink Jobs":               ("flink",      "jobmanager"),
+    "Flink Source Saturation":  ("flink",      "kafka-source"),
+    "ClickHouse Insert Latency":("clickhouse", "cdc-clickhouse"),
+    "ClickHouse Ingest":        ("clickhouse", "cdc_pipeline.crypto_trades"),
+    "Ledger Reconcile Stale":   ("orchestration", "virtual-trader"),
+}
+
+
+def _incident_stage(name: str):
+    """정확히 일치하지 않아도 접두사로 찾는다. 모르면 unknown — 모르는 것을 아는 척하지 않는다."""
+    if name in INCIDENT_STAGE:
+        return INCIDENT_STAGE[name]
+    for k, v in INCIDENT_STAGE.items():
+        if name.startswith(k):
+            return v
+    return ("unknown", name)
+
+
 def coverage_verdict(market, state_row):
     """커버리지 판정에서 이 마켓을 뺄 것인가 (2026-09-20, docs/34 #9).
 
@@ -36,6 +66,9 @@ default_args = {
     "owner": "calme",
     "retries": 1,
     "retry_delay": timedelta(minutes=2),
+    # 2026-09-20 (docs/39 §2 ⑥): 외부 API·컨테이너가 흔들릴 때 고정 간격 재시도는 같은 실패를 반복한다
+    "retry_exponential_backoff": True,
+    "max_retry_delay": timedelta(minutes=10),
     "on_failure_callback": task_failure_callback,
 }
 
@@ -501,8 +534,18 @@ with DAG(
                 import json as _json
                 from hooks.clickhouse_hook import ClickHouseHook
                 now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"); hour = datetime.utcnow().strftime("%Y-%m-%dT%H")
+                hook = ClickHouseHook()
                 rows = [{"fired_at": now, "source": "health_check", "name": u["name"], "severity": "immediate", "message": str(u["message"])[:500], "dedup_key": f"{u['name']}:{hour}"} for u in unhealthy]
-                ClickHouseHook().execute("INSERT INTO cdc_pipeline.alert_events FORMAT JSONEachRow\n" + "\n".join(_json.dumps(r, ensure_ascii=False) for r in rows))
+                hook.execute("INSERT INTO cdc_pipeline.alert_events FORMAT JSONEachRow\n" + "\n".join(_json.dumps(r, ensure_ascii=False) for r in rows))
+                # 2026-09-20 (docs/41): 같은 사건을 **단계 축**으로도 남긴다.
+                # alert_events 는 '무엇이 울렸나', pipeline_incidents 는 '어느 단계가 깨졌나' 에 답한다.
+                inc = []
+                for u in unhealthy:
+                    stage, comp = _incident_stage(u["name"])
+                    inc.append({"detected_at": now, "stage": stage, "component": comp, "severity": "error",
+                                "title": u["name"], "detail": str(u["message"])[:800],
+                                "source": "health_check", "dedup_key": f"{u['name']}:{hour}"})
+                hook.execute("INSERT INTO cdc_pipeline.pipeline_incidents FORMAT JSONEachRow\n" + "\n".join(_json.dumps(r, ensure_ascii=False) for r in inc))
             except Exception as e:  # noqa: BLE001
                 ti.log.warning("alert_events insert failed: %s", e)
         else:

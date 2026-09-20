@@ -882,6 +882,87 @@
       ],
       "title": "울린 알럿 (alert_events)",
       "type": "table"
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "⑦ 단계별 사건 이력 (어느 단계가 왜 깨졌나)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 62,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "최근 사건 (단계 · 구성요소 · 원인)",
+      "description": "Airflow 는 자기가 실행하는 태스크만 보여 준다. 실시간 경로(수집기→MySQL→Debezium→Kafka→Flink→ClickHouse)는 컨테이너가 돌리므로 그 오류는 Airflow 화면에 없다. health_check 가 감지한 것을 **단계 축**으로 모은 표가 이것이다(docs/41).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 63,
+        "w": 14,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "rawSql": "SELECT toString(detected_at) AS `시각`, stage AS `단계`, component AS `구성요소`,\n       severity AS `등급`, title AS `사건`, substring(detail, 1, 160) AS `근거`\nFROM cdc_pipeline.pipeline_incidents FINAL\nORDER BY detected_at DESC LIMIT 30"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "table",
+      "title": "단계별 사건 수 (7일)",
+      "description": "어느 단계가 반복해서 깨지는지 본다. 한 단계에 몰리면 그 단계의 설계를 봐야 한다는 신호다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 14,
+        "y": 63,
+        "w": 10,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql",
+          "rawSql": "SELECT stage AS `단계`, count() AS `건수`, uniqExact(title) AS `종류`,\n       toString(max(detected_at)) AS `마지막`\nFROM cdc_pipeline.pipeline_incidents FINAL\nWHERE detected_at >= now() - INTERVAL 7 DAY\nGROUP BY stage ORDER BY count() DESC"
+        }
+      ]
     }
   ],
   "description": "파이프라인이 '지금 제대로 도는가'에 답하는 대시보드. 유입 → 지연 → 정확성 → 오류/공백 → 자원 순으로 읽는다. 2026-09-20 재편: 예전에는 메인·품질·운영 세 개로 흩어져 유입·지연·알럿이 중복됐다. · 새로고침 10s: 실시간 관측용이다. 유입이 초당 수백 건이라 10초면 화면이 살아 있다(재편 전 값이었는데 1분으로 바꿨던 것을 되돌림)."

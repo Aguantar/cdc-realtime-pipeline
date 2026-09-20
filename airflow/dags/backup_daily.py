@@ -132,6 +132,9 @@ default_args = {
     "owner": "calme",
     "retries": 2,
     "retry_delay": timedelta(minutes=5),
+    # 2026-09-20 (docs/39 §2 ⑥): 외부 API·컨테이너가 흔들릴 때 고정 간격 재시도는 같은 실패를 반복한다
+    "retry_exponential_backoff": True,
+    "max_retry_delay": timedelta(minutes=10),
     "on_failure_callback": task_failure_callback,
 }
 
@@ -154,6 +157,7 @@ with DAG(
     # --chmod=ugo+rX: ClickHouse 가 750 으로 만든 디렉터리를 원격에서 복원 컨테이너(uid 101)가 읽게 (리허설 첫 실패의 원인, docs/21 §1)
     sync_to_oracle = BashOperator(
         task_id="sync_to_oracle",
+        sla=timedelta(hours=2),   # 2026-09-20 (docs/39 §2 ⑤): 백업이 늦으면 다음 백업 창과 겹친다,
         bash_command=(
             f'rsync -a --partial --chmod=ugo+rX --info=stats1 -e "{SSH}" {BACKUP_ROOT}/ {REMOTE}:{REMOTE_ROOT}/clickhouse/ 2>&1 | tail -6'
         ),

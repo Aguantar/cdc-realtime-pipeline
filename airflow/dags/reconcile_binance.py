@@ -16,7 +16,10 @@ from airflow.operators.python import PythonOperator
 
 from callbacks.slack_callbacks import task_failure_callback
 
-default_args = {"owner": "calme", "retries": 1, "retry_delay": timedelta(minutes=5), "on_failure_callback": task_failure_callback}
+default_args = {"owner": "calme", "retries": 1, "retry_delay": timedelta(minutes=5),
+    # 2026-09-20 (docs/39 §2 ⑥): 외부 API·컨테이너가 흔들릴 때 고정 간격 재시도는 같은 실패를 반복한다
+    "retry_exponential_backoff": True,
+    "max_retry_delay": timedelta(minutes=10), "on_failure_callback": task_failure_callback}
 REST = "https://api.binance.com"
 
 
