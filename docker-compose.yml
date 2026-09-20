@@ -275,8 +275,12 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # 2026-09-20 최종: 익명 공개 **중단**. Grafana 는 내부 운영 도구라 공개하지 않는 것이 일반적이고,
+      # 포트폴리오는 캡처로 충분하다는 판단(사용자). 공개해 두면 대시보드뿐 아니라 /api/ds/query 로
+      # 임의 SELECT 가 되고, 쿼리 원문·표 구조 같은 운영 정보가 함께 나간다.
+      # Caddy 의 grafana.calmee.store 는 basic_auth 가 없으므로(airflow·code 블록과 달리) 이 설정이
+      # 유일한 잠금이다 → Caddy 에도 basic_auth 를 붙이는 것이 다음 단계(사용자 sudo).
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
       # 2026-09-20: 데이터소스를 읽기 전용 계정으로 내렸다. 익명 Viewer 가 켜져 있어 이 자격증명은
       # 사실상 '인증 없는 사람의 권한'이다 (grafana/provisioning/datasources/clickhouse.yml 주석 참고)
       CLICKHOUSE_READONLY_USER: ${CLICKHOUSE_READONLY_USER}
