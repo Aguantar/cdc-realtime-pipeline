@@ -17,7 +17,7 @@
     {
       "id": 1,
       "type": "row",
-      "title": "① 지금 상태",
+      "title": "① 지금 정상인가",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -90,7 +90,7 @@
           "refId": "A"
         }
       ],
-      "title": "Flink 잡 (정상 5)",
+      "title": "Flink 잡 (정상이면 5)",
       "type": "stat"
     },
     {
@@ -160,7 +160,7 @@
           "refId": "A"
         }
       ],
-      "title": "호스트 load1 (코어 4)",
+      "title": "서버 부하 (코어 4개)",
       "type": "stat"
     },
     {
@@ -231,7 +231,7 @@
           "refId": "A"
         }
       ],
-      "title": "디스크 여유 (GB)",
+      "title": "남은 디스크",
       "type": "stat"
     },
     {
@@ -302,7 +302,7 @@
           "refId": "A"
         }
       ],
-      "title": "Upbit e2e p95 (초)",
+      "title": "업비트 지연 p95",
       "type": "stat"
     },
     {
@@ -373,7 +373,7 @@
           "refId": "A"
         }
       ],
-      "title": "Binance e2e p95 (초)",
+      "title": "바이낸스 지연 p95",
       "type": "stat"
     },
     {
@@ -444,13 +444,13 @@
           "refId": "A"
         }
       ],
-      "title": "Flink 소스 busy max (ms/s)",
+      "title": "Flink 소스 포화도",
       "type": "stat"
     },
     {
       "id": 8,
       "type": "row",
-      "title": "② 유입 — 두 거래소 네 경로",
+      "title": "② 얼마나 들어오나 (두 거래소, 네 경로)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -465,20 +465,24 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
-      "description": "Upbit 체결(289 마켓)·Binance 체결(493 심볼)·양쪽 호가. Binance 체결은 Kafka 직행이고 호가는 증분+스냅샷을 Flink 가 재구성한 1초 상위 20.",
+      "description": "Upbit 체결(289 마켓)·Binance 체결(493 심볼)·양쪽 호가. Binance 체결은 Kafka 직행이고 호가는 증분+스냅샷을 Flink 가 재구성한 1초 상위 20. · 경로별 유입량이 10배 이상 차이나서 로그 축을 쓴다. 선형 축이면 바이낸스 체결이 나머지를 눌러 안 보인다.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "drawStyle": "bars",
+            "drawStyle": "line",
             "lineWidth": 2,
-            "fillOpacity": 70,
+            "fillOpacity": 10,
             "gradientMode": "opacity",
             "showPoints": "never",
             "spanNulls": true,
-            "axisSoftMin": 0
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
+            }
           },
           "mappings": [],
           "unit": "short",
@@ -518,7 +522,7 @@
           "refId": "A"
         }
       ],
-      "title": "거래소별 유입 (분당 행 수)",
+      "title": "분당 들어온 행 수 (경로별)",
       "type": "timeseries"
     },
     {
@@ -579,13 +583,13 @@
           "refId": "A"
         }
       ],
-      "title": "유입 추세 (5분 스냅샷, ops_metrics_5m)",
+      "title": "유입 추세 (5분 단위)",
       "type": "timeseries"
     },
     {
       "id": 11,
       "type": "row",
-      "title": "③ 지연 — 어디서 밀리나",
+      "title": "③ 어디서 밀리나",
       "collapsed": true,
       "gridPos": {
         "x": 0,
@@ -668,7 +672,7 @@
               "refId": "A"
             }
           ],
-          "title": "종단 지연 p95 (초)",
+          "title": "거래소 체결부터 적재까지 (p95)",
           "type": "timeseries"
         },
         {
@@ -695,7 +699,7 @@
               "refId": "A"
             }
           ],
-          "title": "적재 지연 p50/p95/max (초)",
+          "title": "적재 지연 (중앙값 / p95 / 최대)",
           "type": "timeseries",
           "fieldConfig": {
             "defaults": {
@@ -832,7 +836,7 @@
               }
             }
           ],
-          "title": "CDC 구간 지연 (MySQL binlog → Flink)",
+          "title": "CDC 구간 지연 (binlog에서 Flink까지)",
           "type": "timeseries",
           "description": "종단 지연은 '거래소 체결 → 적재'이고 이 패널은 그중 CDC 구간만이다. 구간을 나눠야 병목이 어디인지 말할 수 있다."
         }
@@ -841,7 +845,7 @@
     {
       "id": 15,
       "type": "row",
-      "title": "④ 정확성 — 거래소·원장과 대조",
+      "title": "④ 값이 맞나 (거래소·원장 대조)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
@@ -874,34 +878,26 @@
               "refId": "A"
             }
           ],
-          "title": "Upbit 대조 — 일별 가중 비율 (%)",
-          "type": "timeseries",
+          "title": "업비트 대조 일치율",
+          "type": "stat",
           "fieldConfig": {
             "defaults": {
               "color": {
-                "mode": "palette-classic"
+                "mode": "thresholds"
               },
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "gradientMode": "opacity",
-                "showPoints": "never",
-                "spanNulls": true,
-                "axisSoftMin": 0,
-                "thresholdsStyle": {
-                  "mode": "dashed"
-                }
-              },
-              "mappings": [],
               "unit": "percent",
               "decimals": 3,
+              "mappings": [],
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
                   {
                     "color": "red",
                     "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 99
                   },
                   {
                     "color": "green",
@@ -913,50 +909,45 @@
             "overrides": []
           },
           "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true,
-              "calcs": []
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
             },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          }
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "textMode": "auto"
+          },
+          "description": "거래소 시간봉 대비 우리 체결 수량. 배경색은 최근 완결일 기준, 작은 그래프는 30일 추세. 목표 99.9% 이상."
         },
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "description": "493 심볼 × 시간 셀. 첫 온전한 시간(09-20 01:00 UTC) 실측 100.000%, 불일치 셀 0/491.",
+          "description": "거래소 시간봉의 체결 건수 대비. 업비트는 수량 기준이라 분모가 다르다.",
           "fieldConfig": {
             "defaults": {
               "color": {
-                "mode": "palette-classic"
+                "mode": "thresholds"
               },
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 10,
-                "gradientMode": "opacity",
-                "showPoints": "never",
-                "spanNulls": true,
-                "axisSoftMin": 0,
-                "thresholdsStyle": {
-                  "mode": "dashed"
-                }
-              },
-              "mappings": [],
               "unit": "percent",
               "decimals": 3,
+              "mappings": [],
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
                   {
                     "color": "red",
                     "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 99
                   },
                   {
                     "color": "green",
@@ -975,16 +966,18 @@
           },
           "id": 17,
           "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true,
-              "calcs": []
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
             },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "textMode": "auto"
           },
           "targets": [
             {
@@ -999,8 +992,8 @@
               "refId": "A"
             }
           ],
-          "title": "Binance 대조 — 일별 가중 비율 (%)",
-          "type": "timeseries"
+          "title": "바이낸스 대조 일치율",
+          "type": "stat"
         },
         {
           "datasource": {
@@ -1062,7 +1055,7 @@
               "refId": "A"
             }
           ],
-          "title": "2층 원장 — 3자 대조 (거래소 = MySQL = ClickHouse)",
+          "title": "가상 원장 3자 대조 (거래소 = MySQL = ClickHouse)",
           "type": "table"
         },
         {
@@ -1089,40 +1082,49 @@
               "refId": "A"
             }
           ],
-          "title": "Upbit 대조 — 99% 미만 셀 / 0건 마켓",
-          "type": "timeseries",
+          "title": "대조가 어긋난 셀 수",
+          "type": "barchart",
           "fieldConfig": {
             "defaults": {
               "color": {
                 "mode": "palette-classic"
               },
+              "unit": "short",
+              "decimals": 0,
               "custom": {
-                "drawStyle": "bars",
-                "lineWidth": 2,
-                "fillOpacity": 70,
-                "gradientMode": "opacity",
-                "showPoints": "never",
-                "spanNulls": true,
-                "axisSoftMin": 0
+                "axisPlacement": "auto",
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "lineWidth": 1
               },
               "mappings": [],
-              "unit": "short",
-              "decimals": 0
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
             },
             "overrides": []
           },
           "options": {
+            "orientation": "auto",
+            "showValue": "auto",
+            "stacking": "none",
+            "xTickLabelRotation": 0,
             "legend": {
               "displayMode": "list",
               "placement": "bottom",
-              "showLegend": true,
-              "calcs": []
+              "showLegend": true
             },
             "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
+              "mode": "multi"
             }
-          }
+          },
+          "description": "가중 일치율이 가리는 국소 유실을 여기서 본다. 0이어야 정상."
         },
         {
           "datasource": {
@@ -1184,7 +1186,7 @@
               "refId": "A"
             }
           ],
-          "title": "2층 원장 — 24시간 상태 전이 (CDC 가 잡은 UPDATE)",
+          "title": "가상 원장이 만든 상태 변경 (CDC가 잡은 UPDATE)",
           "type": "table"
         }
       ]
@@ -1192,7 +1194,7 @@
     {
       "id": 21,
       "type": "row",
-      "title": "⑤ 오류 · 공백 — 무엇이 빠졌나",
+      "title": "⑤ 무엇이 빠졌나",
       "collapsed": true,
       "gridPos": {
         "x": 0,
@@ -1225,38 +1227,46 @@
               "refId": "A"
             }
           ],
-          "title": "늦은 행(>60s, 가드 대상) / 수리 복구 행",
-          "type": "timeseries",
+          "title": "늦게 도착한 행과 복구한 행",
+          "type": "barchart",
           "fieldConfig": {
             "defaults": {
               "color": {
                 "mode": "palette-classic"
               },
+              "unit": "short",
+              "decimals": 0,
               "custom": {
-                "drawStyle": "bars",
-                "lineWidth": 2,
-                "fillOpacity": 70,
-                "gradientMode": "opacity",
-                "showPoints": "never",
-                "spanNulls": true,
-                "axisSoftMin": 0
+                "axisPlacement": "auto",
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "lineWidth": 1
               },
               "mappings": [],
-              "unit": "short",
-              "decimals": 0
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
             },
             "overrides": []
           },
           "options": {
+            "orientation": "auto",
+            "showValue": "auto",
+            "stacking": "none",
+            "xTickLabelRotation": 0,
             "legend": {
               "displayMode": "list",
               "placement": "bottom",
-              "showLegend": true,
-              "calcs": []
+              "showLegend": true
             },
             "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
+              "mode": "multi"
             }
           }
         },
@@ -1320,7 +1330,7 @@
               "refId": "A"
             }
           ],
-          "title": "수집 공백 — 거래소 공지로 설명되나",
+          "title": "수집 공백과 그 설명 (거래소 공지 대조)",
           "type": "table"
         },
         {
@@ -1347,7 +1357,7 @@
               "refId": "A"
             }
           ],
-          "title": "수리 계보 (창 단위)",
+          "title": "공백을 메운 기록",
           "type": "table",
           "fieldConfig": {
             "defaults": {
@@ -1444,7 +1454,7 @@
               "refId": "A"
             }
           ],
-          "title": "토픽 계약 검증 (매시 cron → Airflow 판정)",
+          "title": "토픽 계약 검증 (매시 자동)",
           "type": "table"
         }
       ]
@@ -1452,7 +1462,7 @@
     {
       "id": 26,
       "type": "row",
-      "title": "⑥ 자원 · 알럿",
+      "title": "⑥ 자원과 알림",
       "collapsed": true,
       "gridPos": {
         "x": 0,
@@ -1519,7 +1529,7 @@
               "refId": "A"
             }
           ],
-          "title": "컨테이너 메모리 (MiB)",
+          "title": "컨테이너별 메모리",
           "type": "timeseries"
         },
         {
@@ -1580,7 +1590,7 @@
               "refId": "A"
             }
           ],
-          "title": "호스트 부하 · 스왑",
+          "title": "서버 부하와 스왑",
           "type": "timeseries"
         },
         {
@@ -1643,7 +1653,7 @@
               "refId": "A"
             }
           ],
-          "title": "울린 알럿 (alert_events)",
+          "title": "울린 알림",
           "type": "table"
         }
       ]
@@ -1651,7 +1661,7 @@
     {
       "id": 30,
       "type": "row",
-      "title": "⑦ 단계별 사건 이력 (어느 단계가 왜 깨졌나)",
+      "title": "⑦ 어느 단계가 왜 깨졌나",
       "collapsed": true,
       "gridPos": {
         "x": 0,
@@ -1663,7 +1673,7 @@
         {
           "id": 31,
           "type": "table",
-          "title": "최근 사건 (단계 · 구성요소 · 원인)",
+          "title": "최근 사건 (단계, 구성요소, 원인)",
           "description": "Airflow 는 자기가 실행하는 태스크만 보여 준다. 실시간 경로(수집기→MySQL→Debezium→Kafka→Flink→ClickHouse)는 컨테이너가 돌리므로 그 오류는 Airflow 화면에 없다. health_check 가 감지한 것을 **단계 축**으로 모은 표가 이것이다(docs/41).",
           "datasource": {
             "type": "grafana-clickhouse-datasource",
@@ -1725,9 +1735,9 @@
         },
         {
           "id": 32,
-          "type": "table",
-          "title": "단계별 사건 수 (7일)",
-          "description": "어느 단계가 반복해서 깨지는지 본다. 한 단계에 몰리면 그 단계의 설계를 봐야 한다는 신호다.",
+          "type": "barchart",
+          "title": "7일간 단계별 사건 수",
+          "description": "한 단계에 몰리면 그 단계의 설계를 봐야 한다는 신호다.",
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
@@ -1740,12 +1750,16 @@
           },
           "fieldConfig": {
             "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "unit": "short",
+              "decimals": 0,
               "custom": {
-                "align": "auto",
-                "cellOptions": {
-                  "type": "auto"
-                },
-                "inspect": false
+                "axisPlacement": "auto",
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "lineWidth": 1
               },
               "mappings": [],
               "thresholds": {
@@ -1761,15 +1775,17 @@
             "overrides": []
           },
           "options": {
-            "showHeader": true,
-            "cellHeight": "sm",
-            "footer": {
-              "show": false,
-              "reducer": [
-                "sum"
-              ],
-              "countRows": false,
-              "fields": ""
+            "orientation": "horizontal",
+            "showValue": "auto",
+            "stacking": "none",
+            "xTickLabelRotation": 0,
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi"
             }
           },
           "targets": [

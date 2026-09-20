@@ -17,7 +17,7 @@
     {
       "id": 101,
       "type": "row",
-      "title": "① 지금 지정 상태",
+      "title": "① 지금 경보가 걸린 상태",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -32,7 +32,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
-      "description": "PRICE_24H v2.1.1 은 2026-09-20 승격(전이 116건 미매칭 0, docs/22 §6). 승격이 바꾼 것은 판정이 아니라 '사람에게 보내는가'다 — 발송은 market_alerts_notify DAG.",
+      "description": "등급이 올라간 전이만 센다(해제는 빼고). 0이면 조용한 상태.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -63,7 +63,7 @@
       "gridPos": {
         "x": 0,
         "y": 1,
-        "w": 6,
+        "w": 8,
         "h": 4
       },
       "id": 102,
@@ -92,7 +92,7 @@
           }
         }
       ],
-      "title": "⚠ 이상탐지 지정 전이 (최근 1시간)",
+      "title": "최근 1시간 새 경보",
       "type": "stat"
     },
     {
@@ -125,9 +125,9 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 6,
+        "x": 8,
         "y": 1,
-        "w": 6,
+        "w": 8,
         "h": 4
       },
       "id": 103,
@@ -156,7 +156,7 @@
           }
         }
       ],
-      "title": "거래대금 급등 지정 (VOLUME_24H · 7일)",
+      "title": "거래대금 급등 지정 (7일)",
       "type": "stat"
     },
     {
@@ -184,9 +184,9 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 12,
+        "x": 16,
         "y": 1,
-        "w": 6,
+        "w": 8,
         "h": 4
       },
       "id": 104,
@@ -215,73 +215,13 @@
           }
         }
       ],
-      "title": "Markets Tracked (모니터링 마켓)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "unit": "currencyKRW",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 18,
-        "y": 1,
-        "w": 6,
-        "h": 4
-      },
-      "id": 105,
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "format": 1,
-          "rawSql": "SELECT close FROM cdc_pipeline.mart_daily_summary WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "PDEE91DDB90597936"
-          }
-        }
-      ],
-      "title": "현재가",
+      "title": "감시 중인 마켓 수",
       "type": "stat"
     },
     {
       "id": 106,
       "type": "row",
-      "title": "② 전이 — 무엇이 언제 지정됐나",
+      "title": "② 무엇이 언제 지정됐나",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -393,7 +333,7 @@
           }
         }
       ],
-      "title": "시간대별 지정 전이 (PRICE_24H / VOLUME_24H)",
+      "title": "시간대별 새 경보 수",
       "type": "timeseries"
     },
     {
@@ -438,8 +378,9 @@
           }
         }
       ],
-      "title": "BTC Price (실시간 BTC 가격) | 🔴 빨간 점선 = 이상 탐지",
-      "type": "timeseries"
+      "title": "비트코인 가격과 경보 시점",
+      "type": "timeseries",
+      "description": "빨간 점선이 이상탐지가 울린 시각이다."
     },
     {
       "datasource": {
@@ -587,13 +528,13 @@
           }
         }
       ],
-      "title": "이상탐지 등급 전이 (PRICE_24H 정식 v2.1.1 · VOLUME_24H 섀도)",
+      "title": "경보 등급 변화 기록 (가격 규칙은 정식, 거래대금 규칙은 섀도)",
       "type": "table"
     },
     {
       "id": 110,
       "type": "row",
-      "title": "③ 규칙이 맞는가 — 거래소 지정과 대조",
+      "title": "③ 우리 판정이 맞나 (거래소 지정과 대조)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
@@ -626,7 +567,7 @@
               "refId": "A"
             }
           ],
-          "title": "규칙 평가 — 정밀도·재현율·선행(초) vs 거래소 지정",
+          "title": "우리 판정 성적 (정밀도·재현율·선행시간)",
           "type": "table",
           "fieldConfig": {
             "defaults": {
@@ -661,7 +602,8 @@
               "countRows": false,
               "fields": ""
             }
-          }
+          },
+          "description": "거래소가 실제로 지정한 것과 대조한 결과. 정밀도는 우리가 울린 것 중 맞은 비율, 선행시간이 양수면 우리가 먼저 잡았다는 뜻."
         },
         {
           "datasource": {
@@ -777,7 +719,7 @@
               }
             }
           ],
-          "title": "거래대금 급등 지정 목록 (7일 평균 ×4 이상 AND ≥10억)",
+          "title": "거래대금 급등 목록 (7일 평균의 4배 이상 + 10억 이상)",
           "type": "table"
         }
       ]
@@ -785,7 +727,7 @@
     {
       "id": 113,
       "type": "row",
-      "title": "④ 시장 맥락",
+      "title": "④ 선택한 종목 살펴보기",
       "collapsed": true,
       "gridPos": {
         "x": 0,
@@ -794,6 +736,67 @@
         "h": 1
       },
       "panels": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "unit": "currencyKRW",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 24,
+            "w": 5,
+            "h": 4
+          },
+          "id": 105,
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "SELECT close FROM cdc_pipeline.mart_daily_summary WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+              }
+            }
+          ],
+          "title": "선택 종목 최근 종가",
+          "type": "stat",
+          "description": "`mart_daily_summary` 의 가장 최근 KST 하루 종가다. **실시간 가격이 아니다** — 실시간은 ② 의 가격 차트에서 본다. 여기 있는 이유는 아래 지표들이 모두 '선택한 종목의 최근 하루'를 말하기 때문."
+        },
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
@@ -824,9 +827,9 @@
             "overrides": []
           },
           "gridPos": {
-            "x": 0,
+            "x": 5,
             "y": 24,
-            "w": 6,
+            "w": 5,
             "h": 4
           },
           "id": 116,
@@ -855,7 +858,7 @@
               }
             }
           ],
-          "title": "전일 대비",
+          "title": "전일 종가 대비",
           "type": "stat"
         },
         {
@@ -884,9 +887,9 @@
             "overrides": []
           },
           "gridPos": {
-            "x": 6,
+            "x": 10,
             "y": 24,
-            "w": 6,
+            "w": 5,
             "h": 4
           },
           "id": 117,
@@ -915,7 +918,7 @@
               }
             }
           ],
-          "title": "거래량 변동",
+          "title": "전일 거래량 대비",
           "type": "stat"
         },
         {
@@ -948,9 +951,9 @@
             "overrides": []
           },
           "gridPos": {
-            "x": 12,
+            "x": 15,
             "y": 24,
-            "w": 6,
+            "w": 5,
             "h": 4
           },
           "id": 118,
@@ -979,7 +982,7 @@
               }
             }
           ],
-          "title": "매수 비율",
+          "title": "테이커 매수 비율",
           "type": "stat"
         },
         {
@@ -1016,9 +1019,9 @@
             "overrides": []
           },
           "gridPos": {
-            "x": 18,
+            "x": 20,
             "y": 24,
-            "w": 6,
+            "w": 4,
             "h": 4
           },
           "id": 119,
@@ -1183,7 +1186,7 @@
               }
             }
           ],
-          "title": "${market} 일봉 가격 추이 (시가/고가/저가/종가)",
+          "title": "${market} 일봉 (시가·고가·저가·종가)",
           "type": "timeseries"
         },
         {
@@ -1274,7 +1277,7 @@
               }
             }
           ],
-          "title": "${market} 시간봉 가격 (24h)",
+          "title": "${market} 시간봉 (최근 24시간)",
           "type": "timeseries"
         },
         {
@@ -1499,7 +1502,7 @@
               }
             }
           ],
-          "title": "종목별 오늘 성적표",
+          "title": "오늘 종목별 요약",
           "type": "table"
         }
       ]
@@ -1507,7 +1510,7 @@
     {
       "id": 122,
       "type": "row",
-      "title": "⑤ 마켓 상태 — 지정·폐지·정지",
+      "title": "⑤ 폐지·정지 예정 종목",
       "collapsed": true,
       "gridPos": {
         "x": 0,
@@ -1576,7 +1579,7 @@
               "refId": "A"
             }
           ],
-          "title": "마켓 상태 — 폐지·정지 (유실과 구분)",
+          "title": "폐지 예정·거래 정지 종목",
           "type": "table"
         }
       ]
