@@ -1,4 +1,5 @@
 {{ config(order_by='(market, hour_utc)') }}
+-- 2026-09-20 (docs/34 #2): crypto_trades 는 ReplacingMergeTree — 중복은 '결국' 지워지므로 읽는 쪽이 FINAL 로 보장한다(재시작 뒤 머지 전 배치가 중복을 세지 않게)
 -- materialized 는 dbt_project.yml 의 intermediate 계층 설정(table)을 따른다. 처음엔 별도 reconcile/ 폴더에 두었으나
 -- int_ 접두어와 계층 규칙(staging→intermediate→marts)이 어긋나 intermediate 로 옮김 (2026-09-16).
 
@@ -20,7 +21,7 @@ trades AS (
         toStartOfHour(fromUnixTimestamp64Milli(upbit_timestamp)) AS hour_utc,
         sum(trade_volume) AS ch_vol,
         count() AS ch_n
-    FROM {{ source('raw', 'crypto_trades') }}
+    FROM {{ source('raw', 'crypto_trades') }} FINAL
     WHERE op = 'c'
       AND source_ts >= (SELECT h_min FROM bounds) - INTERVAL 1 DAY          -- 정렬키 프루닝용 (적재 지연 여유 1일)
       AND upbit_timestamp >= toUnixTimestamp64Milli(toDateTime64((SELECT h_min FROM bounds), 3))

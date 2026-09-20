@@ -3,6 +3,7 @@
     post_hook="INSERT INTO cdc_pipeline.market_alerts (alert_type, market, level, prev_level, event_time, detected_at, value, threshold, ref_price, price, trade_id, rule_version)
                SELECT 'VOLUME_24H', market, 1, 0, toDateTime64(toDateTime(day + 1) + INTERVAL 1 HOUR, 3), now64(3), ratio, 4, 0, 0, 0, 'v2-shadow'
                FROM {{ this }}
+-- 2026-09-20 (docs/34 #2): crypto_trades 는 ReplacingMergeTree — 중복은 '결국' 지워지므로 읽는 쪽이 FINAL 로 보장한다(재시작 뒤 머지 전 배치가 중복을 세지 않게)
                WHERE flagged AND day >= today() - 2
                  AND (market, day) NOT IN (SELECT market, toDate(event_time - INTERVAL 1 HOUR) - 1 FROM cdc_pipeline.market_alerts WHERE alert_type = 'VOLUME_24H')"
 ) }}
@@ -13,7 +14,7 @@
 -- 데이터 출처는 우리 체결(crypto_trades) 이고 거래소 일봉이 아니다 — 우리 파이프라인이 낸 값으로 판정해야 파이프라인의 규칙이다.
 WITH daily AS (
     SELECT market, toDate(source_ts) AS day, sum(trade_amount) AS amount
-    FROM {{ source('raw', 'crypto_trades') }}
+    FROM {{ source('raw', 'crypto_trades') }} FINAL
     WHERE op = 'c' AND source_ts >= toStartOfDay(now() - INTERVAL 40 DAY)
     GROUP BY market, day
 ),

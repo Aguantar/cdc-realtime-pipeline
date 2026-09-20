@@ -1,4 +1,5 @@
 {{ config(materialized='incremental', incremental_strategy='delete+insert', unique_key='day', order_by='day') }}
+-- 2026-09-20 (docs/34 #2): crypto_trades 는 ReplacingMergeTree — 중복은 '결국' 지워지므로 읽는 쪽이 FINAL 로 보장한다(재시작 뒤 머지 전 배치가 중복을 세지 않게)
 -- 일별 적재 품질: 지연 분위수, 늦은 행(가드 대상), 마켓 수. 증분(전날~오늘)만 재계산 — 1억 행 전체를 매일 훑지 않기 위해.
 -- 지연 = source_ts(MySQL 적재) − upbit_timestamp(체결). 관찰 주간 기준값: p50 1.2s, p95 2.2s, max 7.75s (docs/14).
 SELECT
@@ -11,7 +12,7 @@ SELECT
     round(maxIf(toUnixTimestamp64Milli(source_ts) - upbit_timestamp, toUnixTimestamp64Milli(source_ts) - upbit_timestamp <= 60000) / 1000, 1)      AS lag_max_live_s,
     countIf(toUnixTimestamp64Milli(source_ts) - upbit_timestamp > 60000)           AS late_rows_gt_60s,
     countIf(best_bid_price IS NULL)                                                AS rows_without_bbo
-FROM {{ source('raw', 'crypto_trades') }}
+FROM {{ source('raw', 'crypto_trades') }} FINAL
 WHERE op = 'c'
 {% if is_incremental() %}
   AND source_ts >= toStartOfDay(now() - INTERVAL 1 DAY)

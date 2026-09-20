@@ -1,4 +1,5 @@
 {{ config(materialized='table', order_by='market') }}
+-- 2026-09-20 (docs/34 #2): crypto_trades 는 ReplacingMergeTree — 중복은 '결국' 지워지므로 읽는 쪽이 FINAL 로 보장한다(재시작 뒤 머지 전 배치가 중복을 세지 않게)
 -- 마켓 마스터 (docs/26 §4). 거래소 목록·이름·경보 플래그 + 상장일 근사 + 우리가 처음/마지막으로 본 체결 시각.
 -- 쓰임: 규칙 평가의 신규 상장 96h 제외(거래소 예외 규정), 대조 분모(추후 통일), 커버리지 사유("상장 N일째, 우리 체결 없음").
 -- seen_gap_days = 우리 첫 체결일 − 상장일: BFC 사고(상장 후 6일 무수집)가 이 숫자로 남는다.
@@ -7,7 +8,7 @@ WITH master AS (
 ),
 ours AS (
     SELECT market, min(source_ts) AS first_seen_ours, max(source_ts) AS last_seen_ours
-    FROM {{ source('raw', 'crypto_trades') }} GROUP BY market
+    FROM {{ source('raw', 'crypto_trades') }} FINAL GROUP BY market
 ),
 flags AS (
     SELECT market, groupArrayIf(flag, state = 1) AS active_flags

@@ -20,3 +20,8 @@
 - 바인딩: `3306`·`8083`·`8123` → 127.0.0.1 (ss 확인). 남은 0.0.0.0: 2181·9092(브로커 재시작 = 호가·Binance 유실 → 정지 창에서), 8081(Flink JM 재생성 = HA 없어 5잡 세이브포인트·재제출 필요 → Decimal 재배포 창과 합침), 3000·8085(인증 있는 UI, 사용자 LAN 접근용 유지). **방화벽(`sudo scripts/ops/lan-firewall.sh`)은 사용자 실행 대기** — 이게 되면 위 넷도 LAN 에서 막힌다.
 - producer 전용 MySQL 사용자 `producer`(SELECT·INSERT crypto_trades) — root 제거. 재시작 뒤 연결 성공·기동 gap-fill 29초 창.
 - 재생성 순서 Connect → ClickHouse(healthy 20초) → MySQL(12초) → producer. **발견**: MySQL 이 내려간 순간 Debezium 태스크 2개가 `Unexpected error while connecting … BINLOG_FORMAT` 로 FAILED(커넥터는 RUNNING). health_check 가 10분 안에 자동 재시작하지만 런북에선 즉시 `tasks/0/restart` → 2개 RUNNING, binlog 오프셋에서 따라붙음: MySQL 창 6,001행 ⊂ ClickHouse 6,190(유실 0). → MySQL 재시작 런북에 "커넥터 태스크 재시작" 한 줄 추가.
+
+## 2-실행 (09-20 04:05 ~ 04:08 UTC)
+- FINAL 추가: stg_trades(뷰)·dim_markets·int_reconcile_hourly·int_alert_transitions_recomputed·int_volume_surge_daily·dq_ingest_daily (RMT 를 읽는 모델 전부, 이제 7/7). 빌드 6~9초/모델 — FINAL 비용은 감당 가능(월 파티션·정렬 키 덕).
+- 검증: 같은 키(market, sequential_id, upbit_timestamp) 로 flink_ts 만 다른 행 2개 주입 → 원본 count 2, `stg_trades` count **1** → 삭제. 즉 재시작 뒤 머지 전이라도 마트는 중복을 안 센다.
+- 실수: 설명 주석을 `{{ config(` 블록 **안**에 넣어 Jinja 가 깨짐(dbt 가 4초 만에 조용히 끝남) → 블록 뒤로 이동. 교훈: dbt 가 너무 빨리 끝나면 성공이 아니라 파싱 실패다.

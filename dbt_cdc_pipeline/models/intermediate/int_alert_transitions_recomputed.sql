@@ -1,4 +1,5 @@
 {{ config(order_by='(market, upbit_timestamp)', query_settings={'max_memory_usage': 1200000000, 'max_bytes_before_external_group_by': 600000000, 'max_bytes_before_external_sort': 600000000}) }}
+-- 2026-09-20 (docs/34 #2): crypto_trades 는 ReplacingMergeTree — 중복은 '결국' 지워지므로 읽는 쪽이 FINAL 로 보장한다(재시작 뒤 머지 전 배치가 중복을 세지 않게)
 -- PRICE_24H 를 SQL 로 재계산한 등급 전이 (docs/22 §4 정정). dq_alert_parity_daily 가 이것을 Flink 출력과 대조한다.
 -- 왜 별도 테이블인가: ClickHouse 는 CTE 를 인라인해 무거운 창 함수를 대조 단계마다 다시 계산한다(실측 메모리 1.12GiB 초과). 한 번 계산해 저장. 임계 자체의 근거는 docs/16(6개월 역검증)이고,
 -- 섀도가 확인할 것은 "구현이 그 정의와 같은 답을 내는가"다. 이 표에서 전이 10건 이상이 전부 일치하면 승격한다.
@@ -28,7 +29,7 @@ WITH
 closes AS (
     SELECT market, intDiv(upbit_timestamp, 60000) AS m,
            argMax(trade_price, (upbit_timestamp, sequential_id)) AS close
-    FROM {{ source('raw', 'crypto_trades') }}
+    FROM {{ source('raw', 'crypto_trades') }} FINAL
     WHERE op = 'c'
       AND toUnixTimestamp64Milli(source_ts) - upbit_timestamp <= 60000
       AND upbit_timestamp >= {{ (from_unix - 86400) * 1000 }}
