@@ -17,7 +17,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 1280M   # 2026-09-20: 986MiB/1GiB 로 여유 5% (버퍼 풀 512M + 기본 오버헤드) → 1.25G
     command: >
       --server-id=1
       --log-bin=mysql-bin
@@ -410,6 +410,7 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: cdc-kafka-ui
+    profiles: ["ops"]   # 2026-09-20: 상시 운영에서 제외(kafka-ui 장식·Prometheus/statsd 는 Airflow 대시보드 1개용 360MB). 필요 시 --profile ops
     restart: unless-stopped
     depends_on:
       kafka-1:
@@ -493,8 +494,6 @@ services:
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-      statsd-exporter:
-        condition: service_started
     ports:
       - "8085:8080"
     environment:
@@ -509,7 +508,7 @@ services:
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
       AIRFLOW__WEBSERVER__AUTH_ROLE_PUBLIC: Viewer
       AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: Asia/Seoul
-      AIRFLOW__METRICS__STATSD_ON: 'true'
+      AIRFLOW__METRICS__STATSD_ON: 'false'   # 2026-09-20: statsd-exporter 를 ops 프로필로 뺌
       AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
       AIRFLOW__METRICS__STATSD_PORT: '9125'
       AIRFLOW__METRICS__STATSD_PREFIX: airflow
@@ -553,7 +552,7 @@ services:
       CLICKHOUSE_ICEPUSH_USER: ${CLICKHOUSE_ICEPUSH_USER}            # icepush dbt DAG 용 (타 프로젝트, docs/21)
       CLICKHOUSE_ICEPUSH_PASSWORD: ${CLICKHOUSE_ICEPUSH_PASSWORD}
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-      AIRFLOW__METRICS__STATSD_ON: 'true'
+      AIRFLOW__METRICS__STATSD_ON: 'false'   # 2026-09-20: statsd-exporter 를 ops 프로필로 뺌
       AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
       AIRFLOW__METRICS__STATSD_PORT: '9125'
       AIRFLOW__METRICS__STATSD_PREFIX: airflow
@@ -584,6 +583,7 @@ services:
   statsd-exporter:
     image: prom/statsd-exporter:v0.26.0
     container_name: cdc-statsd-exporter
+    profiles: ["ops"]   # 2026-09-20: 상시 운영에서 제외(kafka-ui 장식·Prometheus/statsd 는 Airflow 대시보드 1개용 360MB). 필요 시 --profile ops
     restart: unless-stopped
     command:
       - --statsd.mapping-config=/tmp/statsd_mapping.yml
@@ -601,6 +601,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.50.0
     container_name: cdc-prometheus
+    profiles: ["ops"]   # 2026-09-20: 상시 운영에서 제외(kafka-ui 장식·Prometheus/statsd 는 Airflow 대시보드 1개용 360MB). 필요 시 --profile ops
     restart: unless-stopped
     depends_on:
       - statsd-exporter

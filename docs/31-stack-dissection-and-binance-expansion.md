@@ -87,3 +87,13 @@
 - **사고 — Airflow 스케줄러 OOM 루프**(01:20~01:45): 컨테이너 640M 에서 5분마다 cgroup OOM, 재시작 12회, health_check 고착·cases_hourly 미실행(감시 공백 30분). 원인: health_check 체크 +2(원장·Binance)로 12개가 LocalExecutor 기본 병렬 32 로 동시에 뜨고 DAG +2 파싱이 겹침. 조치: 1G + 병렬 8 + health_check `max_active_tasks=6`. 01:45 재생성 뒤 재시작 0, health_check 3회 연속 success. 발견은 내 백그라운드 작업이 "호스트 메모리 부족"으로 죽은 알림에서 — 확장 당일에 감시 자체가 죽는 것이 가장 위험한 실패였다.
 - 디스크 +10GB/시간 경보 → 실제는 오늘 빌드 4회의 Docker 빌드 캐시(4.3GB 회수) + 이미지 계층. 파이프라인 자체 증가는 Binance 체결 21.4B/행(하루 ~0.7GB). ClickHouse `system.query_views_log` 2GB 는 2월부터 TTL 없이 쌓인 것(Kafka 엔진 MV 가 폴링마다 기록) → 옛 파티션 DROP + TTL 설정 추가.
 - 재구성 잡 4시간: snapshots 130, diffs 288,418, **gap 0**, unsynced 증가 0.
+
+## 7. 운영 정리 (09-20 02:28 UTC) — 해체 분석 §1 의 "일하지 않는 것" 처리
+| 항목 | 조치 | 근거 |
+|---|---|---|
+| kafka-ui | `profiles: ["ops"]` 로 제외, 제거 | CLI 로 전부 하고 있어 장식. 웹 UI 라 LAN 노출 면적 |
+| Prometheus + statsd-exporter | 제외, 제거. Airflow `STATSD_ON=false` | 360MB 가 Airflow 대시보드 1개용. 오늘 스케줄러 OOM 사고가 근거. 필요하면 `--profile ops` |
+| MySQL 한도 | 1G → 1.25G 재시작(17초) | 986MiB/1GiB 여유 5%. producer 는 연결 끊김에 재시작 → 기동 gap-fill(83초 창)이 메움 — 설계대로 |
+| PRICE_24H 승격 | 안 함 | 받아서 행동할 사람이 없다(docs/22 §4) |
+| 케이스 판정 | 사용자 보류 | 사람이 해야 채워지는 항목 |
+결과: cdc 컨테이너 19 → 16, 호스트 available 6.4 → 7.0GB.
