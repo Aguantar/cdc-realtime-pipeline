@@ -274,8 +274,10 @@ services:
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      CLICKHOUSE_PIPELINE_USER: ${CLICKHOUSE_PIPELINE_USER}          # 데이터소스 프로비저닝에서 참조 (docs/21)
-      CLICKHOUSE_PIPELINE_PASSWORD: ${CLICKHOUSE_PIPELINE_PASSWORD}
+      # 2026-09-20: 데이터소스를 읽기 전용 계정으로 내렸다. 익명 Viewer 가 켜져 있어 이 자격증명은
+      # 사실상 '인증 없는 사람의 권한'이다 (grafana/provisioning/datasources/clickhouse.yml 주석 참고)
+      CLICKHOUSE_READONLY_USER: ${CLICKHOUSE_READONLY_USER}
+      CLICKHOUSE_READONLY_PASSWORD: ${CLICKHOUSE_READONLY_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources

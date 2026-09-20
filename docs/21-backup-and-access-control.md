@@ -104,3 +104,72 @@ URL 파라미터·헤더·자격증명 연결을 초안에 세 번 고쳐도 실
 - n8n 경위는 §2 에 그대로 남겼다(판단 오류 2건, 초안 편집 3회 무효, 재시작 5회). 최종 상태: 발행 버전이 암호화 자격증명으로 인증, DB 세 테이블 어디에도 평문 비밀번호 없음(검증 쿼리 0/0/0).
 - 자격증명 가져오기(`n8n import:credentials`)는 JSON 에 `id` 가 없으면 NOT NULL 위반으로 실패한다 — 명시해서 해결.
 - 컷오버 창 독립 재대조(별도 도구 dry-run, 00:43:20~00:44:30, 287마켓): 원장 2,797 / 보유 2,797 / **누락 0**.
+
+---
+
+## 5. 접근 통제 재점검 (2026-09-20 08:10 ~ 08:30 UTC)
+
+> 사용자: "방화벽은 무조건 닫는 게 맞잖아. 또 다른 건?"
+> 방화벽을 실행하기 **전에** 실제 상태를 다시 셌다. 목록이 부족했고, 목록에 없던 더 큰 구멍이 있었다.
+
+### 5-1. 가장 큰 구멍 — Grafana 익명 + 쓰기 권한 데이터소스
+
+| 사실 | 확인 방법 |
+|---|---|
+| Grafana 는 **익명 Viewer 를 허용**한다 (`GF_AUTH_ANONYMOUS_ENABLED=true`) | compose |
+| 익명으로 대시보드 5개 목록이 조회된다 | `GET /api/search` 인증 없이 200 |
+| 익명으로 **임의의 SQL 이 실행된다** | `POST /api/ds/query` 에 `rawSql` 을 넣어 `SELECT count() FROM crypto_trades` → **117,460,641** 반환 |
+| 그 데이터소스가 쓰던 계정이 **`pipeline`** 이었다 | `GET /api/datasources` 의 `jsonData.username` |
+| `pipeline` 의 권한 | `SELECT, INSERT, ALTER, CREATE TABLE, CREATE VIEW, **DROP TABLE**, TRUNCATE, OPTIMIZE, BACKUP ON cdc_pipeline.*` |
+
+**즉, 포트 3000 은 "인증 있는 UI" 가 아니라 인증 없는 SQL 게이트웨이였다.**
+방화벽 계획은 3000 을 "인증이 있으니 열어 둔다"고 적고 있었다 — 전제가 틀렸다.
+docs/34 #1 에서 포트를 닫으면서도 이 경로를 못 본 이유는 **포트만 세고 그 뒤에 무엇이 있는지 안 봤기 때문**이다.
+
+**조치**: 데이터소스를 `readonly_user`(SELECT 전용)로 내렸다. 대시보드가 system 테이블을 쓸 수 있어
+`GRANT SELECT ON system.*` 을 먼저 주었다(읽기라 새 위험 없음).
+
+| 검증 | 결과 |
+|---|---|
+| 데이터소스 계정 | `pipeline` → **`readonly_user`** |
+| 익명 읽기(대시보드) | 여전히 200, `count() = 117,464,003` — **대시보드 안 깨진다** |
+| 익명 쓰기 | `CREATE TABLE … Memory` → **`code 497: readonly_user: Not enough privileges`**, 표는 안 만들어짐(0) |
+
+**남은 판단은 사용자 몫**: 익명 Viewer 자체를 끌지(`GF_AUTH_ANONYMOUS_ENABLED=false`), 3000 도 방화벽에 넣을지.
+지금 상태는 "LAN 에서 로그인 없이 **읽기만**" 이다. 그게 의도라면 이대로 두면 된다.
+
+### 5-2. 방화벽 차단 목록이 부족했다
+`ss -ltnp` 로 0.0.0.0 에 실제로 열린 것을 다시 셌더니 이 저장소 밖 컨테이너 둘이 더 있었다.
+
+| 포트 | 무엇 | 왜 문제 |
+|---|---|---|
+| 6379 | `fds-redis` | `redis-server --appendonly yes` 뿐 — **requirepass 가 없다.** LAN 의 누구나 읽고 쓸 수 있고 CONFIG SET 으로 파일을 쓰는 알려진 경로가 있다 |
+| 5432 | `my-postgres` | 비밀번호는 있으나 DB 포트를 LAN 에 둘 이유가 없다 |
+
+둘 다 이 프로젝트 것이 아니지만 **같은 미니PC 이고, 뚫리면 같은 호스트다.** `lan-firewall.sh` 의 PORTS 에 추가했다.
+
+### 5-3. 그 밖에 확인한 것 (문제 없음 / 조치함)
+| 항목 | 결과 |
+|---|---|
+| `.env` 권한 | **644 → 600 으로 조치.** 모든 DB 비밀번호가 들어 있는데 누구나 읽을 수 있었다 |
+| `secrets/` | 700, 개인키 600 — 정상 |
+| Airflow SSH 키(`oci_key`) | 600 — 정상 |
+| git 이력에 비밀 파일 | **없음.** `.env`·`secrets/`·`*.pem` 이 커밋된 적 없고 `.gitignore` 에 있다 |
+| 추적 파일의 하드코딩 비밀번호 | 없음 (전부 `env_var`·`${}` 참조) |
+| Docker 소켓을 받은 컨테이너 | **없음** — DAG 들이 "네트워크 API 기반" 원칙을 지킨 결과 |
+| privileged 컨테이너 | 없음 |
+| SSH | `PasswordAuthentication no` (키 전용) |
+| Airflow UI 8085 | 로그인 화면 강제, `/api/v1/dags` 인증 없이 **401** — 정상 |
+| MySQL 3306 · Connect 8083 · ClickHouse 8123 | 127.0.0.1 바인딩(docs/34 #1) |
+| ops 프로필(kafka-ui·Prometheus·statsd) | 꺼져 있음 |
+
+### 5-4. 곁가지 — 죽은 데이터소스
+`ClickHouse - Circuit Connect` 데이터소스는 계정 없이 `default` 로 붙으려다
+`code 516 Authentication failed` 로 **실패한다.** 보안 구멍은 아니지만 그 대시보드는 안 돈다.
+docs/35 §4 의 "죽은 참조" 와 같은 부류 — 다른 프로젝트 소유라 여기서는 기록만 한다.
+
+### 5-5. 배운 것
+**포트를 세는 것과 그 뒤에 무엇이 있는지 보는 것은 다른 일이다.**
+docs/34 #1 은 "무인증 노출 포트"를 세어 닫았는데, 정작 가장 넓게 열린 문은
+**인증이 있다고 적어 둔 포트 뒤에** 있었다. 다음부터 접근 통제 점검은 포트 목록이 아니라
+"인증 없이 무엇을 할 수 있나"를 **실제로 해 보는 것**으로 시작한다.

@@ -11,7 +11,11 @@ datasources:
       port: 9000
       protocol: native
       defaultDatabase: cdc_pipeline
-      username: $CLICKHOUSE_PIPELINE_USER
+      # 2026-09-20: pipeline → readonly_user. Grafana 는 익명 Viewer 를 허용하므로(GF_AUTH_ANONYMOUS_ENABLED)
+      # 이 데이터소스는 **인증 없는 사람이 쓰는 경로**다. 그 경로가 INSERT·ALTER·DROP TABLE 권한을 가진
+      # 계정으로 돌고 있었다 — /api/ds/query 는 rawSql 을 그대로 실행한다(실측 확인).
+      # readonly_user 는 SELECT 만 가진다(cdc_pipeline·circuit_connect·system).
+      username: $CLICKHOUSE_READONLY_USER
     secureJsonData:
-      password: $CLICKHOUSE_PIPELINE_PASSWORD
+      password: $CLICKHOUSE_READONLY_PASSWORD
     editable: true
