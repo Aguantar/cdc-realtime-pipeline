@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: sig_kimchi_premium_hourly
+    description: >
+      김치 프리미엄(시간): Upbit KRW 가격 ÷ (Binance USDT 가격 × USDT/KRW) − 1.
+      **거래소가 다르기 때문에 성립하는** 유일한 가격 비교(docs/34 #4). 조건: 같은 UTC 시간, 두 거래소 모두 체결 10건 이상.
+      극단값(얇은 마켓)을 숨기지 않는다 — 조회 시 유동성으로 거르는 것이 소비자의 몫.
+    columns:
+      - name: hour_utc
+        tests: [not_null]
+      - name: coin_id
+        tests: [not_null]
+      - name: premium_pct
+        tests: [not_null]
+  - name: sig_cross_venue_flag_overlap
+    description: >
+      교차 거래소 신호: 우리 Binance 주문이 **같은 코인**의 Upbit 경보 구간 안에 있었나.
+      같은 시장이 아니므로 가격은 비교하지 않고 겹침만 센다. 코인 매핑은 dim_coins.
+    columns:
+      - name: day_utc
+        tests: [not_null]
+      - name: market
+        tests: [not_null]

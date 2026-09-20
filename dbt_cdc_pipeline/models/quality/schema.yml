@@ -10,6 +10,15 @@ models:
         description: "거래소 시간봉 거래량 대비 우리 체결 거래량, 하루 가중."
   - name: dq_repairs_daily
     description: "유입 공백 수리 계보(창 단위)의 일별 요약. reason = reconnect | startup | manual."
+    columns:
+      - name: day_utc
+        tests: [not_null]
+      - name: reason
+        # 수리 트리거는 세 가지뿐이다. 넷째 값이 나오면 수리 경로에 모르는 분기가 생긴 것
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['reconnect', 'startup', 'manual']
   - name: dq_ingest_daily
     description: "일별 적재 지연 분위수·늦은 행·마켓 수. 증분 재계산(전날~오늘)."
     columns:
@@ -43,4 +52,19 @@ models:
       - name: day_utc
         tests: [not_null, unique]
       - name: zero_seconds
+        tests: [not_null]
+
+  - name: dq_binance_reconcile_daily
+    description: "Binance 체결 일별 대조: 거래소 1시간 캔들의 체결 수 vs 우리 binance_trades FINAL. 09-20 첫 시간 100.000%."
+    columns:
+      - name: day_utc
+        tests: [not_null, unique]
+      - name: weighted_pct
+        description: "거래소 체결 수 대비 우리 행수, 하루 가중. 99.9% 미만이면 quality_alerts 가 Slack 으로 알린다."
+  - name: dq_ledger_daily
+    description: "2층 원장 3자 대조: 거래소 REST = MySQL = ClickHouse FINAL. ex_my_mismatch / my_ch_mismatch 가 0 이어야 CDC 가 변경을 하나도 안 놓친 것."
+    columns:
+      - name: day_utc
+        tests: [not_null]
+      - name: symbol
         tests: [not_null]

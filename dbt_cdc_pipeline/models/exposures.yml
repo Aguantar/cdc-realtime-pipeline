@@ -24,3 +24,39 @@ exposures:
       - ref('dq_rule_eval_daily')
     owner:
       name: 이준서
+
+  - name: daily_report_slack
+    type: application
+    maturity: high
+    description: "Airflow daily_pipeline 이 매일 16:00 UTC(01:00 KST) Slack 으로 보내는 일일 리포트 — 코인별 요약·품질 게이트·중복 감시"
+    depends_on: [ref('int_ohlcv_daily'), ref('dq_reconcile_daily'), ref('dq_repairs_daily'), ref('dq_ingest_daily')]
+    owner: {name: 이준서}
+
+  - name: quality_slo_alerts
+    type: application
+    maturity: high
+    description: "Airflow quality_alerts 가 매시 :50 에 dq 표를 SLO 와 비교해 위반이면 Slack(하루 1회 dedup). docs/32 §1 표가 임계의 근거"
+    depends_on: [ref('dq_reconcile_daily'), ref('dq_binance_reconcile_daily'), ref('dq_orderbook_gaps_daily'), ref('dq_alert_parity_daily'), ref('dq_ledger_daily')]
+    owner: {name: 이준서}
+
+  - name: weekly_ops_digest
+    type: application
+    maturity: medium
+    description: "월요일 09:00 KST 주간 다이제스트 — 트래픽 피크·지연 추세·울린 알럿·품질 추세·자원·고칠 것(docs/32 §2 ③)"
+    depends_on: [ref('dq_reconcile_daily'), ref('dq_binance_reconcile_daily'), ref('dq_alert_parity_daily')]
+    owner: {name: 이준서}
+
+  - name: cross_venue_analysis
+    type: analysis
+    maturity: low
+    description: "교차 거래소 분석 — 김치 프리미엄(시간), 경보 구간과 우리 주문의 겹침. 코인 매핑은 dim_coins(docs/34 #4)"
+    depends_on: [ref('sig_kimchi_premium_hourly'), ref('sig_cross_venue_flag_overlap'), ref('dim_coins'), ref('dim_market_flag_scd')]
+    owner: {name: 이준서}
+
+  - name: trade_orderbook_mart_analysis
+    type: analysis
+    maturity: medium
+    description: "체결×호가 분 결합 마트 — 되튐·체결 품질 분석의 입구(docs/27). 지표 정의는 docs/36"
+    depends_on: [ref('mart_trade_orderbook_1m')]
+    owner: {name: 이준서}
+

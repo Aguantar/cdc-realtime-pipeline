@@ -43,3 +43,20 @@ models:
     columns:
       - name: market
         tests: [not_null]
+
+  - name: int_fx_usdt_krw_hourly
+    description: "USDT/KRW 시간 환율. 외부 FX 대신 Upbit KRW-USDT 마켓(하루 5만+ 체결)의 시간 종가·VWAP — 우리 데이터라 조건이 같다."
+    columns:
+      - name: hour_utc
+        tests: [not_null, unique]
+      - name: usdt_krw_close
+        tests: [not_null]
+  - name: int_venue_hourly_close
+    description: "거래소별 코인 시간 종가·체결수·금액. 교차 거래소 가격 비교(김치 프리미엄)의 재료. 최근 14일만."
+    columns:
+      - name: coin_id
+        tests: [not_null]
+      - name: venue
+        tests:
+          - accepted_values:
+              values: ['upbit', 'binance']

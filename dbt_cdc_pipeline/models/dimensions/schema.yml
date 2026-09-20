@@ -25,3 +25,17 @@ models:
         tests:
           - unique:
               where: "binance_symbol != ''"
+
+  - name: dim_market_flag_scd
+    description: "Upbit 시장경보 플래그의 이력(SCD type 2). 거래소 지정/해제 이력 + 우리 폴링 전이를 합쳐 '언제부터 언제까지 켜져 있었나'를 답한다."
+    columns:
+      - name: market
+        tests: [not_null]
+      - name: flag
+        tests: [not_null]
+      - name: valid_from
+        tests: [not_null]
+      - name: source
+        tests:
+          - accepted_values:
+              values: ['exchange_records', 'polled']

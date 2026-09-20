@@ -13,3 +13,11 @@ models:
         description: 분 평균 스프레드(bp). 얇은 호가 지표
       - name: volume_over_depth15
         description: 그 분 체결 수량 / 15호가 평균 잔량(양쪽 합). 1 이상이면 호가 전체만큼 체결
+
+  - name: mart_daily_summary
+    description: "일별 종합(KST 기준): 종가·거래량·VWAP·전일 대비. 금액·수량은 Decimal, 비율은 Float64(docs/34 #5 타입 규약)."
+    columns:
+      - name: day_kst
+        tests: [not_null]
+      - name: market
+        tests: [not_null]

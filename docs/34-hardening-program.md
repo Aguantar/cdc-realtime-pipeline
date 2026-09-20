@@ -2,7 +2,7 @@
 
 > 사용자: "말한 모든 내용을 다 보강하자. 철저하게, '왜?'에 답이 되게. Float 도 DE 의 일 아닌가." → 맞다. 저장 층의 숫자 타입은 하류에 주는 계약이고, 정밀도는 원천(DECIMAL·문자열)에 있었는데 Flink 에서 double 로 버린 것이라 DE 책임.
 > 원칙: 항목마다 **왜 → 무엇을 → 어떻게 검증** 을 먼저 적고, 실행 뒤 결과를 §N-실행 에 붙인다. 순서는 위험(보안·정확성) → 계약(시간·차원·타입) → 정리.
-> 진행 상황(09-20 05:30 UTC): #1~#6 완료·커밋·푸시(§1-실행~§6-실행). 남은 것 #7~#10.
+> 진행 상황(09-20 06:05 UTC): #1~#8 완료·커밋·푸시. 남은 것 #9~#10.
 
 | # | 항목 | 왜 | 무엇을 | 검증 | 상태 |
 |---|---|---|---|---|---|
@@ -12,8 +12,8 @@
 | 4 | 차원·사이드 | 코인 키가 거래소마다 다르고 문자열 치환으로 조인, 사이드 의미 반대 | `dim_coins`(coin_id·upbit_market·binance_symbol·base·quote·유효기간), `dim_venues`, 마트 `taker_side`. 환율은 Upbit KRW-USDT 마켓(우리 데이터) → `sig_kimchi_premium` | 조인 유일성 테스트, 김프 값이 공개 지표와 같은 부호·자릿수 | **완료** 04:20 |
 | 5 | Decimal | 금액·수량 Float64 는 회계·대조 등호에 못 쓴다. 원천은 정밀 | Flink 파서 BigDecimal → `setBigDecimal`, ClickHouse crypto_trades/binance_trades price·volume·amount Decimal(20,8)/(24,8) 로 무정지 재생성(EXCHANGE 런북), 마트 파생 타입 확인. 호가 배열은 Float64 유지(파생 지표) — 이유 명시 | 재생성 전후 sum(amount) 등호(Decimal 끼리), 프루닝·적재 지속 | **완료** 05:19 |
 | 6 | 재처리 런북 | 보존은 있는데 절차가 없다 | `scripts/ops/reprocess-day.sh`: 원장(MySQL, 7일) → ClickHouse `mysql()` 함수로 하루 파티션 재생성, Binance 는 Kafka(3일) 재소비 잡, 호가는 Parquet(120일) | 실제 하루를 다시 만들어 대조 100% | **완료** 05:30 |
-| 7 | 죽은 산출물 | anomaly_alerts(09-17 정지)·coin_metadata·trade_aggregations·mart_alert_rate·mart_volume_spike·load_test_* + Grafana 패널 + n8n 빈 폴링 | 인벤토리 표 → 소비자 없는 것 DROP, Grafana 패널 교체, n8n 워크플로 export 를 repo 에 | Grafana 전 패널 데이터 있음, 참조 0 확인 뒤 DROP | 대기 |
-| 8 | 테스트·계약 | 새 테이블 테스트 0, exposure·메트릭 정의·데이터 사전 없음 | schema.yml(unique·not_null·accepted_values), exposures.yml, `docs/metrics.md`, `docs/data-catalog.md`, 토픽 JSON 스키마 + 파서 테스트 | dbt test 통과, 스키마 테스트 | 대기 |
+| 7 | 죽은 산출물 | anomaly_alerts(09-17 정지)·coin_metadata·trade_aggregations·mart_alert_rate·mart_volume_spike·load_test_* + Grafana 패널 + n8n 빈 폴링 | 인벤토리 표 → 소비자 없는 것 DROP, Grafana 패널 교체, n8n 워크플로 export 를 repo 에 | Grafana 전 패널 데이터 있음, 참조 0 확인 뒤 DROP | **완료** 05:40 |
+| 8 | 테스트·계약 | 새 테이블 테스트 0, exposure·메트릭 정의·데이터 사전 없음 | schema.yml(unique·not_null·accepted_values), exposures.yml, `docs/36-metrics.md`, 데이터 사전은 `docs/35`, 토픽 JSON 스키마 + 검증기 | dbt test 68/68, 토픽 5종 계약 일치 | **완료** 06:05 |
 | 9 | 마켓 상태 SCD | 폐지·정지를 유실로 오인 | market/all(is_details)+ticker 의 market_state·delisting_date 를 일 1회 스냅샷 → dim_markets SCD | 폐지 마켓이 커버리지 알럿에서 제외 | 대기 |
 | 10 | 백업 | Binance 표가 자동 포함 | 제외 목록 + 복원 리허설 재실행 | 리허설 시간·행 수 기록 | 대기 |
 
@@ -121,3 +121,61 @@
 - 호가: raw 7일, **Parquet 120일**(09-20 검증: 09-17 아카이브 16,333,731행 = 당시 표와 정확히 동일), 파생 1분은 365일이라 지표는 복구 불필요.
 - Binance 체결: 토픽 3일. 시세라 원장 의무 없음.
 - 한계 한 줄: 재처리한 구간은 `flink_ts` 가 "다시 적재한 시각"이 된다 → 그 구간의 e2e 지연 지표는 원래 값이 아니다(대조·정합성 지표는 영향 없음).
+
+## 7-실행 (09-20 05:32 ~ 05:40 UTC) — 죽은 산출물
+상세는 **docs/35 데이터 인벤토리**. 요약:
+- 표 8개 삭제(48.1 MiB): `trade_aggregations`·`mart_alert_rate`·`mart_volume_spike`·`coin_metadata`·`load_test_*` 4. 전부 **참조 0 을 먼저 확인**하고 지웠다.
+- **죽은 표보다 죽은 참조가 위험했다**: `sync-annotations.sh` 가 매분 cron 으로 09-17 이후 빈 결과를 돌고 있었고, `collect_metrics.sh` 의 알림 4열은 계속 0, Grafana 주석 쿼리도 죽은 표를 봤다 → 전부 살아 있는 `market_alerts`(v2 전이)로 교체하고 동작 확인(24시간 149전이·승급 88·강등 61).
+- **n8n 알림 워크플로 3개가 전부 비활성**임을 발견. README 가 "n8n 매분 실시간 알림"이라고 말해 온 것이 09-17 이후 사실이 아니었다 → 문서를 사실과 맞추고(알림은 Airflow 일원화) 정의는 `n8n/workflows/` 에 비밀값 마스킹해 보관. 되살리지 않는 이유: Airflow 가 재시도·의존·이력을 주고 중복이다(docs/33 §2).
+- 한시 보관 4종(15.8 GiB)은 **삭제 예정일을 표로 못 박았다**(09-25·09-26·09-27). "나중에 지우자"는 안 지켜진다는 것이 오늘 6종으로 증명됐다.
+
+## 8-실행 (09-20 05:42 ~ 06:05 UTC) — 테스트·계약
+
+### 왜 지금인가
+#4·#5 에서 모델과 타입을 크게 바꿨다. 바꾼 뒤에도 **아무 테스트도 안 걸려 있는 모델이 9개**였다 —
+즉 "틀려도 아무도 안 알려주는 표"가 9개 있었다는 뜻이다. 그리고 #7 에서 죽은 참조를 찾다가,
+누가 이 표를 쓰는지 적어 둔 곳이 없어 일일이 grep 해야 했다. 테스트·exposure·지표 정의는
+셋 다 같은 질문("이 값을 믿어도 되나, 깨지면 누가 아픈가")에 대한 답이라 한 번에 묶었다.
+
+### 무엇을 했나
+| 갈래 | 내용 | 왜 |
+|---|---|---|
+| 모델 테스트 | 테스트 0 이던 모델 9개에 not_null·unique·accepted_values 부여 → 열 테스트 보유 모델 13 → 22, 데이터 테스트 **68개** | `dim_market_flag_scd`·`int_fx_usdt_krw_hourly`·`int_venue_hourly_close`·`mart_daily_summary`·`dq_binance_reconcile_daily`·`dq_ledger_daily`·`dq_repairs_daily`·`sig_kimchi_premium_hourly`·`sig_cross_venue_flag_overlap` |
+| 입도 계약 | `assert_repairs_daily_grain` 단일 테스트 신설 | 이 표의 한 행 = (하루, 이유) 다. `day_utc` 단독 unique 는 쓸 수 없다(하루에 이유가 여럿이면 정상). dbt 기본 unique 로는 복합키를 못 걸어서 단일 테스트로 |
+| 패키지 | `dbt_utils.accepted_range` 를 쓰려다 **되돌림** | dbt_utils 가 설치돼 있지 않았다. 테스트 하나 때문에 패키지 의존성을 새로 들이지 않는다 — 같은 계약을 6줄 SQL 로 쓸 수 있다 |
+| exposure | 5개 추가(일일 리포트 Slack·품질 SLO 알럿·주간 다이제스트·교차 거래소 분석·체결×호가 마트) → 총 7 | "이 표를 지우면 누가 아픈가"를 코드에 적어 두는 자리. #7 에서 이게 없어서 grep 으로 찾았다 |
+| 지표 정의 | **`docs/36-metrics.md`** 신설 — 7절, 모든 지표를 수식·단위·산출 위치·함정으로 | 같은 이름이 층마다 다른 뜻이면 협업이 깨진다. 특히 `taker_side`(거래소마다 반대), `premium_pct`(분모가 무엇인지), e2e 지연의 여섯 타임스탬프 |
+| 토픽 계약 | **`schemas/`** 신설 — README + JSON Schema 5종(Upbit 체결 CDC·Upbit 호가·Binance 체결·Binance 호가·원장 주문) | Debezium 을 `schemas.enable=false` 로 쓰고 있어 **메시지 안에 스키마가 없다**. 09-19 에 열을 하나 늘렸을 때 안 깨진 건 파서가 이름 기반이라 **운이 좋았던 것**이지 보장이 아니었다 |
+| 계약 검증기 | **`scripts/ops/validate-topic-schemas.py`** — 의존성 없는 JSON Schema 부분집합 검증기. 살아 있는 토픽에서 표본을 떠 계약과 대조, 위반이면 exit 1 | 계약을 적어만 두면 문서다. 실제 메시지와 매분 대조할 수 있어야 계약이다 |
+
+### 검증 (3단계 — 각각 다른 것을 증명한다)
+| 단계 | 무엇을 증명 | 결과 |
+|---|---|---|
+| ① 검증기 자체 시험 (`--self-test`) | **검증기가 위반을 실제로 잡는가** | 4종 전부 잡음: 필수 필드 누락 / 타입 변경(문자열→숫자) / 허용값 밖 / null. 정상 메시지는 0건 |
+| ② 살아 있는 토픽 대조 | 지금 흐르는 메시지가 계약대로인가 | 5개 토픽 전부 OK (표본 3건씩) |
+| ③ `dbt test` 전체 | 모델 계약 | **68/68 PASS**, 모델 24개 전부 테스트 보유(열 테스트 22 + 단일 테스트 2) |
+
+**①을 먼저 한 이유**: ②가 "전부 OK"로 나왔을 때, 그게 진짜 일치인지 검증기가 아무것도 안 보는 것인지 구분할 수 없다.
+통과만 하는 검증기는 없는 것보다 나쁘다 — 안심을 주면서 아무것도 막지 않는다.
+
+### 그 과정에서 찾은 것 두 가지 (둘 다 원래 목적 밖)
+**(가) 드문 토픽은 검증기가 표본을 못 떴다.** 원장 주문 토픽은 하루 몇 건이라 끝(latest)에서 읽으면 타임아웃까지 아무것도 안 온다.
+처음엔 "표본 없음 (건너뜀)"으로 넘어갔는데, 그러면 **가장 중요한 원장 토픽만 영영 검증 안 되는** 구조다.
+→ 표본이 비면 `--from-beginning` 으로 한 번 더 읽도록 고쳤고, 그러자 원장도 검증됐다.
+
+**(나) 유일성 테스트가 부하 때만 죽었다.** `assert_trades_unique_market_seq` 가 단독 실행은 12초에 통과하는데
+`dbt test` 전체에서는 실패했다. 에러는 `code: 241 Memory limit (total) exceeded: 1.79 GiB > 1.57 GiB`.
+- **쿼리 한도(600MB)가 아니라 서버 총 한도**였다. 하루 1,600만 행을 `(market, sequential_id)` 로 묶으면 그룹이 1,600만 개라
+  해시테이블이 통째로 RAM 에 올라간다. 혼자 돌면 들어가지만, Flink 적재·다른 테스트와 겹치는 순간 총량이 넘는다.
+- 고침: `max_bytes_before_external_group_by = 300MB` — 넘으면 디스크로 흘려 집계한다.
+- 실측(`system.query_log`): 전체 실행 중 최대 메모리 **1.13 GiB(실패) → 556 MiB(통과)**, 소요 12.0초 → 13.9초.
+- 의미: **품질 테스트가 부하 때만 실패하면 거짓 경보 생성기가 된다.** 새벽에 통과하고 장중에 실패하는 테스트는
+  결국 "또 그거네" 하고 무시당한다. 알럿 체계(docs/32)를 만들어 놓고 그 안에 거짓 경보를 심을 뻔했다.
+
+### 한계 (정직하게)
+- 검증기는 **cron 에 안 걸려 있다.** 지금은 사람이 부를 때만 돈다. 매시 품질 DAG 에 붙이는 건 #9 이후.
+- JSON Schema 부분집합만 지원한다(type·required·properties·items·oneOf·enum). `$ref`·`allOf`·정규식은 없다 — 필요해지면 그때.
+- 표본 3건은 "계약을 지키는 메시지가 있다"는 증거이지 "전부 지킨다"의 증거가 아니다. 전수 검사는 처리량이 감당 못 한다.
+- `dbt test` 를 로컬에서 돌리려면 `DBT_LOG_PATH`·`DBT_TARGET_PATH` 를 옮겨야 한다 — `logs/`·`target/` 의 파일 주인이
+  Airflow 컨테이너(uid 50000)라 로컬 사용자가 덮어쓸 수 없다. 처음엔 이것 때문에 47건이 ERROR 로 나왔고,
+  **데이터 실패가 아니라 파일 권한이었다**. 컨테이너와 호스트가 같은 산출물 디렉터리를 공유하는 구조의 대가다.
