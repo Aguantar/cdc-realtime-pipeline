@@ -7,6 +7,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.math.BigDecimal;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -21,7 +23,11 @@ public class BinanceTradeParserTest {
         h.processElement(new StreamRecord<>("{\"e\":\"trade\",\"E\":1789804063322,\"s\":\"BTCUSDT\",\"t\":304703801,\"p\":\"81032.00000000\",\"q\":\"0.05677000\",\"T\":1789804063321,\"m\":true,\"M\":true,\"recv_ms\":1789804063340}"));
         assertEquals(1, h.extractOutputValues().size());
         BinanceTrade t = h.extractOutputValues().get(0);
-        assertEquals("BTCUSDT", t.symbol); assertEquals(304703801L, t.tradeId); assertEquals(81032.0, t.price, 1e-9); assertEquals(0.05677, t.qty, 1e-9);
+        assertEquals("BTCUSDT", t.symbol); assertEquals(304703801L, t.tradeId);
+        assertEquals(new BigDecimal("81032.00000000"), t.price); assertEquals(new BigDecimal("0.05677000"), t.qty);
+        // quote_qty 는 저장 컬럼 Decimal(38,16) 과 같은 스케일의 정확한 곱
+        assertEquals(new BigDecimal("81032.00000000").multiply(new BigDecimal("0.05677000")), t.quoteQty);
+        assertEquals(16, t.quoteQty.scale());
         assertTrue(t.buyerMaker); assertEquals(1789804063321L, t.tradeMs); assertEquals(1789804063340L, t.recvMs);
     }
 

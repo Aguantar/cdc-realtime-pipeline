@@ -5,6 +5,9 @@
     )
 }}
 
+-- 2026-09-20 (docs/34 #5) 타입 규약: **금액·수량 합계는 Decimal, 비율은 Float64**.
+--   이유: Decimal 나눗셈은 분모가 0 이면 **예외를 던져 모델 전체가 실패**한다(Float64 는 조용히 inf). if(v>0, a/v, 0) 가드도 ClickHouse 가 양쪽 분기를 다 계산해 소용없다(09-20 실측).
+--   비율은 어차피 근사라 Float64 가 의미상으로도 맞다.
 -- 1시간봉 OHLCV 집계
 -- Flink의 5분 집계(trade_aggregations)와 역할 분리:
 --   Flink = 실시간 5분 윈도우 (스트리밍)
@@ -22,9 +25,6 @@ SELECT
     countIf(ask_bid = 'BID') AS bid_count,
     countIf(ask_bid = 'ASK') AS ask_count,
     -- VWAP (거래량 가중 평균 가격)
-    if(sum(trade_volume) > 0,
-       sum(trade_amount) / sum(trade_volume),
-       0
-    ) AS vwap
+    ifNull(toFloat64(sum(trade_amount)) / nullIf(toFloat64(sum(trade_volume)), 0), 0) AS vwap
 FROM {{ ref('stg_trades') }}
 GROUP BY market, toStartOfHour(trade_time_kst)

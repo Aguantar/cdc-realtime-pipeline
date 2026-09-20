@@ -10,6 +10,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -36,7 +37,9 @@ public class MarketAlertDetectorTest {
 
     private static CryptoTradeEvent trade(long id, String market, double price, long upbitTs, long sourceTs) {
         CryptoTradeEvent e = new CryptoTradeEvent();
-        e.setOp("c"); e.setTradeId(id); e.setMarket(market); e.setTradePrice(price); e.setTradeVolume(1); e.setTradeAmount(price);
+        // 2026-09-20 (docs/34 #5): 이벤트는 BigDecimal 이 됐지만 판정은 비율 비교라 **기대값이 하나도 안 바뀌어야 한다** — 이 테스트가 그 증거
+        e.setOp("c"); e.setTradeId(id); e.setMarket(market);
+        e.setTradePrice(BigDecimal.valueOf(price)); e.setTradeVolume(BigDecimal.ONE); e.setTradeAmount(BigDecimal.valueOf(price));
         e.setAskBid("BID"); e.setUpbitTimestamp(upbitTs); e.setSequentialId(upbitTs * 10_000); e.setSourceTimestamp(sourceTs);
         e.setCdcTimestamp(sourceTs + 5); e.setCdcLatencyMs(5);
         return e;

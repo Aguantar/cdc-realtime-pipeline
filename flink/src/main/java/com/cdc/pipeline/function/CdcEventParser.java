@@ -1,6 +1,9 @@
 package com.cdc.pipeline.function;
 
 import com.cdc.pipeline.model.CryptoTradeEvent;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.flink.configuration.Configuration;
@@ -33,6 +36,9 @@ public class CdcEventParser extends ProcessFunction<String, CryptoTradeEvent> {
     private transient ObjectMapper mapper;
     private transient Counter parseFailures;
     private transient Counter skipped;
+
+    /** 금액·수량의 소수 자릿수 = 원천(MySQL DECIMAL(20,8))과 동일 */
+    private static final int SCALE = 8;
 
     @Override
     public void open(Configuration parameters) {
@@ -86,9 +92,13 @@ public class CdcEventParser extends ProcessFunction<String, CryptoTradeEvent> {
             event.setOp(op);
             event.setTradeId(safeGetLong(data, "trade_id"));
             event.setMarket(safeGetString(data, "market", "UNKNOWN"));
-            event.setTradePrice(parseDecimal(data, "trade_price"));
-            event.setTradeVolume(parseDecimal(data, "trade_volume"));
-            event.setTradeAmount(parseDecimal(data, "trade_amount"));
+            // 2026-09-20 (docs/34 #5): Debezium 이 문자열로 준 정밀도를 BigDecimal 로 그대로 받는다.
+            // 금액은 MySQL 의 trade_amount(DECIMAL(20,4), 먼지 체결 30일 64,669행이 0)를 쓰지 않고 price×volume 으로 계산 → 스케일 16, 정의와 항상 일치.
+            BigDecimal price = parseBigDecimal(data, "trade_price");
+            BigDecimal volume = parseBigDecimal(data, "trade_volume");
+            event.setTradePrice(price);
+            event.setTradeVolume(volume);
+            event.setTradeAmount(price.multiply(volume));
             event.setAskBid(safeGetString(data, "ask_bid", "UNKNOWN"));
             event.setUpbitTimestamp(safeGetLong(data, "upbit_timestamp"));
             event.setSequentialId(safeGetLong(data, "sequential_id"));
@@ -123,6 +133,17 @@ public class CdcEventParser extends ProcessFunction<String, CryptoTradeEvent> {
             ctx.output(DLQ, mapper.writeValueAsString(n));
         } catch (Exception e) {
             LOG.error("DLQ 직렬화 실패 (원문 유실): {}", e.getMessage());
+        }
+    }
+
+    /** 원천 스케일 8(MySQL DECIMAL(20,8))로 정규화. 없거나 못 읽으면 0 — 값이 0 이면 탐지기가 건너뛰고 대조에서 드러난다. */
+    private BigDecimal parseBigDecimal(JsonNode data, String field) {
+        if (data == null || !data.has(field) || data.get(field).isNull()) return BigDecimal.ZERO.setScale(SCALE);
+        JsonNode node = data.get(field);
+        try {
+            return new BigDecimal(node.isTextual() ? node.asText() : node.asText()).setScale(SCALE, RoundingMode.HALF_UP);
+        } catch (NumberFormatException e) {
+            return BigDecimal.ZERO.setScale(SCALE);
         }
     }
 

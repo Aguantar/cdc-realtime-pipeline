@@ -8,6 +8,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -53,7 +54,11 @@ public class CdcEventParserTest {
         assertEquals(Long.valueOf(1789801975800L), e.getRecvMs());
         assertEquals("gapfill", e.getIngestSource());
         assertEquals("REALTIME", e.getStreamType());
-        assertEquals(306.0, e.getTradePrice(), 0.0001);
+        assertEquals(new BigDecimal("306.00000000"), e.getTradePrice());          // 원천 스케일 8 그대로
+        assertEquals(new BigDecimal("20.77271643"), e.getTradeVolume());
+        // 금액은 MySQL 의 trade_amount("6356.4512", DECIMAL(20,4) 반올림) 가 아니라 price×volume 의 정확한 곱
+        assertEquals(new BigDecimal("306.00000000").multiply(new BigDecimal("20.77271643")), e.getTradeAmount());
+        assertEquals(16, e.getTradeAmount().scale());
         assertEquals(100, e.getCdcLatencyMs());
         assertEquals(0, dlqCount());
     }
@@ -91,6 +96,21 @@ public class CdcEventParserTest {
         in("");
         in(envelope("d", "null").replace("\"after\":null", "\"after\":null,\"before\":{}"));
         assertEquals(0, out().size());
+        assertEquals(0, dlqCount());
+    }
+
+    @Test
+    public void dustTradeKeepsAmountInsteadOfRoundingToZero() throws Exception {
+        // docs/34 #5 의 근거: MySQL trade_amount 는 DECIMAL(20,4) 라 가격×수량 < 0.00005 KRW 인 먼지 체결이 0 으로 저장된다(30일 64,669행·252마켓).
+        // Flink 가 price×volume 을 계산하면 0 이 아니라 실제 값(4.2e-12)이 남는다.
+        String after = "{\"trade_id\":1,\"market\":\"KRW-DUST\",\"trade_price\":\"0.00042000\",\"trade_volume\":\"0.00000001\","
+                + "\"trade_amount\":\"0.0000\",\"ask_bid\":\"BID\",\"upbit_timestamp\":1789801975562,\"sequential_id\":17898019755620000,"
+                + "\"recv_ms\":null,\"ingest_source\":\"ws\",\"stream_type\":\"REALTIME\"}";
+        in(envelope("c", after));
+        assertEquals(1, out().size());
+        CryptoTradeEvent e = out().get(0);
+        assertEquals(new BigDecimal("0.0000000000042000"), e.getTradeAmount());
+        assertTrue(e.getTradeAmount().signum() > 0);
         assertEquals(0, dlqCount());
     }
 }

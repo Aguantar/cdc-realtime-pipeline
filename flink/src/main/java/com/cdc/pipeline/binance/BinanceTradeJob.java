@@ -59,7 +59,8 @@ public class BinanceTradeJob {
         trades.addSink(JdbcSink.sink(
                 "INSERT INTO " + table + " (symbol, trade_id, price, qty, quote_qty, is_buyer_maker, trade_ms, event_ms, recv_ms, flink_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (ps, t) -> {
-                    ps.setString(1, t.symbol); ps.setLong(2, t.tradeId); ps.setDouble(3, t.price); ps.setDouble(4, t.qty); ps.setDouble(5, t.price * t.qty);
+                    // 2026-09-20 (docs/34 #5): Decimal 컬럼 — BigDecimal 그대로. quote_qty 는 파서가 계산한 정확한 곱(스케일 16)
+                    ps.setString(1, t.symbol); ps.setLong(2, t.tradeId); ps.setBigDecimal(3, t.price); ps.setBigDecimal(4, t.qty); ps.setBigDecimal(5, t.quoteQty);
                     ps.setInt(6, t.buyerMaker ? 1 : 0); ps.setLong(7, t.tradeMs); ps.setLong(8, t.eventMs); ps.setLong(9, t.recvMs);
                     ps.setTimestamp(10, new Timestamp(System.currentTimeMillis()));
                 },

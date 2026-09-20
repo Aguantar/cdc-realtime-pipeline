@@ -8,6 +8,10 @@ import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
+/**
+ * 2026-09-20 (docs/34 #5): 호가는 **의도적으로 double 유지**. 호가 단은 합산되는 금액이 아니라 파생 지표(mid·spread_bp·imbalance·depth)의 재료이고,
+ * 전부 비율이라 double 로 결과가 같다. ClickHouse Array(Decimal) 은 초당 300 스냅샷 × 40단에서 저장·연산 비용만 늘린다.
+ */
 public class DepthParser extends ProcessFunction<String, DepthMsg> {
     public static final OutputTag<String> DLQ = new OutputTag<String>("binance-depth-dlq") {};
     private transient ObjectMapper mapper; private transient Counter parseFailures;

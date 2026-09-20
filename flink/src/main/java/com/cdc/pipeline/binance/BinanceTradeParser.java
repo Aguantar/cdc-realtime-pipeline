@@ -1,5 +1,8 @@
 package com.cdc.pipeline.binance;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.flink.configuration.Configuration;
@@ -17,6 +20,9 @@ public class BinanceTradeParser extends ProcessFunction<String, BinanceTrade> {
     private transient ObjectMapper mapper;
     private transient Counter parseFailures;
 
+    /** exchangeInfo 실측(09-20): USDT 현물 493심볼의 tickSize 최대 8자리·stepSize 최대 5자리 → 8 이면 반올림이 일어나지 않는다 */
+    private static final int SCALE = 8;
+
     @Override
     public void open(Configuration parameters) {
         mapper = new ObjectMapper();
@@ -31,10 +37,13 @@ public class BinanceTradeParser extends ProcessFunction<String, BinanceTrade> {
             if (!"trade".equals(d.path("e").asText())) throw new IllegalArgumentException("not a trade event: " + d.path("e").asText());
             BinanceTrade t = new BinanceTrade();
             t.symbol = d.get("s").asText(); t.tradeId = d.get("t").asLong();
-            t.price = Double.parseDouble(d.get("p").asText()); t.qty = Double.parseDouble(d.get("q").asText());
+            t.price = new BigDecimal(d.get("p").asText()).setScale(SCALE, RoundingMode.HALF_UP);
+            t.qty = new BigDecimal(d.get("q").asText()).setScale(SCALE, RoundingMode.HALF_UP);
+            t.quoteQty = t.price.multiply(t.qty);   // 스케일 16 — 저장 컬럼 Decimal(38,16) 과 일치
             t.buyerMaker = d.path("m").asBoolean(false); t.tradeMs = d.get("T").asLong(); t.eventMs = d.path("E").asLong(t.tradeMs);
             t.recvMs = d.path("recv_ms").asLong(0L);
             if (t.symbol.isEmpty() || t.tradeId <= 0 || t.tradeMs <= 0) throw new IllegalArgumentException("missing key fields");
+            if (t.price.signum() < 0 || t.qty.signum() < 0) throw new IllegalArgumentException("negative price/qty");
             out.collect(t);
         } catch (Exception e) {
             parseFailures.inc();

@@ -92,7 +92,10 @@ public class MarketAlertDetector extends KeyedProcessFunction<String, CryptoTrad
             return;
         }
         long m = Math.floorDiv(e.getUpbitTimestamp(), MINUTE_MS);
-        double p = e.getTradePrice();
+        // 2026-09-20 (docs/34 #5): 이벤트는 BigDecimal 이지만 **여기서만 double 로 받는다**.
+        // 이유 ① 판정이 비율 비교(±50/100/200%)라 double 로도 결과가 같다 ② 상태(ValueState<double[]> 1,500분 링)의 타입을 바꾸면
+        // 세이브포인트 복원이 깨진다 — 규칙 동등성(docs/22 §4-5, 116/116)을 유지하려면 상태 타입을 건드리면 안 된다.
+        double p = e.getTradePrice().doubleValue();
         if (p <= 0) return;
 
         double[] r = ring.value();

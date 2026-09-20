@@ -3,6 +3,9 @@
     post_hook="INSERT INTO cdc_pipeline.market_alerts (alert_type, market, level, prev_level, event_time, detected_at, value, threshold, ref_price, price, trade_id, rule_version)
                SELECT 'VOLUME_24H', market, 1, 0, toDateTime64(toDateTime(day_utc + 1) + INTERVAL 1 HOUR, 3), now64(3), ratio, 4, 0, 0, 0, 'v2-shadow'
                FROM {{ this }}
+-- 2026-09-20 (docs/34 #5) 타입 규약: **금액·수량 합계는 Decimal, 비율은 Float64**.
+--   이유: Decimal 나눗셈은 분모가 0 이면 **예외를 던져 모델 전체가 실패**한다(Float64 는 조용히 inf). if(v>0, a/v, 0) 가드도 ClickHouse 가 양쪽 분기를 다 계산해 소용없다(09-20 실측).
+--   비율은 어차피 근사라 Float64 가 의미상으로도 맞다.
 -- 2026-09-20 (docs/34 #2): crypto_trades 는 ReplacingMergeTree — 중복은 '결국' 지워지므로 읽는 쪽이 FINAL 로 보장한다(재시작 뒤 머지 전 배치가 중복을 세지 않게)
                WHERE flagged AND day_utc >= today() - 2
                  AND (market, day_utc) NOT IN (SELECT market, toDate(event_time - INTERVAL 1 HOUR) - 1 FROM cdc_pipeline.market_alerts WHERE alert_type = 'VOLUME_24H')"
@@ -27,9 +30,9 @@ w AS (
 )
 SELECT
     market, day_utc, amount, round(avg7, 0) AS avg7,
-    round(if(avg7 > 0, amount / avg7, 0), 2)                                  AS ratio,
+    round(ifNull(toFloat64(amount) / nullIf(toFloat64(avg7), 0), 0), 2)       AS ratio,
     days_in_window,
-    (days_in_window >= 5 AND avg7 > 0 AND amount / avg7 >= 4 AND amount >= 1e9) AS flagged,
+    (days_in_window >= 5 AND avg7 > 0 AND ifNull(toFloat64(amount) / nullIf(toFloat64(avg7), 0), 0) >= 4 AND amount >= 1e9) AS flagged,
     4.0                                                                        AS threshold_ratio,
     1e9                                                                        AS threshold_amount
 FROM w

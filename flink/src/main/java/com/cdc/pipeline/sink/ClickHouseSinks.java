@@ -37,9 +37,10 @@ public class ClickHouseSinks {
                 ps.setString(1, event.getOp());
                 ps.setLong(2, event.getTradeId());
                 ps.setString(3, event.getMarket());
-                ps.setDouble(4, event.getTradePrice());
-                ps.setDouble(5, event.getTradeVolume());
-                ps.setDouble(6, event.getTradeAmount());
+                // 2026-09-20 (docs/34 #5): Decimal 컬럼에 BigDecimal 을 그대로. double 로 보내면 여기서 정밀도가 사라진다.
+                ps.setBigDecimal(4, event.getTradePrice());
+                ps.setBigDecimal(5, event.getTradeVolume());
+                ps.setBigDecimal(6, event.getTradeAmount());
                 ps.setString(7, event.getAskBid());
                 ps.setLong(8, event.getUpbitTimestamp());
                 ps.setLong(9, event.getSequentialId());
@@ -61,13 +62,19 @@ public class ClickHouseSinks {
     }
 
     private static void setNullableDouble(java.sql.PreparedStatement ps, int idx, Double v) throws java.sql.SQLException {
-        if (v == null) ps.setNull(idx, java.sql.Types.DOUBLE); else ps.setDouble(idx, v);
+        // 최우선 호가: Nullable(Decimal(20,8)). 원천이 DECIMAL(20,8) 이라 double 을 거치면 같은 손실이 난다.
+        if (v == null) ps.setNull(idx, java.sql.Types.DECIMAL);
+        else ps.setBigDecimal(idx, new java.math.BigDecimal(Double.toString(v)).setScale(8, java.math.RoundingMode.HALF_UP));
     }
 
     // 5분 처리 시간 집계 싱크는 2026-09-19 폐기 (docs/29 창2): 정지 뒤 따라붙는 행이 "지금" 창에 섞여 과거 5분을 왜곡했고, 분 마트(docs/27)가 이벤트 시각으로 같은 값을 낸다.
 
     /**
      * 이상탐지 v2 — 마켓 등급 전이 → market_alerts (docs/22). 섀도 기간엔 이 테이블만 쓰고 발송은 없다.
+     *
+     * 2026-09-20 (docs/34 #5): 여기는 **의도적으로 Float64 유지**. value·threshold 는 퍼센트(비율)이고, ref_price·price 는
+     * 탐지기의 24h 링(ValueState<double[]>)에서 나온 값이다. 링 타입을 바꾸면 세이브포인트 복원이 깨지고 규칙 동등성(116/116)을 다시 증명해야 한다.
+     * 알럿은 회계 대상이 아니라 판정 근거이므로 Float64 로 충분하다 — 금액 계약이 필요한 곳은 체결 표(crypto_trades)다.
      */
     public static SinkFunction<MarketAlert> marketAlertSink(String clickhouseUrl) {
         return JdbcSink.sink(
