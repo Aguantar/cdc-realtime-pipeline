@@ -23,5 +23,5 @@
 
 ## 2-실행 (09-20 04:05 ~ 04:08 UTC)
 - FINAL 추가: stg_trades(뷰)·dim_markets·int_reconcile_hourly·int_alert_transitions_recomputed·int_volume_surge_daily·dq_ingest_daily (RMT 를 읽는 모델 전부, 이제 7/7). 빌드 6~9초/모델 — FINAL 비용은 감당 가능(월 파티션·정렬 키 덕).
-- 검증: 같은 키(market, sequential_id, upbit_timestamp) 로 flink_ts 만 다른 행 2개 주입 → 원본 count 2, `stg_trades` count **1** → 삭제. 즉 재시작 뒤 머지 전이라도 마트는 중복을 안 센다.
+- 검증(정정): 첫 판은 두 행을 **한 INSERT** 로 넣어 RMT 가 삽입 시점에 이미 접었고 원본이 1이었다 — "원본 2" 라고 적은 것은 틀린 기록. **별도 INSERT 두 번**(다른 파트)으로 다시: 원본 2 → `stg_trades`(FINAL) **1** → 삭제. 이제 재시작 뒤 머지 전이라도 마트가 중복을 안 센다는 증거가 맞다.
 - 실수: 설명 주석을 `{{ config(` 블록 **안**에 넣어 Jinja 가 깨짐(dbt 가 4초 만에 조용히 끝남) → 블록 뒤로 이동. 교훈: dbt 가 너무 빨리 끝나면 성공이 아니라 파싱 실패다.
