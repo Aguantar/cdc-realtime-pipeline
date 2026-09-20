@@ -1,7 +1,7 @@
 {{
     config(
         materialized='table',
-        order_by='market, hour_start'
+        order_by='market, hour_kst'
     )
 }}
 
@@ -11,7 +11,7 @@
 --   DBT  = 배치 1시간봉 (raw 틱 데이터 기반, 더 정확한 OHLCV)
 SELECT
     market,
-    toStartOfHour(trade_time_kst) AS hour_start,
+    toStartOfHour(trade_time_kst) AS hour_kst,
     argMin(trade_price, trade_time_kst) AS open,
     max(trade_price) AS high,
     min(trade_price) AS low,

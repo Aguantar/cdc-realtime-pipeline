@@ -296,7 +296,7 @@ with DAG(
                 round(close_change_pct, 2) AS close_change_pct,
                 round(volume_change_pct, 2) AS volume_change_pct
             FROM cdc_pipeline.mart_daily_summary
-            WHERE trade_date = '{target_date}'
+            WHERE day_kst = '{target_date}'
             ORDER BY amount DESC
             """
         )
@@ -306,12 +306,12 @@ with DAG(
         quality_metrics = hook.get_first(
             f"""
             SELECT
-                (SELECT weighted_pct FROM cdc_pipeline.dq_reconcile_daily WHERE day = toDate('{target_date}') - 1) AS reconcile_pct,
-                (SELECT cells_below_99 FROM cdc_pipeline.dq_reconcile_daily WHERE day = toDate('{target_date}') - 1) AS cells_below_99,
-                (SELECT sum(repairs) FROM cdc_pipeline.dq_repairs_daily WHERE day = toDate('{target_date}')) AS repairs,
-                (SELECT sum(rows_recovered) FROM cdc_pipeline.dq_repairs_daily WHERE day = toDate('{target_date}')) AS rows_recovered,
-                (SELECT lag_p95_s FROM cdc_pipeline.dq_ingest_daily WHERE day = toDate('{target_date}')) AS lag_p95_s,
-                (SELECT late_rows_gt_60s FROM cdc_pipeline.dq_ingest_daily WHERE day = toDate('{target_date}')) AS late_rows,
+                (SELECT weighted_pct FROM cdc_pipeline.dq_reconcile_daily WHERE day_utc = toDate('{target_date}') - 1) AS reconcile_pct,
+                (SELECT cells_below_99 FROM cdc_pipeline.dq_reconcile_daily WHERE day_utc = toDate('{target_date}') - 1) AS cells_below_99,
+                (SELECT sum(repairs) FROM cdc_pipeline.dq_repairs_daily WHERE day_utc = toDate('{target_date}')) AS repairs,
+                (SELECT sum(rows_recovered) FROM cdc_pipeline.dq_repairs_daily WHERE day_utc = toDate('{target_date}')) AS rows_recovered,
+                (SELECT lag_p95_s FROM cdc_pipeline.dq_ingest_daily WHERE day_utc = toDate('{target_date}')) AS lag_p95_s,
+                (SELECT late_rows_gt_60s FROM cdc_pipeline.dq_ingest_daily WHERE day_utc = toDate('{target_date}')) AS late_rows,
                 (SELECT count() FROM cdc_pipeline.market_alerts WHERE toDate(event_time) = toDate('{target_date}') AND prev_level = 0 AND level > 0) AS shadow_alerts
             """
         ) or {}

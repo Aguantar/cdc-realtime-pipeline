@@ -1,14 +1,14 @@
 {{
     config(
         materialized='table',
-        order_by='market, trade_date'
+        order_by='market, day_kst'
     )
 }}
 
 -- 일봉 OHLCV 집계
 SELECT
     market,
-    trade_date,
+    day_kst,
     argMin(trade_price, trade_time_kst) AS open,
     max(trade_price) AS high,
     min(trade_price) AS low,
@@ -28,4 +28,4 @@ SELECT
        0
     ) AS daily_range_pct
 FROM {{ ref('stg_trades') }}
-GROUP BY market, trade_date
+GROUP BY market, day_kst

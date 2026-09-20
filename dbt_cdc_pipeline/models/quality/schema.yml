@@ -4,7 +4,7 @@ models:
   - name: dq_reconcile_daily
     description: "일별 원장 대조 요약 (가중 비율·99% 미만 셀·0건 셀·최악 셀). 유실 0 의 일일 증거."
     columns:
-      - name: day
+      - name: day_utc
         tests: [not_null, unique]
       - name: weighted_pct
         description: "거래소 시간봉 거래량 대비 우리 체결 거래량, 하루 가중."
@@ -13,7 +13,7 @@ models:
   - name: dq_ingest_daily
     description: "일별 적재 지연 분위수·늦은 행·마켓 수. 증분 재계산(전날~오늘)."
     columns:
-      - name: day
+      - name: day_utc
         tests: [not_null, unique]
   - name: dq_rule_eval_daily
     description: >
@@ -30,7 +30,7 @@ models:
       PRICE_24H 구현 동등성: Flink 탐지기의 등급 전이 vs 같은 입력(crypto_trades)에서 SQL 로 재계산한 전이를
       마켓·(prev, level)·±60초로 매일 대조. 전이 10건 이상이 전부 일치(parity_ok)하면 승격 (docs/22 §4).
     columns:
-      - name: day
+      - name: day_utc
         tests: [not_null, unique]
       - name: matched
         tests: [not_null]
@@ -40,7 +40,7 @@ models:
       호가 유실 창 기록. 호가는 이력 API 도 원장도 없어 못 받은 순간 영구 유실이므로, 초당 스냅샷 0 인 구간(3초 이상)을 gap 으로
       잡고 추정 유실 건수를 남긴다. 브로커 축소·수집기 버퍼 결정의 근거 (docs/23 §6).
     columns:
-      - name: day
+      - name: day_utc
         tests: [not_null, unique]
       - name: zero_seconds
         tests: [not_null]

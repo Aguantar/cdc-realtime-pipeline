@@ -6,7 +6,7 @@ models:
     columns:
       - name: market
         tests: [not_null]
-      - name: day
+      - name: day_utc
         tests: [not_null]
       - name: flagged
         tests: [not_null]

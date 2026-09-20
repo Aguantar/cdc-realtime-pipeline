@@ -3,19 +3,19 @@
 -- 첫 행(이전 데이터 없음)은 제외
 -- 검사 범위: int_ohlcv_1h에 실제 존재하는 마지막 시각까지 (dbt run 이후 미집계 구간 제외)
 WITH max_hour AS (
-    SELECT max(hour_start) AS last_hour
+    SELECT max(hour_kst) AS last_hour
     FROM {{ ref('int_ohlcv_1h') }}
 ),
 hourly_exists AS (
     SELECT
         market,
-        hour_start,
-        dateDiff('hour', lagInFrame(hour_start) OVER (
-            PARTITION BY market ORDER BY hour_start
-        ), hour_start) AS gap_hours
+        hour_kst,
+        dateDiff('hour', lagInFrame(hour_kst) OVER (
+            PARTITION BY market ORDER BY hour_kst
+        ), hour_kst) AS gap_hours
     FROM {{ ref('int_ohlcv_1h') }}
-    WHERE hour_start >= (SELECT last_hour FROM max_hour) - INTERVAL 24 HOUR
-      AND hour_start <= (SELECT last_hour FROM max_hour)
+    WHERE hour_kst >= (SELECT last_hour FROM max_hour) - INTERVAL 24 HOUR
+      AND hour_kst <= (SELECT last_hour FROM max_hour)
 )
 SELECT *
 FROM hourly_exists

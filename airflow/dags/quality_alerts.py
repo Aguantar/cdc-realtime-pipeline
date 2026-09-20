@@ -16,17 +16,17 @@ from callbacks.slack_callbacks import send_health_alert, task_failure_callback
 default_args = {"owner": "calme", "retries": 1, "retry_delay": timedelta(minutes=5), "on_failure_callback": task_failure_callback}
 
 # (이름, SQL, 위반 조건 함수, 메시지 함수, 문서). SQL 은 최신 온전한 날(오늘 UTC 제외) 한 행을 돌려준다.
-# 별칭을 day_s 로 두는 이유: ClickHouse 는 SELECT 별칭이 WHERE 의 열 이름을 가려서 `toString(day) AS day ... WHERE day < today()` 가 String vs Date 비교로 500 이 났다(첫 실행).
+# 별칭을 day_s 로 두는 이유: ClickHouse 는 SELECT 별칭이 WHERE 의 열 이름을 가려서 `toString(day) AS day ... WHERE day_utc < today()` 가 String vs Date 비교로 500 이 났다(첫 실행).
 RULES = [
-    ("Upbit Reconcile", "SELECT toString(day) AS day_s, weighted_pct, min_cell_pct, cells_no_rows, worst_cell FROM cdc_pipeline.dq_reconcile_daily WHERE day < today() ORDER BY day DESC LIMIT 1",
+    ("Upbit Reconcile", "SELECT toString(day_utc) AS day_s, weighted_pct, min_cell_pct, cells_no_rows, worst_cell FROM cdc_pipeline.dq_reconcile_daily WHERE day_utc < today() ORDER BY day_utc DESC LIMIT 1",
      lambda r: float(r["weighted_pct"]) < 99.9 or float(r["min_cell_pct"]) < 99, lambda r: f"{r['day_s']} weighted {r['weighted_pct']}% (≥99.9) min cell {r['min_cell_pct']}% (≥99) worst {r['worst_cell']}", "docs/17"),
-    ("Binance Reconcile", "SELECT toString(day) AS day_s, weighted_pct, min_cell_pct, cells_no_rows, cells_above_101, worst_cell FROM cdc_pipeline.dq_binance_reconcile_daily WHERE day < today() ORDER BY day DESC LIMIT 1",
+    ("Binance Reconcile", "SELECT toString(day_utc) AS day_s, weighted_pct, min_cell_pct, cells_no_rows, cells_above_101, worst_cell FROM cdc_pipeline.dq_binance_reconcile_daily WHERE day_utc < today() ORDER BY day_utc DESC LIMIT 1",
      lambda r: float(r["weighted_pct"]) < 99.9 or int(r["cells_no_rows"]) > 0 or int(r["cells_above_101"]) > 0, lambda r: f"{r['day_s']} weighted {r['weighted_pct']}% no-row cells {r['cells_no_rows']} >101% cells {r['cells_above_101']} worst {r['worst_cell']}", "docs/31"),
-    ("Orderbook Gaps", "SELECT toString(day) AS day_s, gap_windows, gap_seconds_total, gap_longest_s, est_lost_snapshots FROM cdc_pipeline.dq_orderbook_gaps_daily WHERE day < today() ORDER BY day DESC LIMIT 1",
+    ("Orderbook Gaps", "SELECT toString(day_utc) AS day_s, gap_windows, gap_seconds_total, gap_longest_s, est_lost_snapshots FROM cdc_pipeline.dq_orderbook_gaps_daily WHERE day_utc < today() ORDER BY day_utc DESC LIMIT 1",
      lambda r: int(r["gap_windows"]) > 0, lambda r: f"{r['day_s']} gap windows {r['gap_windows']} total {r['gap_seconds_total']}s longest {r['gap_longest_s']}s est lost {r['est_lost_snapshots']}", "docs/23 §7"),
-    ("Rule Parity", "SELECT toString(day) AS day_s, sql_transitions, flink_transitions, matched, parity_ok FROM cdc_pipeline.dq_alert_parity_daily WHERE day < today() ORDER BY day DESC LIMIT 1",
+    ("Rule Parity", "SELECT toString(day_utc) AS day_s, sql_transitions, flink_transitions, matched, parity_ok FROM cdc_pipeline.dq_alert_parity_daily WHERE day_utc < today() ORDER BY day_utc DESC LIMIT 1",
      lambda r: int(r["parity_ok"]) == 0 and int(r["sql_transitions"]) >= 10, lambda r: f"{r['day_s']} sql {r['sql_transitions']} flink {r['flink_transitions']} matched {r['matched']}", "docs/22 §4"),
-    ("Ledger 3-way", "SELECT toString(day) AS day_s, sum(ex_my_mismatch) AS ex_my, sum(my_ch_mismatch) AS my_ch, count() AS symbols FROM cdc_pipeline.dq_ledger_daily WHERE day < today() GROUP BY day ORDER BY day DESC LIMIT 1",
+    ("Ledger 3-way", "SELECT toString(day_utc) AS day_s, sum(ex_my_mismatch) AS ex_my, sum(my_ch_mismatch) AS my_ch, count() AS symbols FROM cdc_pipeline.dq_ledger_daily WHERE day_utc < today() GROUP BY day_utc ORDER BY day_utc DESC LIMIT 1",
      lambda r: int(r["ex_my"]) > 0 or int(r["my_ch"]) > 0, lambda r: f"{r['day_s']} exchange≠mysql {r['ex_my']} mysql≠clickhouse {r['my_ch']} of {r['symbols']} symbols", "docs/28 B-5"),
 ]
 

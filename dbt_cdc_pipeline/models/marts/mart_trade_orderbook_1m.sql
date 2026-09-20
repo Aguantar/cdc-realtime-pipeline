@@ -1,4 +1,4 @@
-{{ config(materialized='incremental', incremental_strategy='delete+insert', unique_key='day', order_by='(market, minute)',
+{{ config(materialized='incremental', incremental_strategy='delete+insert', unique_key='day_utc', order_by='(market, minute)',
           query_settings={'max_memory_usage': 1200000000, 'max_bytes_before_external_group_by': 500000000}) }}
 -- 체결 × 호가 분 단위 결합 마트 (2026-09-18, docs/19 §2-1 순서 3).
 -- 왜: 거래소는 호가 이력을 주지 않는다 → 이 표는 우리만 가진 데이터다. 유동성 플래그(얇은 호가에서의 큰 체결·되튐)와
@@ -37,7 +37,7 @@ book AS (
 )
 SELECT
     -- FULL OUTER JOIN 에서 빠진 쪽은 NULL 이 아니라 기본값(0 → 1970-01-01)이라 coalesce 가 틀린다 → 건수로 판정
-    toDate(if(t.trade_count > 0, t.minute, b.minute))   AS day,
+    toDate(if(t.trade_count > 0, t.minute, b.minute))   AS day_utc,
     if(t.trade_count > 0, t.market, b.market)           AS market,
     if(t.trade_count > 0, t.minute, b.minute)           AS minute,
     -- 체결

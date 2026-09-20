@@ -45,9 +45,9 @@ def _build(**context) -> dict:
     for r in al:
         if 'n' in r and int(r["n"]) >= 10: fixes.append(f"'{r['name']}' 이 7일간 {r['n']}회: 임계가 기준선과 안 맞거나 만성 문제 — 임계 재검토(docs/32 §1)")
     # ④ 품질 추세
-    rq = _q(hook, "SELECT toString(day) AS d, weighted_pct AS p FROM cdc_pipeline.dq_reconcile_daily WHERE day >= today() - 7 ORDER BY day")
-    bq = _q(hook, "SELECT toString(day) AS d, weighted_pct AS p FROM cdc_pipeline.dq_binance_reconcile_daily WHERE day >= today() - 7 ORDER BY day")
-    pq = _q(hook, "SELECT toString(day) AS d, parity_ok AS ok, matched AS m FROM cdc_pipeline.dq_alert_parity_daily WHERE day >= today() - 7 AND day < today() ORDER BY day")
+    rq = _q(hook, "SELECT toString(day_utc) AS d, weighted_pct AS p FROM cdc_pipeline.dq_reconcile_daily WHERE day_utc >= today() - 7 ORDER BY day_utc")
+    bq = _q(hook, "SELECT toString(day_utc) AS d, weighted_pct AS p FROM cdc_pipeline.dq_binance_reconcile_daily WHERE day_utc >= today() - 7 ORDER BY day_utc")
+    pq = _q(hook, "SELECT toString(day_utc) AS d, parity_ok AS ok, matched AS m FROM cdc_pipeline.dq_alert_parity_daily WHERE day_utc >= today() - 7 AND day_utc < today() ORDER BY day_utc")
     lines.append("*④ 대조(%)*  Upbit " + " ".join(f"{r.get('d','')[5:]}:{r.get('p')}" for r in rq) + " | Binance " + (" ".join(f"{r.get('d','')[5:]}:{r.get('p')}" for r in bq) or "—") + " | 동등성 " + " ".join(f"{r.get('d','')[5:]}:{'OK' if str(r.get('ok'))=='1' else 'FAIL'}({r.get('m')})" for r in pq))
     # ⑤ 자원
     res = _q(hook, """SELECT round(quantile(0.95)(load1),2) AS load_p95, round(max(load1),2) AS load_max, argMax(toHour(ts + INTERVAL 9 HOUR), load1) AS load_max_h_kst,

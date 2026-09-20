@@ -1,7 +1,7 @@
 {{
     config(
         materialized='table',
-        order_by='trade_date, market'
+        order_by='day_kst, market'
     )
 }}
 
@@ -9,7 +9,7 @@
 -- Grafana 일별 코인 시세 대시보드 데이터소스
 SELECT
     d.market,
-    d.trade_date,
+    d.day_kst,
     d.open,
     d.high,
     d.low,
@@ -39,5 +39,5 @@ SELECT
 FROM {{ ref('int_ohlcv_daily') }} AS d
 LEFT JOIN {{ ref('int_ohlcv_daily') }} AS prev
     ON d.market = prev.market
-    AND d.trade_date = prev.trade_date + 1
-ORDER BY d.trade_date DESC, d.amount DESC
+    AND d.day_kst = prev.day_kst + 1
+ORDER BY d.day_kst DESC, d.amount DESC

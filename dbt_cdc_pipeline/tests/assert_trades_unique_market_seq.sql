@@ -3,7 +3,7 @@
 -- 과거분은 07·13 감사에서 한 번 검증했다. 매일 새로 들어온 창만 검사하는 것이 증분 테스트의 관행.
 SELECT market, sequential_id, count() AS n
 FROM {{ ref('stg_trades') }}
-WHERE trade_date = yesterday()
+WHERE day_kst = yesterday()
 GROUP BY market, sequential_id
 HAVING n > 1
 SETTINGS max_memory_usage = 600000000, max_threads = 2

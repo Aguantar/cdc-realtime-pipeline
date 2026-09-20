@@ -1,9 +1,9 @@
-{{ config(materialized='incremental', incremental_strategy='delete+insert', unique_key='day', order_by='day') }}
+{{ config(materialized='incremental', incremental_strategy='delete+insert', unique_key='day_utc', order_by='day_utc') }}
 -- 2026-09-20 (docs/34 #2): crypto_trades 는 ReplacingMergeTree — 중복은 '결국' 지워지므로 읽는 쪽이 FINAL 로 보장한다(재시작 뒤 머지 전 배치가 중복을 세지 않게)
 -- 일별 적재 품질: 지연 분위수, 늦은 행(가드 대상), 마켓 수. 증분(전날~오늘)만 재계산 — 1억 행 전체를 매일 훑지 않기 위해.
 -- 지연 = source_ts(MySQL 적재) − upbit_timestamp(체결). 관찰 주간 기준값: p50 1.2s, p95 2.2s, max 7.75s (docs/14).
 SELECT
-    toDate(source_ts)                                                              AS day,
+    toDate(source_ts)                                                              AS day_utc,
     count()                                                                        AS rows,
     uniqExact(market)                                                              AS markets,
     -- 실시간 지연은 수리 행(지연 > 60초, 백필·gap-fill)을 제외하고 잰다. 09-16 은 BFC 백필 261,713행 때문에 포함 시 p95 가 51만 초로 왜곡됐다.
@@ -19,4 +19,4 @@ WHERE op = 'c'
 {% else %}
   AND source_ts >= toStartOfDay(now() - INTERVAL 30 DAY)
 {% endif %}
-GROUP BY day
+GROUP BY day_utc

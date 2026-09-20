@@ -9,7 +9,7 @@ models:
       - name: market
         tests:
           - not_null
-      - name: hour_start
+      - name: hour_kst
         tests:
           - not_null
       - name: open
@@ -30,7 +30,7 @@ models:
       - name: market
         tests:
           - not_null
-      - name: trade_date
+      - name: day_kst
         tests:
           - not_null
       - name: daily_range_pct

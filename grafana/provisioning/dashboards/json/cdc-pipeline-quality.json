@@ -35,7 +35,7 @@
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "rawSql": "SELECT toDateTime(day) as time, weighted_pct FROM cdc_pipeline.dq_reconcile_daily WHERE day >= today() - 30 ORDER BY day",
+          "rawSql": "SELECT toDateTime(day_utc) as time, weighted_pct FROM cdc_pipeline.dq_reconcile_daily WHERE day_utc >= today() - 30 ORDER BY day_utc",
           "format": 0,
           "refId": "A",
           "queryType": "sql"
@@ -62,7 +62,7 @@
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "rawSql": "SELECT toDateTime(day) as time, cells_below_99, markets_no_rows FROM cdc_pipeline.dq_reconcile_daily WHERE day >= today() - 30 ORDER BY day",
+          "rawSql": "SELECT toDateTime(day_utc) as time, cells_below_99, markets_no_rows FROM cdc_pipeline.dq_reconcile_daily WHERE day_utc >= today() - 30 ORDER BY day_utc",
           "format": 0,
           "refId": "A",
           "queryType": "sql"
@@ -89,7 +89,7 @@
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "rawSql": "SELECT toDateTime(day) as time, lag_p50_s, lag_p95_s, lag_max_live_s FROM cdc_pipeline.dq_ingest_daily WHERE day >= today() - 30 ORDER BY day",
+          "rawSql": "SELECT toDateTime(day_utc) as time, lag_p50_s, lag_p95_s, lag_max_live_s FROM cdc_pipeline.dq_ingest_daily WHERE day_utc >= today() - 30 ORDER BY day_utc",
           "format": 0,
           "refId": "A",
           "queryType": "sql"
@@ -116,7 +116,7 @@
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "rawSql": "SELECT toDateTime(i.day) as time, i.late_rows_gt_60s, ifNull(r.rows_recovered, 0) as rows_recovered FROM cdc_pipeline.dq_ingest_daily i LEFT JOIN (SELECT day, sum(rows_recovered) rows_recovered FROM cdc_pipeline.dq_repairs_daily GROUP BY day) r ON r.day = i.day WHERE i.day >= today() - 30 ORDER BY i.day",
+          "rawSql": "SELECT toDateTime(i.day_utc) as time, i.late_rows_gt_60s, ifNull(r.rows_recovered, 0) as rows_recovered FROM cdc_pipeline.dq_ingest_daily i LEFT JOIN (SELECT day_utc, sum(rows_recovered) rows_recovered FROM cdc_pipeline.dq_repairs_daily GROUP BY day_utc) r ON r.day_utc = i.day_utc WHERE i.day_utc >= today() - 30 ORDER BY i.day_utc",
           "format": 0,
           "refId": "A",
           "queryType": "sql"
@@ -143,7 +143,7 @@
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "rawSql": "SELECT toDateTime(day) as time, reason, repairs, gap_seconds, exchange_rows_in_windows, rows_recovered FROM cdc_pipeline.dq_repairs_daily ORDER BY day DESC LIMIT 30",
+          "rawSql": "SELECT toDateTime(day_utc) as time, reason, repairs, gap_seconds, exchange_rows_in_windows, rows_recovered FROM cdc_pipeline.dq_repairs_daily ORDER BY day_utc DESC LIMIT 30",
           "format": 1,
           "refId": "A",
           "queryType": "sql"
@@ -170,7 +170,7 @@
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "rawSql": "SELECT toDateTime(day) as time, rule, ours, matched, exchange, precision, recall, lead_median_s FROM cdc_pipeline.dq_rule_eval_daily ORDER BY day DESC LIMIT 30",
+          "rawSql": "SELECT toDateTime(day_utc) as time, rule, ours, matched, exchange, precision, recall, lead_median_s FROM cdc_pipeline.dq_rule_eval_daily ORDER BY day_utc DESC LIMIT 30",
           "format": 1,
           "refId": "A",
           "queryType": "sql"

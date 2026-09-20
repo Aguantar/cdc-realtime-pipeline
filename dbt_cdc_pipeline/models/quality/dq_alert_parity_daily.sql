@@ -1,4 +1,4 @@
-{{ config(order_by='(day)', query_settings={'max_memory_usage': 1200000000, 'max_bytes_before_external_group_by': 600000000, 'max_bytes_before_external_sort': 600000000}) }}
+{{ config(order_by='(day_utc)', query_settings={'max_memory_usage': 1200000000, 'max_bytes_before_external_group_by': 600000000, 'max_bytes_before_external_sort': 600000000}) }}
 -- PRICE_24H 구현 동등성 (docs/22 §4 정정): Flink 탐지기(링·forward-fill·늦은 이벤트 가드)가 낸 등급 전이를
 -- 같은 입력(crypto_trades)에서 SQL 로 다시 계산한 전이와 매일 대조한다. 임계 자체의 근거는 docs/16(6개월 역검증)이고,
 -- 섀도가 확인할 것은 "구현이 그 정의와 같은 답을 내는가"다. 이 표에서 전이 10건 이상이 전부 일치하면 승격한다.
@@ -41,42 +41,42 @@ matched AS (
     WHERE abs(f.upbit_timestamp - s.upbit_timestamp) <= 60000
 ),
 per_day AS (
-    SELECT day,
+    SELECT day_utc,
            countIf(src = 's') AS sql_transitions,
            countIf(src = 'f') AS flink_transitions
     FROM (
-        SELECT toDate(fromUnixTimestamp64Milli(upbit_timestamp)) AS day, 's' AS src FROM sql_transitions
+        SELECT toDate(fromUnixTimestamp64Milli(upbit_timestamp)) AS day_utc, 's' AS src FROM sql_transitions
         UNION ALL
-        SELECT toDate(fromUnixTimestamp64Milli(upbit_timestamp)) AS day, 'f' AS src FROM flink_transitions
+        SELECT toDate(fromUnixTimestamp64Milli(upbit_timestamp)) AS day_utc, 'f' AS src FROM flink_transitions
     )
-    GROUP BY day
+    GROUP BY day_utc
 ),
 matched_day AS (
-    SELECT day, uniqExact(market, f_ts, prev, lvl) AS matched
-    FROM (SELECT toDate(fromUnixTimestamp64Milli(f_ts)) AS day, market, f_ts, prev, lvl FROM matched)
-    GROUP BY day
+    SELECT day_utc, uniqExact(market, f_ts, prev, lvl) AS matched
+    FROM (SELECT toDate(fromUnixTimestamp64Milli(f_ts)) AS day_utc, market, f_ts, prev, lvl FROM matched)
+    GROUP BY day_utc
 ),
 unmatched_f AS (
-    SELECT day, groupArray(5)(txt) AS sample
+    SELECT day_utc, groupArray(5)(txt) AS sample
     FROM (
-        SELECT toDate(fromUnixTimestamp64Milli(f.upbit_timestamp)) AS day,
+        SELECT toDate(fromUnixTimestamp64Milli(f.upbit_timestamp)) AS day_utc,
                concat(f.market, ' ', toString(f.prev), '→', toString(f.lvl), ' @', toString(fromUnixTimestamp64Milli(f.upbit_timestamp))) AS txt
         FROM flink_transitions AS f
         LEFT ANTI JOIN matched AS mt ON mt.market = f.market AND mt.f_ts = f.upbit_timestamp AND mt.prev = f.prev AND mt.lvl = f.lvl
     )
-    GROUP BY day
+    GROUP BY day_utc
 ),
 unmatched_s AS (
-    SELECT day, groupArray(5)(txt) AS sample
+    SELECT day_utc, groupArray(5)(txt) AS sample
     FROM (
-        SELECT toDate(fromUnixTimestamp64Milli(s.upbit_timestamp)) AS day,
+        SELECT toDate(fromUnixTimestamp64Milli(s.upbit_timestamp)) AS day_utc,
                concat(s.market, ' ', toString(s.prev), '→', toString(s.lvl), ' @', toString(fromUnixTimestamp64Milli(s.upbit_timestamp))) AS txt
         FROM sql_transitions AS s
         LEFT ANTI JOIN matched AS mt ON mt.market = s.market AND mt.s_ts = s.upbit_timestamp AND mt.prev = s.prev AND mt.lvl = s.lvl
     )
-    GROUP BY day
+    GROUP BY day_utc
 )
-SELECT p.day AS day,                       -- 별칭 필수: ClickHouse 는 p.day 를 열 이름으로 남겨 ORDER BY (day) 가 실패한다
+SELECT p.day_utc AS day_utc,                       -- 별칭 필수: ClickHouse 는 p.day_utc 를 열 이름으로 남겨 ORDER BY (day_utc) 가 실패한다
        p.sql_transitions AS sql_transitions,
        p.flink_transitions AS flink_transitions,
        coalesce(md.matched, 0) AS matched,
@@ -86,7 +86,7 @@ SELECT p.day AS day,                       -- 별칭 필수: ClickHouse 는 p.da
        toDateTime('{{ win_from }}') AS window_from,
        now() AS computed_at
 FROM per_day p
-LEFT JOIN matched_day md ON md.day = p.day
-LEFT JOIN unmatched_f uf ON uf.day = p.day
-LEFT JOIN unmatched_s us ON us.day = p.day
-ORDER BY p.day
+LEFT JOIN matched_day md ON md.day_utc = p.day_utc
+LEFT JOIN unmatched_f uf ON uf.day_utc = p.day_utc
+LEFT JOIN unmatched_s us ON us.day_utc = p.day_utc
+ORDER BY p.day_utc
