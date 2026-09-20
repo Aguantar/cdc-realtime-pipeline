@@ -17,6 +17,9 @@ declare -A TOPICS=(
   # Binance 체결 (docs/31 §3-2, 2026-09-20): 361 msg/s × ~200B ≈ 6GB/일 → 3일 시간 보존 + 바이트 상한. 6 파티션 = Flink 병렬 3 의 2배(키=symbol, 683 심볼 해시 분포)
   ["binance.trades.v1"]="partitions=6 compression.type=zstd retention.ms=259200000 retention.bytes=8589934592 min.insync.replicas=1"
   ["binance.dlq.trades"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
+  # Binance 호가 증분 + 주기 스냅샷 (docs/31 §3-3): 원문은 1일만(재구성 결과가 산출물), 키=symbol 로 스냅샷과 증분이 같은 파티션 순서
+  ["binance.depth.v1"]="partitions=6 compression.type=zstd retention.ms=86400000 retention.bytes=8589934592 min.insync.replicas=1"
+  ["binance.dlq.depth"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
 )
 for t in "${!TOPICS[@]}"; do
   spec="${TOPICS[$t]}"; parts=$(echo "$spec" | grep -oE "partitions=[0-9]+" | cut -d= -f2); cfg=$(echo "$spec" | sed 's/partitions=[0-9]* //' | tr ' ' ',')

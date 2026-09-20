@@ -25,6 +25,10 @@ SYMBOL_REFRESH_SEC = float(os.getenv('SYMBOL_REFRESH_SEC', '1800'))
 RECONNECT_BEFORE_SEC = float(os.getenv('RECONNECT_BEFORE_SEC', str(23 * 3600)))
 STATS_INTERVAL = int(os.getenv('STATS_INTERVAL_SEC', '30'))
 SYMBOLS_ENV = os.getenv('SYMBOLS', '')
+MODE = os.getenv('MODE', 'trade')                                   # trade | depth (docs/31 §3-3)
+DEPTH_TOP_N = int(os.getenv('DEPTH_TOP_N', '10'))                   # depth 모드: 24h 거래대금 상위 N 심볼
+DEPTH_SNAPSHOT_SEC = float(os.getenv('DEPTH_SNAPSHOT_SEC', '300'))  # REST 스냅샷 주기(limit 500 = weight 25 → 50심볼 5분 = 250/분, 한도 6,000/분)
+DEPTH_SNAPSHOT_LIMIT = int(os.getenv('DEPTH_SNAPSHOT_LIMIT', '500'))
 
 
 def fetch_symbols():
@@ -38,6 +42,23 @@ def fetch_symbols():
         return syms
     except Exception as e:
         log.warning(f"exchangeInfo failed: {e}"); return None
+
+
+def fetch_top_symbols(n):
+    """24h 거래대금 상위 n 개 USDT 현물 심볼 (depth 모드)."""
+    try:
+        with urllib.request.urlopen(f"{REST_URL}/api/v3/ticker/24hr", timeout=20) as r:
+            rows = json.load(r)
+        spot = set(fetch_symbols() or [])
+        top = sorted((x for x in rows if x['symbol'] in spot), key=lambda x: -float(x['quoteVolume']))[:n]
+        return [x['symbol'] for x in top]
+    except Exception as e:
+        log.warning(f"ticker/24hr failed: {e}"); return None
+
+
+def fetch_depth_snapshot(symbol, limit):
+    with urllib.request.urlopen(f"{REST_URL}/api/v3/depth?symbol={symbol}&limit={limit}", timeout=20) as r:
+        return json.load(r)
 
 
 def chunks(lst, n):
@@ -75,7 +96,8 @@ class Conn:
     async def run(self):
         backoff = 1
         while not self.stop.is_set():
-            url = WS_BASE + '/'.join(s.lower() + '@trade' for s in self.symbols)
+            stream = '@trade' if MODE == 'trade' else '@depth@100ms'
+            url = WS_BASE + '/'.join(s.lower() + stream for s in self.symbols)
             opened = time.time()
             try:
                 async with websockets.connect(url, ping_interval=None, max_size=2 ** 22) as ws:
@@ -88,10 +110,10 @@ class Conn:
                         recv_ms = int(time.time() * 1000)
                         try:
                             m = json.loads(raw); d = m['data']
-                            if d.get('e') != 'trade': continue
+                            if d.get('e') not in ('trade', 'depthUpdate'): continue
                             d['recv_ms'] = recv_ms
                             self.producer.produce(TOPIC, key=d['s'], value=json.dumps(d, separators=(',', ':')), on_delivery=self.on_delivery)
-                            self.stats.recv += 1; self.stats.lag_ms.append(recv_ms - int(d['T']))
+                            self.stats.recv += 1; self.stats.lag_ms.append(recv_ms - int(d.get('T') or d.get('E')))
                         except BufferError:
                             self.stats.buf_err += 1; self.producer.poll(0.1)
                         except (KeyError, ValueError, TypeError):
@@ -108,18 +130,34 @@ class Conn:
 async def main():
     stop = asyncio.Event(); loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM): loop.add_signal_handler(sig, stop.set)
-    symbols = [s for s in SYMBOLS_ENV.split(',') if s] or fetch_symbols() or []
+    symbols = [s for s in SYMBOLS_ENV.split(',') if s] or (fetch_top_symbols(DEPTH_TOP_N) if MODE == 'depth' else fetch_symbols()) or []
     if not symbols: log.error('no symbols'); return
     producer = make_producer(); stats = Stats()
+    last_snapshot = 0.0
+
+    async def emit_snapshots():
+        """depth 모드: 심볼마다 REST 스냅샷을 같은 키로 발행. Flink 가 lastUpdateId 로 증분과 정렬해 호가장을 (재)동기화한다."""
+        n = 0
+        for sym in list(symbols):
+            try:
+                snap = await asyncio.get_running_loop().run_in_executor(None, fetch_depth_snapshot, sym, DEPTH_SNAPSHOT_LIMIT)
+                snap.update({'e': 'snapshot', 's': sym, 'recv_ms': int(time.time() * 1000)})
+                producer.produce(TOPIC, key=sym, value=json.dumps(snap, separators=(',', ':')))
+                n += 1; producer.poll(0); await asyncio.sleep(0.25)
+            except Exception as e:
+                log.warning(f"snapshot failed {sym}: {e}")
+        log.info(f"depth snapshots emitted: {n}/{len(symbols)}")
     groups = chunks(symbols, STREAMS_PER_CONN); conns = [Conn(i, g, producer, stats, stop) for i, g in enumerate(groups)]
-    log.info(f"symbols={len(symbols)} conns={len(conns)} topic={TOPIC} bootstrap={KAFKA_BOOTSTRAP}")
+    log.info(f"mode={MODE} symbols={len(symbols)} conns={len(conns)} topic={TOPIC} bootstrap={KAFKA_BOOTSTRAP}" + (f" top={symbols}" if MODE == 'depth' else ''))
     tasks = [asyncio.create_task(c.run()) for c in conns]
     last_refresh = time.time()
     while not stop.is_set():
         await asyncio.sleep(1); producer.poll(0)
+        if MODE == 'depth' and time.time() - last_snapshot >= DEPTH_SNAPSHOT_SEC:
+            last_snapshot = time.time(); await asyncio.sleep(2); await emit_snapshots()   # 연결 뒤 2초: 증분이 먼저 흐르기 시작한 뒤 스냅샷(Binance 절차)
         if time.time() - stats.last >= STATS_INTERVAL: stats.report(producer, len(conns))
         if not SYMBOLS_ENV and time.time() - last_refresh >= SYMBOL_REFRESH_SEC:
-            last_refresh = time.time(); new = fetch_symbols()
+            last_refresh = time.time(); new = fetch_top_symbols(DEPTH_TOP_N) if MODE == 'depth' else fetch_symbols()
             if new and new != symbols:
                 added = sorted(set(new) - set(symbols)); removed = sorted(set(symbols) - set(new))
                 log.info(f"symbol list changed: +{added[:10]} -{removed[:10]} → resubscribe all conns")

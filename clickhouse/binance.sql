@@ -35,3 +35,9 @@ CREATE TABLE IF NOT EXISTS cdc_pipeline.binance_hourly_candles
 ENGINE = ReplacingMergeTree(fetched_at)
 ORDER BY (symbol, hour_utc)
 TTL hour_utc + INTERVAL 60 DAY;
+
+-- 2단계 호가장 재구성 산출물 (docs/31 §3-3): Upbit 호가와 같은 스키마 → 두 거래소 비교가 바로 된다. level=20 (재구성 호가장의 상위 20).
+CREATE TABLE IF NOT EXISTS cdc_pipeline.binance_orderbook_raw AS cdc_pipeline.orderbook_raw
+ENGINE = MergeTree PARTITION BY toDate(ts) ORDER BY (market, ts) TTL toDateTime(ts) + INTERVAL 7 DAY;
+CREATE TABLE IF NOT EXISTS cdc_pipeline.binance_orderbook_1m AS cdc_pipeline.orderbook_1m
+ENGINE = MergeTree PARTITION BY toYYYYMM(window_start) ORDER BY (market, window_start) TTL window_start + INTERVAL 365 DAY;
