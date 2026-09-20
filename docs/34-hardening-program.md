@@ -2,7 +2,7 @@
 
 > 사용자: "말한 모든 내용을 다 보강하자. 철저하게, '왜?'에 답이 되게. Float 도 DE 의 일 아닌가." → 맞다. 저장 층의 숫자 타입은 하류에 주는 계약이고, 정밀도는 원천(DECIMAL·문자열)에 있었는데 Flink 에서 double 로 버린 것이라 DE 책임.
 > 원칙: 항목마다 **왜 → 무엇을 → 어떻게 검증** 을 먼저 적고, 실행 뒤 결과를 §N-실행 에 붙인다. 순서는 위험(보안·정확성) → 계약(시간·차원·타입) → 정리.
-> 진행 상황(09-20 05:20 UTC): #1~#5 완료·커밋·푸시(§1-실행~§5-실행). 남은 것 #6~#10.
+> 진행 상황(09-20 05:30 UTC): #1~#6 완료·커밋·푸시(§1-실행~§6-실행). 남은 것 #7~#10.
 
 | # | 항목 | 왜 | 무엇을 | 검증 | 상태 |
 |---|---|---|---|---|---|
@@ -11,7 +11,7 @@
 | 3 | 하루 규약 | 마트=KST, dq=UTC 인데 열 이름이 둘 다 day | `day_kst`/`day_utc` 로 이름 통일, docs 규약 한 줄, Grafana·DAG 쿼리 동시 수정 | dbt build + 대시보드 12패널 조회 + DAG 테스트 | **완료** 04:15 |
 | 4 | 차원·사이드 | 코인 키가 거래소마다 다르고 문자열 치환으로 조인, 사이드 의미 반대 | `dim_coins`(coin_id·upbit_market·binance_symbol·base·quote·유효기간), `dim_venues`, 마트 `taker_side`. 환율은 Upbit KRW-USDT 마켓(우리 데이터) → `sig_kimchi_premium` | 조인 유일성 테스트, 김프 값이 공개 지표와 같은 부호·자릿수 | **완료** 04:20 |
 | 5 | Decimal | 금액·수량 Float64 는 회계·대조 등호에 못 쓴다. 원천은 정밀 | Flink 파서 BigDecimal → `setBigDecimal`, ClickHouse crypto_trades/binance_trades price·volume·amount Decimal(20,8)/(24,8) 로 무정지 재생성(EXCHANGE 런북), 마트 파생 타입 확인. 호가 배열은 Float64 유지(파생 지표) — 이유 명시 | 재생성 전후 sum(amount) 등호(Decimal 끼리), 프루닝·적재 지속 | **완료** 05:19 |
-| 6 | 재처리 런북 | 보존은 있는데 절차가 없다 | `scripts/ops/reprocess-day.sh`: 원장(MySQL, 7일) → ClickHouse `mysql()` 함수로 하루 파티션 재생성, Binance 는 Kafka(3일) 재소비 잡, 호가는 Parquet(120일) | 실제 하루를 다시 만들어 대조 100% | 대기 |
+| 6 | 재처리 런북 | 보존은 있는데 절차가 없다 | `scripts/ops/reprocess-day.sh`: 원장(MySQL, 7일) → ClickHouse `mysql()` 함수로 하루 파티션 재생성, Binance 는 Kafka(3일) 재소비 잡, 호가는 Parquet(120일) | 실제 하루를 다시 만들어 대조 100% | **완료** 05:30 |
 | 7 | 죽은 산출물 | anomaly_alerts(09-17 정지)·coin_metadata·trade_aggregations·mart_alert_rate·mart_volume_spike·load_test_* + Grafana 패널 + n8n 빈 폴링 | 인벤토리 표 → 소비자 없는 것 DROP, Grafana 패널 교체, n8n 워크플로 export 를 repo 에 | Grafana 전 패널 데이터 있음, 참조 0 확인 뒤 DROP | 대기 |
 | 8 | 테스트·계약 | 새 테이블 테스트 0, exposure·메트릭 정의·데이터 사전 없음 | schema.yml(unique·not_null·accepted_values), exposures.yml, `docs/metrics.md`, `docs/data-catalog.md`, 토픽 JSON 스키마 + 파서 테스트 | dbt test 통과, 스키마 테스트 | 대기 |
 | 9 | 마켓 상태 SCD | 폐지·정지를 유실로 오인 | market/all(is_details)+ticker 의 market_state·delisting_date 를 일 1회 스냅샷 → dim_markets SCD | 폐지 마켓이 커버리지 알럿에서 제외 | 대기 |
@@ -92,3 +92,32 @@
 ### 실수 2건
 - **돌고 있는 스크립트를 편집**해 복사 프로세스가 마지막 줄에서 죽었다(bash 는 파일을 나눠 읽는다). 09-18 에 기록한 실수의 반복 — 그때 남긴 규칙을 내가 안 지켰다. 다행히 루프는 끝난 뒤라 데이터는 온전했고 일 단위 전수로 확인했다.
 - 마트 재생성에서 `--vars '{mart_from: 2026-09-09}'` 처럼 **따옴표 없이** 날짜를 넘겨 YAML 이 `datetime.date` 로 파싱 → 모델의 문자열 슬라이싱이 터졌다. 12번 전부 실패했는데 grep 패턴이 좁아 못 봤고, 행수가 그대로인 것을 "성공"으로 읽었다. → 오늘 스스로 적은 규칙("출력이 비어 있으면 실행이 안 된 것부터 의심")을 적용해 잡음.
+
+## 6-실행 (09-20 05:20 ~ 05:30 UTC) — 재처리 런북
+### 설계 판단: 왜 "Kafka 재소비 + 같은 Flink 잡" 인가
+| 후보 | 왜 안 골랐나 |
+|---|---|
+| MySQL 원장에서 SQL 로 다시 만들기 | 파서의 **두 번째 구현**이 생긴다. 오늘 Decimal 전환 같은 변경이 한쪽에만 반영되면 조용히 드리프트한다. 그리고 MySQL 보존도 7일이라 범위가 더 넓지도 않다 |
+| ClickHouse 안에서 컬럼만 다시 계산 | 파싱·DLQ·계약 검증을 건너뛴다. "파이프라인이 만든 값"이 아니게 된다 |
+| **Kafka 재소비 (채택)** | 같은 잡·같은 파서 → 변환 로직이 하나. ReplacingMergeTree 가 키로 접고 재처리분(flink_ts 큼)이 이겨 **멱등**. 슬롯은 부하 실험용 lab TaskManager(2슬롯)를 잠깐 빌린다 |
+구현: `CdcPipelineJob` 에 `CDC_START_TS_MS`/`CDC_END_TS_MS` 추가 → `setBounded` 로 **잡이 스스로 끝난다**(배치처럼). 알럿은 끈다(켜면 같은 전이가 두 번 생겨 동등성 판정이 오염).
+
+### 발견: Kafka 구간은 "도착 시각", 우리가 원하는 창은 "체결 시각"
+1차 실행(09-19 10:00~11:00)에서 재삽입이 **29행 모자랐다**. 전부 10:59:59 에 체결됐는데 producer 배치가 경계를 넘겨 11:00:00.46 에 binlog 에 찍힌 행.
+→ Kafka 는 `[시작−여유, 끝+여유]`(기본 10분)로 읽고, **커버리지를 직접 잰다**: "체결 시각이 창 안인데 flink_ts 가 잡 시작보다 이른 행" = 재처리가 못 덮은 행. 2차 실행에서 **0**.
+백필처럼 몇 시간 늦게 도착한 행이 있으면 이 값이 0 이 아니고, `REPROCESS_MARGIN_MIN` 을 늘려 다시 돌리면 된다.
+
+### 실측 (1시간 창, 121,236행)
+| 항목 | 결과 |
+|---|---|
+| 소요 | 전체 31초 (잡 20초) |
+| 멱등 | FINAL 행수·금액합·수량합·고유키 **네 값 모두 재처리 전과 완전히 동일** |
+| 커버리지 | 재처리 못 받은 행 **0** |
+| raw | 121,236 → 343,218 (2회 재처리분). FINAL 은 그대로 — RMT 가 접는다. 남은 중복 221,982행은 백그라운드 머지가 정리(FINAL 로 읽는 규칙은 #2 에서 세움) |
+| 프로덕션 영향 | 별도 group.id·별도 TaskManager. 프로덕션 5잡 무영향. MV 는 분리했다가 재부착(지연 통계 이중 집계 방지) |
+
+### 보존 경계 (정직하게) — `reprocess-day.sh paths`
+- **Upbit 체결 7일 밖은 소스에서 되살릴 수 없다.** Kafka 7일 · MySQL 파티션 7일 · 거래소 REST trades/ticks 7일이 **전부 같은 경계**. 남는 건 ClickHouse 백업 복원(값 그대로)이나 일봉 수준 집계뿐.
+- 호가: raw 7일, **Parquet 120일**(09-20 검증: 09-17 아카이브 16,333,731행 = 당시 표와 정확히 동일), 파생 1분은 365일이라 지표는 복구 불필요.
+- Binance 체결: 토픽 3일. 시세라 원장 의무 없음.
+- 한계 한 줄: 재처리한 구간은 `flink_ts` 가 "다시 적재한 시각"이 된다 → 그 구간의 e2e 지연 지표는 원래 값이 아니다(대조·정합성 지표는 영향 없음).

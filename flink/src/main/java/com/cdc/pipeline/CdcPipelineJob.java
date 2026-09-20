@@ -63,14 +63,26 @@ public class CdcPipelineJob {
         String dlqTopic = System.getenv().getOrDefault("CDC_DLQ_TOPIC", "cdc.dlq.crypto_trades");
 
         // 3. Kafka Source 설정
-        KafkaSource<String> kafkaSource = KafkaSource.<String>builder()
+        //   2026-09-20 (docs/34 #6): 재처리 모드. CDC_START_TS_MS/CDC_END_TS_MS 를 주면 그 구간만 읽고 **잡이 스스로 끝난다**(setBounded).
+        //   왜 같은 잡인가: 재처리를 SQL 로 따로 짜면 파서와 **두 번째 구현**이 생겨 드리프트한다. 같은 코드로 다시 흘리면 변환 로직이 하나로 유지된다.
+        //   중복은 ClickHouse ReplacingMergeTree 가 (market, upbit_timestamp, sequential_id) 키로 정리하고 flink_ts 가 더 큰 재처리분이 이긴다 → 멱등.
+        long startTsMs = Long.parseLong(System.getenv().getOrDefault("CDC_START_TS_MS", "0"));
+        long endTsMs = Long.parseLong(System.getenv().getOrDefault("CDC_END_TS_MS", "0"));
+        org.apache.flink.connector.kafka.source.KafkaSourceBuilder<String> sourceBuilder = KafkaSource.<String>builder()
                 .setBootstrapServers(bootstrapServers)
                 .setTopics(topic)
                 .setGroupId(groupId)
-                // 2026-09-09: savepoint 없이 재시작해도 커밋된 그룹 오프셋부터 재개 (없으면 latest) — 재시작 유실 방지
-                .setStartingOffsets(OffsetsInitializer.committedOffsets(org.apache.kafka.clients.consumer.OffsetResetStrategy.LATEST))
-                .setValueOnlyDeserializer(new NullSafeStringSchema())
-                .build();
+                .setValueOnlyDeserializer(new NullSafeStringSchema());
+        if (startTsMs > 0) {
+            sourceBuilder.setStartingOffsets(OffsetsInitializer.timestamp(startTsMs));
+        } else {
+            // 2026-09-09: savepoint 없이 재시작해도 커밋된 그룹 오프셋부터 재개 (없으면 latest) — 재시작 유실 방지
+            sourceBuilder.setStartingOffsets(OffsetsInitializer.committedOffsets(org.apache.kafka.clients.consumer.OffsetResetStrategy.LATEST));
+        }
+        if (endTsMs > 0) {
+            sourceBuilder.setBounded(OffsetsInitializer.timestamp(endTsMs));
+        }
+        KafkaSource<String> kafkaSource = sourceBuilder.build();
 
         // 4. Source → CryptoTradeEvent 파싱 (실패는 사이드 아웃풋 → DLQ)
         // uid 를 명시하는 이유(2026-09-19): 자동 uid 는 체인 구조의 해시라 연산자를 하나만 빼도 바뀌어 savepoint 의 오프셋이 안 붙는다.
@@ -125,6 +137,7 @@ public class CdcPipelineJob {
         LOG.info("ClickHouse: {}", clickhouseUrl);
         LOG.info("Topic: {} / group: {} / table prefix: '{}' / alerts: {} / dlq: {}", topic, groupId, tablePrefix, alertsEnabled, dlqTopic);
         LOG.info("Parallelism: {}", env.getParallelism());
+        if (startTsMs > 0 || endTsMs > 0) LOG.info("REPROCESS MODE: start={} end={} (bounded={})", startTsMs, endTsMs, endTsMs > 0);
 
         env.execute(jobName);
     }
