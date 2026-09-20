@@ -1,0 +1,607 @@
+{
+  "updatedAt": "2026-03-11T00:59:45.412Z",
+  "createdAt": "2026-03-04T01:47:30.732Z",
+  "id": "TmvRPd7na03rXlzl",
+  "name": "Circuit Connect Daily Log Export v2",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -48,
+        144
+      ],
+      "id": "0cd003a0-e3c7-4a56-8f5e-4249f911f218",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "http://clickhouse:8123/?query=SELECT event_id, event_type, user_key, session_id, toString(toTimeZone(timestamp, 'Asia/Seoul')) as timestamp_kst, toString(toTimeZone(client_timestamp, 'Asia/Seoul')) as client_timestamp_kst, event_date, app_version, schema_version, seq, mode, stage_id, grid_size, time_limit_sec, clear_time_ms, taps, score, bonus_collected, universal_used, completion_pct, duration_ms, elapsed_ms, platform, action, item_type, reason, cost, remaining, from_screen, to_screen, extra FROM circuit_connect.game_events WHERE schema_version = '2' AND toDate(toTimeZone(timestamp, 'Asia/Seoul')) = toDate(now('Asia/Seoul')) - 1 ORDER BY timestamp ASC FORMAT JSON",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        144,
+        144
+      ],
+      "id": "27012e3e-5d79-4bdf-8f87-962fcb1f38fb",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst rows = response.data || [];\nconst SHEET_IDS = [\n  '1olVJevWWuNakgCXh_Po3Q6c1TgiDPyQo0qqU0a5n-nQ',\n  '1ewR0cU9ydhd8DOV8zba8Al66kiwt1lJsXhDTZK1x0zc',\n  '1c7hfq7FcEP9CP-ZvZhWV2j2it_0y0M4p0dwP_X41otQ'\n];\nconst MAX_ROWS = 900000;\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.currentSheet) staticData.currentSheet = 0;\nif (!staticData.rowCount) staticData.rowCount = 0;\nstaticData.rowCount += rows.length;\nif (staticData.rowCount >= MAX_ROWS) {\n  staticData.currentSheet = Math.min(staticData.currentSheet + 1, SHEET_IDS.length - 1);\n  staticData.rowCount = rows.length;\n}\nconst targetSheetId = SHEET_IDS[staticData.currentSheet];\nstaticData._lastMeta = {\n  sheetNumber: staticData.currentSheet + 1,\n  rowsInserted: rows.length,\n  totalRows: staticData.rowCount\n};\nreturn rows.map(row => ({\n  json: {\n    ...row,\n    _targetSheetId: targetSheetId\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        144
+      ],
+      "id": "ae030996-aa4b-42d5-9954-3a1cffb5810f",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json._targetSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "시트1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1olVJevWWuNakgCXh_Po3Q6c1TgiDPyQo0qqU0a5n-nQ/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_type",
+              "displayName": "event_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_key",
+              "displayName": "user_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "client_timestamp",
+              "displayName": "client_timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_date",
+              "displayName": "event_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "app_version",
+              "displayName": "app_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "schema_version",
+              "displayName": "schema_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "seq",
+              "displayName": "seq",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mode",
+              "displayName": "mode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "stage_id",
+              "displayName": "stage_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "grid_size",
+              "displayName": "grid_size",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "time_limit_sec",
+              "displayName": "time_limit_sec",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "clear_time_ms",
+              "displayName": "clear_time_ms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "taps",
+              "displayName": "taps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bonus_collected",
+              "displayName": "bonus_collected",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "universal_used",
+              "displayName": "universal_used",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "completion_pct",
+              "displayName": "completion_pct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duration_ms",
+              "displayName": "duration_ms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "elapsed_ms",
+              "displayName": "elapsed_ms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "platform",
+              "displayName": "platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "item_type",
+              "displayName": "item_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "cost",
+              "displayName": "cost",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "remaining",
+              "displayName": "remaining",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "from_screen",
+              "displayName": "from_screen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "to_screen",
+              "displayName": "to_screen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "extra",
+              "displayName": "extra",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "_targetSheetId",
+              "displayName": "_targetSheetId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "_sheetNumber",
+              "displayName": "_sheetNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "_rowsInserted",
+              "displayName": "_rowsInserted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "_totalRows",
+              "displayName": "_totalRows",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        560,
+        144
+      ],
+      "id": "983100df-b1f3-487e-a997-5821fbf8de82",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "dnNqA5ZRVeL1xIV0",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const meta = $getWorkflowStaticData('global')._lastMeta || {};\nconst now = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });\nconst yesterday = new Date(Date.now() - 86400000).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' });\nconst msg = `✅ Circuit Connect 일일 로그 적재 완료\\n📅 실행일: ${now}\\n📆 대상일: ${yesterday}\\n📊 ${meta.rowsInserted || 0}건 적재\\n📁 Sheet ${meta.sheetNumber || 1} (누적 약 ${meta.totalRows || 0}행)`;\nreturn [{ json: { message: msg } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        144
+      ],
+      "id": "933e5bbd-40ee-44c4-b549-56ba9162d23e",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "game",
+          "mode": "name"
+        },
+        "text": "={{ $json.message }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        976,
+        144
+      ],
+      "id": "48a994f5-c232-4573-bbda-f3bd8e8aa9f4",
+      "name": "Send a message",
+      "webhookId": "77de208a-b511-4838-9805-14859a6fa0aa",
+      "credentials": {
+        "slackApi": {
+          "id": "Eav7hNtBFmo7tgNy",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "aguantar7093@gmail.com",
+        "subject": "[Circuit Connect] 일일 로그 적재 완료",
+        "emailType": "text",
+        "message": "={{ $json.message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        336
+      ],
+      "id": "bc0c6c9d-79c8-42e6-9cd8-ff21e8ff3671",
+      "name": "Send a message1",
+      "webhookId": "3cbcd3c3-a75f-4bd5-b946-19b687e07857",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "EgqaNvIbHEqaVSCF",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    },
+    "global": {
+      "currentSheet": 0,
+      "rowCount": 15125,
+      "_lastMeta": {
+        "sheetNumber": 1,
+        "rowsInserted": 0,
+        "totalRows": 15125
+      }
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "75507264-bf56-4728-99f5-4ea53e2df26e",
+  "activeVersionId": "75507264-bf56-4728-99f5-4ea53e2df26e",
+  "versionCounter": 168,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-03-04T01:47:30.732Z",
+      "createdAt": "2026-03-04T01:47:30.732Z",
+      "role": "workflow:owner",
+      "workflowId": "TmvRPd7na03rXlzl",
+      "projectId": "0DlWzROCMlJ3ucmM",
+      "project": {
+        "updatedAt": "2026-02-02T12:16:06.626Z",
+        "createdAt": "2026-02-02T12:09:14.598Z",
+        "id": "0DlWzROCMlJ3ucmM",
+        "name": "JUNSEO LEE <aguantar7093@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "9a11d357-1d5c-4acb-8d0b-bdf8d967d173"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "ver3",
+    "description": ""
+  }
+}

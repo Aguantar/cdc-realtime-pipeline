@@ -49,17 +49,6 @@ sources:
           - name: inserted_at
             description: "ClickHouse 적재 시각"
 
-      - name: trade_aggregations
-        description: "Flink 5분 처리 시간 집계 — 2026-09-19 폐기(docs/29 창2), 이후 행 없음. 이력 조회 전용. 대체: mart_trade_orderbook_1m(체결 시각)"
-        columns:
-          - name: market
-            description: "마켓 코드"
-          - name: window_start
-            description: "윈도우 시작 시각"
-          - name: window_end
-            description: "윈도우 종료 시각"
-          - name: vwap
-            description: "거래량 가중 평균 가격"
 
       # 2층 원장 (docs/28 B, 2026-09-19): MySQL 거울/보관소 → Debezium(ledger.*) → Kafka 엔진 MV → RMT(version, is_deleted). 조회는 FINAL.
       - name: virtual_orders
@@ -78,14 +67,7 @@ sources:
         description: "Binance USDT 전 심볼 체결(docs/31). 시세이지 원장 아님. RMT(recv_ms) — 재연결 중복은 FINAL 로. TTL 30일"
 
       - name: anomaly_alerts
-        description: "Flink 이상 탐지 알림 (4가지 룰: LARGE_TRADE, PRICE_SPIKE, VOLUME_SURGE, RAPID_TRADES)"
-        columns:
-          - name: alert_type
-            description: "알림 유형 (LARGE_TRADE | PRICE_SPIKE | VOLUME_SURGE | RAPID_TRADES)"
-          - name: market
-            description: "마켓 코드"
-          - name: detected_at
-            description: "탐지 시각"
+        description: "v1 이상탐지 산출물 — 2026-09-17 규칙 삭제로 **적재 중단**. 이력 전용(TTL 365일, 2027-09 자동 소멸). 현재 규칙 산출물은 market_alerts"
 
   - name: reference
     description: "외부 참조값(업비트 REST·경보 이력). Airflow/cron 이 적재, dbt 는 읽기만."

@@ -1,0 +1,300 @@
+{
+  "updatedAt": "2026-02-12T00:42:13.294Z",
+  "createdAt": "2026-02-09T02:21:02.407Z",
+  "id": "6VG7QC4EbpZoeoFEA4EJm",
+  "name": "FDS SLA Monitor",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "9267fdd8-47fe-4b96-b1c9-b48356999a36",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    COUNT(*) as total_count,\n    SUM(CASE WHEN is_fraud THEN 1 ELSE 0 END) as fraud_count,\n    ROUND(SUM(CASE WHEN is_fraud THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100, 2) as fraud_rate,\n    COALESCE(SUM(CASE WHEN is_fraud THEN amount ELSE 0 END), 0) as fraud_amount\nFROM fds.transactions\nWHERE processed_at >= NOW() - INTERVAL '1 minute'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        0
+      ],
+      "id": "213e1047-8cb6-4d73-aedd-bb9334f5feca",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "O7ffNrRISfJdZU7m",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "44781a86-ace8-4eda-b83f-503498cf0bba",
+              "leftValue": "={{ $json.total_count }}",
+              "rightValue": 1000,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        432,
+        -128
+      ],
+      "id": "40c8ce4f-4c57-4f71-9765-51ba995313f3",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "general",
+          "mode": "name"
+        },
+        "text": "=🚨 FDS Pipeline SLA 위반  처리량: {{ $json.total_count }}건/분 (최소 1,000건) 이상거래: {{ $json.fraud_count }}건 시간: {{ $now.format('yyyy-MM-dd HH:mm:ss') }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        640,
+        -224
+      ],
+      "id": "5b1004d2-9f92-4f46-aa55-894935d84857",
+      "name": "Send a message",
+      "webhookId": "10bbf964-d18b-46ed-8b1a-91e62b22ef5d",
+      "credentials": {
+        "slackApi": {
+          "id": "Eav7hNtBFmo7tgNy",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "aguantar7093@gmail.com",
+        "subject": "🚨 FDS Pipeline SLA 위반 알림",
+        "message": "=FDS Pipeline SLA 위반이 감지되었습니다.  - 처리량: {{ $json.total_count }}건/분 (최소 1,000건) - 이상거래: {{ $json.fraud_count }}건 - 시간: {{ $now.format('yyyy-MM-dd HH:mm:ss') }}  확인이 필요합니다.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        784,
+        -80
+      ],
+      "id": "bd86f34f-df1a-428b-a138-06733913ff1e",
+      "name": "Send a message1",
+      "webhookId": "4ea7b3da-e925-421d-86a3-1735d2d90167",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "EgqaNvIbHEqaVSCF",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3df1921a-261f-4e35-8246-c062906e17d5",
+              "leftValue": "={{ $json.fraud_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        432,
+        144
+      ],
+      "id": "ef505265-10a2-44a1-80c1-9cb98a9eed05",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "general",
+          "mode": "name"
+        },
+        "text": "=🚨 이상거래 탐지!  최근 1분간: {{ $json.fraud_count }}건 탐지 금액: {{ $json.fraud_amount.toLocaleString() }}원 탐지율: {{ $json.fraud_rate }}% 시간: {{ $now.format('yyyy-MM-dd HH:mm:ss') }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        688,
+        128
+      ],
+      "id": "bb3bfe5a-b2b2-45f8-9b21-4b031a1c44c5",
+      "name": "Send a message2",
+      "webhookId": "74b3eecb-14fb-45d7-a940-6cdabdf7cb14",
+      "credentials": {
+        "slackApi": {
+          "id": "Eav7hNtBFmo7tgNy",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message1": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Send a message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "e5746422-1d1c-4897-a461-498d87c7c1c1",
+  "activeVersionId": null,
+  "versionCounter": 59,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-02-09T02:21:02.407Z",
+      "createdAt": "2026-02-09T02:21:02.407Z",
+      "role": "workflow:owner",
+      "workflowId": "6VG7QC4EbpZoeoFEA4EJm",
+      "projectId": "0DlWzROCMlJ3ucmM",
+      "project": {
+        "updatedAt": "2026-02-02T12:16:06.626Z",
+        "createdAt": "2026-02-02T12:09:14.598Z",
+        "id": "0DlWzROCMlJ3ucmM",
+        "name": "JUNSEO LEE <aguantar7093@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "9a11d357-1d5c-4acb-8d0b-bdf8d967d173"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

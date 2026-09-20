@@ -790,7 +790,7 @@
             "uid": "PDEE91DDB90597936"
           },
           "queryType": "sql",
-          "rawSql": "SELECT detected_at as time, concat(alert_type, ' | ', market, ': ', message) as text FROM cdc_pipeline.anomaly_alerts WHERE $__timeFilter(detected_at) ORDER BY detected_at",
+          "rawSql": "SELECT detected_at as time, concat(alert_type, ' | ', market, ': ', toString(prev_level), '->', toString(level), ' (', toString(round(value, 1)), '%)') as text FROM cdc_pipeline.market_alerts WHERE $__timeFilter(detected_at) ORDER BY detected_at",
           "refId": "Anno"
         },
         "filter": {

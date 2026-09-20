@@ -1,0 +1,113 @@
+{
+  "updatedAt": "2026-02-03T05:59:48.102Z",
+  "createdAt": "2026-02-03T05:44:08.493Z",
+  "id": "CrPtEwFAIYXrnXPPc_b40",
+  "name": "My workflow 2",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 14
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "396ac9e2-cb10-4333-ac8d-38188ba2f955",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "command": "python3 /home/calme/blood_crawler/main.py",
+        "cwd": "/home/calme/blood_crawler"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "9dd89da4-f39c-48c2-8e19-308ba733c6e1",
+      "name": "Execute a command",
+      "credentials": {
+        "sshPassword": {
+          "id": "ZQjbRQCcFbMm0qK6",
+          "name": "SSH Password account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "c6d2c384-9495-416f-8bfd-95a55b107178",
+  "activeVersionId": "c6d2c384-9495-416f-8bfd-95a55b107178",
+  "versionCounter": 57,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-02-03T05:44:08.493Z",
+      "createdAt": "2026-02-03T05:44:08.493Z",
+      "role": "workflow:owner",
+      "workflowId": "CrPtEwFAIYXrnXPPc_b40",
+      "projectId": "0DlWzROCMlJ3ucmM",
+      "project": {
+        "updatedAt": "2026-02-02T12:16:06.626Z",
+        "createdAt": "2026-02-02T12:09:14.598Z",
+        "id": "0DlWzROCMlJ3ucmM",
+        "name": "JUNSEO LEE <aguantar7093@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "9a11d357-1d5c-4acb-8d0b-bdf8d967d173"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 1",
+    "description": "헌혈크롤러1번"
+  }
+}

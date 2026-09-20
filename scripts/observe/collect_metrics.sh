@@ -25,7 +25,10 @@ TRADE=$(chq "SELECT count(), uniqExact(market), round(quantile(0.5)(toUnixTimest
 # 호가: 최근 5분 행수·마켓수·recv lag p50/p95·e2e p50/p95/max
 OB=$(chq "SELECT count(), uniqExact(market), round(quantile(0.5)(toUnixTimestamp64Milli(recv_ts)-toUnixTimestamp64Milli(ts))), round(quantile(0.95)(toUnixTimestamp64Milli(recv_ts)-toUnixTimestamp64Milli(ts))), round(quantile(0.5)(toUnixTimestamp64Milli(flink_ts)-toUnixTimestamp64Milli(ts))), round(quantile(0.95)(toUnixTimestamp64Milli(flink_ts)-toUnixTimestamp64Milli(ts))), round(max(toUnixTimestamp64Milli(flink_ts)-toUnixTimestamp64Milli(ts))) FROM cdc_pipeline.orderbook_raw WHERE ts >= now() - INTERVAL 5 MINUTE FORMAT TSV")
 OB1M=$(chq "SELECT count(), uniqExact(market) FROM cdc_pipeline.orderbook_1m WHERE window_start >= now() - INTERVAL 5 MINUTE FORMAT TSV")
-ALERTS=$(chq "SELECT count(), countIf(alert_type='LARGE_TRADE'), countIf(alert_type='PRICE_SPIKE'), countIf(alert_type='VOLUME_SURGE') FROM cdc_pipeline.anomaly_alerts WHERE detected_at >= now() - INTERVAL 5 MINUTE FORMAT TSV")
+# 2026-09-20 (docs/34 #7): v1 규칙 폐기(09-17) 후 이 네 열은 계속 0 이었다 → v2 등급 전이로 교체.
+# **열 의미 변경**: alerts5m = 전이 수, alerts_large = 승급(level>prev), alerts_spike = 강등(level<prev), alerts_surge = 미사용(0).
+# 09-20 이전 CSV 행의 같은 열은 v1 규칙 건수다(daily_digest 의 H10 임계는 "알림이 너무 많다" 라는 뜻이 같아 그대로 쓴다).
+ALERTS=$(chq "SELECT count(), countIf(level > prev_level), countIf(level < prev_level), 0 FROM cdc_pipeline.market_alerts WHERE detected_at >= now() - INTERVAL 5 MINUTE FORMAT TSV")
 # system.* 은 readonly_user 권한 밖 → 컨테이너 내부 clickhouse-client(조회 전용)로
 CHMEM=$(docker exec cdc-clickhouse clickhouse-client --max_threads=1 -q "SELECT value FROM system.metrics WHERE metric='MemoryTracking'" 2>/dev/null | tr -d '\n')
 CHPARTS=$(docker exec cdc-clickhouse clickhouse-client --max_threads=1 -q "SELECT countIf(table='crypto_trades'), countIf(table='orderbook_raw'), sum(bytes_on_disk) FROM system.parts WHERE active AND database='cdc_pipeline'" 2>/dev/null | tr '\t' ',' | tr -d '\n')

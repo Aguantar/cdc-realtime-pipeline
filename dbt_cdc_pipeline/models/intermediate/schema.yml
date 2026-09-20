@@ -3,7 +3,7 @@ version: 2
 models:
   - name: int_ohlcv_1h
     description: >
-      1시간봉 OHLCV 집계. Flink 5분 윈도우(trade_aggregations)와 역할 분리 —
+      1시간봉 OHLCV 집계(이벤트 시각). Flink 5분 처리 시간 집계는 2026-09-19 폐기·표는 09-20 삭제(docs/29 §7) —
       Flink은 실시간 스트리밍 집계, DBT는 raw 틱 기반 정확한 배치 OHLCV.
     columns:
       - name: market

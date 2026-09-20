@@ -1,0 +1,225 @@
+{
+  "updatedAt": "2026-03-18T02:26:44.561Z",
+  "createdAt": "2026-03-18T02:18:05.954Z",
+  "id": "FKnWTeZ0UbmuuqeC",
+  "name": "KISCO홀딩스 일일 경영 보고서 (실동작 v2)",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b129491f-46db-4ca3-ad7c-08ce4b2f66cc",
+      "name": "매일 새벽 4시 실행",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -576,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Step 1+2: 모의 Tableau 데이터 생성\n// ============================================================\n\nconst now = new Date();\nconst yesterday = new Date(now.getTime() - 86400000);\nconst reportDate = yesterday.toISOString().slice(0, 10);\n\nfunction rand(min, max) { return Math.round((Math.random() * (max - min) + min) * 10) / 10; }\nfunction randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }\n\nconst subsidiaries = [\n  {\n    name: 'A철강(주)',\n    segment: '철근 / 단조 / 강관',\n    revenue: rand(720, 920),\n    prevRevenue: rand(750, 900),\n    orders: rand(780, 980),\n    prevOrders: rand(800, 960),\n    costRatio: rand(0.85, 0.91),\n    prevCostRatio: rand(0.84, 0.90),\n    scrapPrice: randInt(375, 395),\n    prevWeekScrap: randInt(370, 390),\n    rebarPrice: randInt(735, 770),\n    production: randInt(2400, 2900),\n    shipment: randInt(2100, 2700),\n    inventory: randInt(7500, 11000),\n    operatingRate: rand(55, 75),\n  },\n  {\n    name: 'B철강(주)',\n    segment: '철근 / 철강',\n    revenue: rand(350, 480),\n    prevRevenue: rand(370, 460),\n    orders: rand(380, 500),\n    prevOrders: rand(400, 490),\n    costRatio: rand(0.86, 0.92),\n    prevCostRatio: rand(0.85, 0.91),\n    scrapPrice: randInt(373, 392),\n    prevWeekScrap: randInt(368, 388),\n    rebarPrice: randInt(730, 760),\n    production: randInt(1200, 1650),\n    shipment: randInt(1050, 1500),\n    inventory: randInt(4000, 6500),\n    operatingRate: rand(48, 70),\n  },\n  {\n    name: 'C산업(주)',\n    segment: '와이어로프 / 경강선',\n    revenue: rand(155, 210),\n    prevRevenue: rand(160, 200),\n    orders: rand(170, 220),\n    prevOrders: rand(175, 215),\n    costRatio: rand(0.79, 0.86),\n    prevCostRatio: rand(0.78, 0.85),\n    scrapPrice: randInt(370, 390),\n    prevWeekScrap: randInt(365, 385),\n    rebarPrice: null,\n    production: randInt(480, 650),\n    shipment: randInt(420, 600),\n    inventory: randInt(1800, 2800),\n    operatingRate: rand(50, 72),\n  },\n  {\n    name: 'D특수형강(주)',\n    segment: '형강 / 특수강',\n    revenue: rand(270, 360),\n    prevRevenue: rand(280, 350),\n    orders: rand(300, 380),\n    prevOrders: rand(310, 370),\n    costRatio: rand(0.82, 0.88),\n    prevCostRatio: rand(0.81, 0.87),\n    scrapPrice: randInt(388, 408),\n    prevWeekScrap: randInt(383, 403),\n    rebarPrice: null,\n    production: randInt(900, 1200),\n    shipment: randInt(800, 1100),\n    inventory: randInt(3000, 4500),\n    operatingRate: rand(52, 74),\n  },\n];\n\nconst groupRevenue = subsidiaries.reduce((s, x) => s + x.revenue, 0);\nconst groupPrevRevenue = subsidiaries.reduce((s, x) => s + x.prevRevenue, 0);\nconst groupOrders = subsidiaries.reduce((s, x) => s + x.orders, 0);\nconst groupAvgCost = subsidiaries.reduce((s, x) => s + x.costRatio, 0) / 4;\nconst groupAvgOp = subsidiaries.reduce((s, x) => s + x.operatingRate, 0) / 4;\nconst avgScrap = Math.round(subsidiaries.reduce((s, x) => s + x.scrapPrice, 0) / 4);\nconst avgPsp = Math.round(subsidiaries.reduce((s, x) => s + x.prevWeekScrap, 0) / 4);\nconst rebarSubs = subsidiaries.filter(x => x.rebarPrice !== null);\nconst avgRebar = Math.round(rebarSubs.reduce((s, x) => s + x.rebarPrice, 0) / rebarSubs.length);\nconst spread = avgRebar - avgScrap;\nconst prevSpread = avgRebar - avgPsp;\n\nreturn [{\n  json: {\n    reportDate,\n    generatedAt: now.toISOString().slice(0, 16).replace('T', ' '),\n    subsidiaries,\n    group: {\n      revenue: Math.round(groupRevenue * 10) / 10,\n      prevRevenue: Math.round(groupPrevRevenue * 10) / 10,\n      orders: Math.round(groupOrders * 10) / 10,\n      avgCostRatio: Math.round(groupAvgCost * 10000) / 10000,\n      avgOperatingRate: Math.round(groupAvgOp * 10) / 10,\n      avgScrapPrice: avgScrap,\n      prevWeekAvgScrap: avgPsp,\n      avgRebarPrice: avgRebar,\n      spread,\n      prevSpread,\n    }\n  }\n}];"
+      },
+      "id": "2b600f63-c073-4241-a7a0-019fca15af9b",
+      "name": "Tableau 데이터 생성 (모의)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        656
+      ],
+      "notesInFlow": true,
+      "notes": "실제: HTTP Request -> Tableau REST API\n데모: 동일 구조 모의 데이터"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Step 3: 보고서 생성 (Slack + HTML Email)\n// ============================================================\n\nconst data = $input.all()[0].json;\nconst { reportDate, generatedAt, subsidiaries, group } = data;\n\nfunction pct(a, b) { return ((a - b) / b * 100).toFixed(1); }\nfunction arr(v) { const n = parseFloat(v); return n > 0 ? '▲' : n < 0 ? '▼' : '-'; }\nfunction sgn(v) { const n = parseFloat(v); return n > 0 ? '+' + v : '' + v; }\nfunction colorVal(v) { const n = parseFloat(v); return n > 0 ? '#e53e3e' : n < 0 ? '#3182ce' : '#333'; }\nfunction colorBg(v) { const n = parseFloat(v); return n > 0 ? '#fff5f5' : n < 0 ? '#ebf8ff' : '#fff'; }\n\n// 이상 감지\nconst alerts = [];\nsubsidiaries.forEach(sub => {\n  const rc = pct(sub.revenue, sub.prevRevenue);\n  const sc = sub.scrapPrice - sub.prevWeekScrap;\n  if (sub.costRatio > 0.90) alerts.push({ level: '경고', sub: sub.name, msg: '원가율 ' + (sub.costRatio * 100).toFixed(1) + '% (90% 초과)' });\n  if (sub.operatingRate < 55) alerts.push({ level: '주의', sub: sub.name, msg: '가동률 ' + sub.operatingRate + '% (55% 미만)' });\n  if (Math.abs(sc) >= 10) alerts.push({ level: '주의', sub: sub.name, msg: '스크랩 단가 전주 대비 ' + (sc > 0 ? '+' : '') + sc + '원/kg 급변동' });\n  if (parseFloat(rc) < -10) alerts.push({ level: '경고', sub: sub.name, msg: '매출 전일 대비 ' + rc + '% 급감' });\n});\nif (group.spread < 350) alerts.push({ level: '긴급', sub: '그룹 전체', msg: '스프레드 ' + group.spread + '천원/톤 (350 미만, 마진 압박)' });\n\nconst grpRevChg = pct(group.revenue, group.prevRevenue);\nconst grpScrapChg = group.avgScrapPrice - group.prevWeekAvgScrap;\nconst spreadChg = group.spread - group.prevSpread;\n\n// ============================================================\n// Slack 보고서 (마크다운)\n// ============================================================\nlet slack = '';\nslack += '*KISCO홀딩스 일일 경영 보고서*\\n';\nslack += '`' + reportDate + '` 전일 마감 실적  |  자동 생성 ' + generatedAt + '\\n\\n';\n\nslack += '*1. 그룹 종합*\\n';\nslack += '  합산 매출: *' + group.revenue.toLocaleString() + '백만원* ' + arr(grpRevChg) + ' ' + sgn(grpRevChg) + '% (전일 대비)\\n';\nslack += '  합산 수주: ' + group.orders.toLocaleString() + '백만원\\n';\nslack += '  평균 원가율: ' + (group.avgCostRatio * 100).toFixed(1) + '% | 가동률: ' + group.avgOperatingRate + '%\\n';\nslack += '  스크랩: ' + group.avgScrapPrice + '원/kg ' + arr(grpScrapChg) + (grpScrapChg > 0 ? '+' : '') + grpScrapChg + '원 | 철근: ' + group.avgRebarPrice + '천원/톤\\n';\nslack += '  스프레드: *' + group.spread + '천원/톤* ' + arr(spreadChg) + (spreadChg > 0 ? '+' : '') + spreadChg + ' (전주 대비)\\n\\n';\n\nslack += '*2. 계열사별*\\n';\nsubsidiaries.forEach((sub, i) => {\n  const rc = pct(sub.revenue, sub.prevRevenue);\n  const sc = sub.scrapPrice - sub.prevWeekScrap;\n  slack += '  *' + sub.name + '* (' + sub.segment + ')\\n';\n  slack += '    매출 ' + sub.revenue + '백만원 ' + arr(rc) + sgn(rc) + '% | 원가율 ' + (sub.costRatio * 100).toFixed(1) + '% | 가동률 ' + sub.operatingRate + '%\\n';\n  slack += '    스크랩 ' + sub.scrapPrice + '원/kg ' + arr(sc) + (sc > 0 ? '+' : '') + sc + '원';\n  if (sub.rebarPrice) slack += ' | 철근 ' + sub.rebarPrice + '천원/톤';\n  slack += '\\n    생산 ' + sub.production + '톤 / 출하 ' + sub.shipment + '톤 / 재고 ' + sub.inventory + '톤\\n\\n';\n});\n\nif (alerts.length > 0) {\n  slack += '*3. 이상 감지 (' + alerts.length + '건)*\\n';\n  alerts.forEach(a => {\n    const ic = a.level === '긴급' ? '🚨' : a.level === '경고' ? '⚠️' : '📌';\n    slack += '  ' + ic + ' [' + a.level + '] *' + a.sub + '* ' + a.msg + '\\n';\n  });\n} else {\n  slack += '*3. 이상 감지*\\n  ✅ 금일 이상 감지 항목 없음\\n';\n}\nslack += '\\n_Tableau 대시보드 기반 자동 생성 | 데이터브릿지 보안솔루션_';\n\n// ============================================================\n// HTML Email 보고서\n// ============================================================\nlet html = '';\nhtml += '<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body style=\"margin:0;padding:0;font-family:Apple SD Gothic Neo,Malgun Gothic,sans-serif;background:#f4f5f7;\">';\nhtml += '<div style=\"max-width:680px;margin:20px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);\">';\n\n// 헤더\nhtml += '<div style=\"background:#1a1d2e;padding:28px 32px;\">';\nhtml += '<h1 style=\"color:#00b4a0;margin:0 0 4px 0;font-size:22px;\">KISCO홀딩스 일일 경영 보고서</h1>';\nhtml += '<p style=\"color:#aaa;margin:0;font-size:13px;\">기준일: <strong style=\"color:#fff;\">' + reportDate + '</strong> (전일 마감 실적)&nbsp;&nbsp;|&nbsp;&nbsp;자동 생성: ' + generatedAt + '</p>';\nhtml += '</div>';\n\n// 그룹 종합\nhtml += '<div style=\"padding:24px 32px 16px;\">';\nhtml += '<h2 style=\"color:#1a1d2e;font-size:16px;margin:0 0 16px 0;border-bottom:2px solid #00b4a0;padding-bottom:8px;\">1. 그룹 종합 요약</h2>';\nhtml += '<table style=\"width:100%;border-collapse:collapse;font-size:14px;\">';\n\nconst grpRows = [\n  ['합산 매출', group.revenue.toLocaleString() + '백만원', grpRevChg + '% (전일 대비)', grpRevChg],\n  ['합산 수주', group.orders.toLocaleString() + '백만원', '', 0],\n  ['평균 원가율', (group.avgCostRatio * 100).toFixed(1) + '%', '', 0],\n  ['평균 가동률', group.avgOperatingRate + '%', '', 0],\n  ['스크랩 평균', group.avgScrapPrice + '원/kg', (grpScrapChg > 0 ? '+' : '') + grpScrapChg + '원 (전주 대비)', grpScrapChg],\n  ['철근 평균', group.avgRebarPrice + '천원/톤', '', 0],\n  ['스프레드', group.spread + '천원/톤', (spreadChg > 0 ? '+' : '') + spreadChg + ' (전주 대비)', spreadChg],\n];\n\ngrpRows.forEach(([label, value, change, raw]) => {\n  html += '<tr>';\n  html += '<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#666;width:130px;\">' + label + '</td>';\n  html += '<td style=\"padding:8px 12px;border-bottom:1px solid #eee;font-weight:bold;color:#1a1d2e;\">' + value + '</td>';\n  if (change) {\n    html += '<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:' + colorVal(raw) + ';font-size:13px;\">' + arr(raw) + ' ' + change + '</td>';\n  } else {\n    html += '<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\"></td>';\n  }\n  html += '</tr>';\n});\nhtml += '</table></div>';\n\n// 계열사별 상세\nhtml += '<div style=\"padding:8px 32px 16px;\">';\nhtml += '<h2 style=\"color:#1a1d2e;font-size:16px;margin:0 0 16px 0;border-bottom:2px solid #00b4a0;padding-bottom:8px;\">2. 계열사별 상세</h2>';\n\nsubsidiaries.forEach((sub, i) => {\n  const rc = pct(sub.revenue, sub.prevRevenue);\n  const oc = pct(sub.orders, sub.prevOrders);\n  const costDiff = ((sub.costRatio - sub.prevCostRatio) * 100).toFixed(2);\n  const sc = sub.scrapPrice - sub.prevWeekScrap;\n\n  html += '<div style=\"margin-bottom:20px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;\">';\n  html += '<div style=\"background:#f7fafc;padding:10px 16px;border-bottom:1px solid #e2e8f0;\">';\n  html += '<strong style=\"color:#1a1d2e;font-size:14px;\">' + (i+1) + '. ' + sub.name + '</strong>';\n  html += '<span style=\"color:#888;font-size:12px;margin-left:8px;\">(' + sub.segment + ')</span>';\n  html += '</div>';\n  \n  html += '<table style=\"width:100%;border-collapse:collapse;font-size:13px;\">';\n  \n  // 매출\n  html += '<tr><td style=\"padding:7px 16px;color:#666;width:90px;border-bottom:1px solid #f0f0f0;\">매출</td>';\n  html += '<td style=\"padding:7px 16px;font-weight:bold;border-bottom:1px solid #f0f0f0;\">' + sub.revenue + '백만원</td>';\n  html += '<td style=\"padding:7px 16px;color:' + colorVal(rc) + ';border-bottom:1px solid #f0f0f0;font-size:12px;\">' + arr(rc) + ' ' + sgn(rc) + '% (전일 대비)</td></tr>';\n  \n  // 수주\n  html += '<tr><td style=\"padding:7px 16px;color:#666;border-bottom:1px solid #f0f0f0;\">수주</td>';\n  html += '<td style=\"padding:7px 16px;font-weight:bold;border-bottom:1px solid #f0f0f0;\">' + sub.orders + '백만원</td>';\n  html += '<td style=\"padding:7px 16px;color:' + colorVal(oc) + ';border-bottom:1px solid #f0f0f0;font-size:12px;\">' + arr(oc) + ' ' + sgn(oc) + '%</td></tr>';\n  \n  // 원가율 / 가동률\n  html += '<tr><td style=\"padding:7px 16px;color:#666;border-bottom:1px solid #f0f0f0;\">원가율</td>';\n  const crPct = (sub.costRatio * 100).toFixed(1);\n  const crColor = sub.costRatio > 0.90 ? '#e53e3e' : '#1a1d2e';\n  html += '<td style=\"padding:7px 16px;font-weight:bold;color:' + crColor + ';border-bottom:1px solid #f0f0f0;\">' + crPct + '%</td>';\n  html += '<td style=\"padding:7px 16px;color:' + colorVal(costDiff) + ';border-bottom:1px solid #f0f0f0;font-size:12px;\">' + arr(costDiff) + ' ' + (costDiff > 0 ? '+' : '') + costDiff + '%p</td></tr>';\n  \n  html += '<tr><td style=\"padding:7px 16px;color:#666;border-bottom:1px solid #f0f0f0;\">가동률</td>';\n  const opColor = sub.operatingRate < 55 ? '#e53e3e' : '#1a1d2e';\n  html += '<td style=\"padding:7px 16px;font-weight:bold;color:' + opColor + ';border-bottom:1px solid #f0f0f0;\">' + sub.operatingRate + '%</td>';\n  html += '<td style=\"padding:7px 16px;border-bottom:1px solid #f0f0f0;\"></td></tr>';\n  \n  // 스크랩\n  html += '<tr><td style=\"padding:7px 16px;color:#666;border-bottom:1px solid #f0f0f0;\">스크랩</td>';\n  html += '<td style=\"padding:7px 16px;font-weight:bold;border-bottom:1px solid #f0f0f0;\">' + sub.scrapPrice + '원/kg</td>';\n  html += '<td style=\"padding:7px 16px;color:' + colorVal(sc) + ';border-bottom:1px solid #f0f0f0;font-size:12px;\">' + arr(sc) + ' ' + (sc > 0 ? '+' : '') + sc + '원 (전주 대비)</td></tr>';\n  \n  // 철근가 (해당시)\n  if (sub.rebarPrice) {\n    html += '<tr><td style=\"padding:7px 16px;color:#666;border-bottom:1px solid #f0f0f0;\">철근가</td>';\n    html += '<td style=\"padding:7px 16px;font-weight:bold;border-bottom:1px solid #f0f0f0;\">' + sub.rebarPrice + '천원/톤</td>';\n    html += '<td style=\"padding:7px 16px;border-bottom:1px solid #f0f0f0;\"></td></tr>';\n  }\n  \n  // 생산/출하/재고\n  html += '<tr><td style=\"padding:7px 16px;color:#666;\">생산/출하</td>';\n  html += '<td colspan=\"2\" style=\"padding:7px 16px;\">' + sub.production.toLocaleString() + '톤 / ' + sub.shipment.toLocaleString() + '톤&nbsp;&nbsp;&nbsp;<span style=\"color:#888;\">재고 ' + sub.inventory.toLocaleString() + '톤</span></td></tr>';\n  \n  html += '</table></div>';\n});\nhtml += '</div>';\n\n// 이상 감지\nhtml += '<div style=\"padding:8px 32px 24px;\">';\nhtml += '<h2 style=\"color:#1a1d2e;font-size:16px;margin:0 0 16px 0;border-bottom:2px solid #00b4a0;padding-bottom:8px;\">3. 이상 감지';\nif (alerts.length > 0) html += ' <span style=\"background:#e53e3e;color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;margin-left:8px;\">' + alerts.length + '건</span>';\nhtml += '</h2>';\n\nif (alerts.length > 0) {\n  alerts.forEach(a => {\n    const bg = a.level === '긴급' ? '#fff5f5' : a.level === '경고' ? '#fffbeb' : '#f0f9ff';\n    const border = a.level === '긴급' ? '#e53e3e' : a.level === '경고' ? '#d69e2e' : '#3182ce';\n    const icon = a.level === '긴급' ? '🚨' : a.level === '경고' ? '⚠️' : '📌';\n    html += '<div style=\"background:' + bg + ';border-left:4px solid ' + border + ';padding:10px 16px;margin-bottom:8px;border-radius:0 4px 4px 0;font-size:13px;\">';\n    html += icon + '&nbsp;&nbsp;<strong>[' + a.level + '] ' + a.sub + '</strong>&nbsp;&nbsp;' + a.msg;\n    html += '</div>';\n  });\n} else {\n  html += '<div style=\"background:#f0fff4;border-left:4px solid #38a169;padding:10px 16px;border-radius:0 4px 4px 0;font-size:13px;\">✅ 금일 이상 감지 항목 없음</div>';\n}\nhtml += '</div>';\n\n// 푸터\nhtml += '<div style=\"background:#f7fafc;padding:16px 32px;border-top:1px solid #e2e8f0;font-size:11px;color:#999;\">';\nhtml += 'Tableau 대시보드 데이터 기반 자동 생성&nbsp;&nbsp;|&nbsp;&nbsp;데이터브릿지 보안솔루션&nbsp;&nbsp;|&nbsp;&nbsp;n8n 자동화 파이프라인';\nhtml += '</div>';\n\nhtml += '</div></body></html>';\n\n// Email 제목\nlet emailSubject = '[KISCO] ' + reportDate + ' 일일 경영 보고서';\nif (alerts.length > 0) {\n  const urgent = alerts.filter(a => a.level === '긴급').length;\n  const warn = alerts.filter(a => a.level === '경고').length;\n  if (urgent > 0) emailSubject += ' 🚨 긴급 ' + urgent + '건';\n  else if (warn > 0) emailSubject += ' ⚠️ 이상감지 ' + alerts.length + '건';\n  else emailSubject += ' 📌 참고 ' + alerts.length + '건';\n}\n\nreturn [{\n  json: {\n    slack_message: slack,\n    email_subject: emailSubject,\n    email_html: html,\n    alerts_count: alerts.length,\n    report_date: reportDate,\n  }\n}];"
+      },
+      "id": "ef02517b-9ef2-4551-8802-c407b26fcb4e",
+      "name": "경영 보고서 생성",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        656
+      ],
+      "notesInFlow": true,
+      "notes": "Step 3: 데이터 가공 -> 변동률 -> 이상 감지 -> Slack MD + HTML Email"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "text": "={{ $json.slack_message }}",
+        "otherOptions": {}
+      },
+      "id": "bf010b27-46ec-418f-b709-fb8da0351bd8",
+      "name": "Slack 발송",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        544
+      ],
+      "notesInFlow": true,
+      "webhookId": "5f99e2b1-334c-4feb-bc61-6f5e19b99598",
+      "notes": "Slack 크레덴셜 연결 필요"
+    },
+    {
+      "parameters": {
+        "sendTo": "aguantar7093@gmail.com",
+        "subject": "={{ $json.email_subject }}",
+        "message": "={{ $json.email_html }}",
+        "options": {}
+      },
+      "id": "cdc3f97f-ae46-4b6c-9a7f-cc597923609e",
+      "name": "Gmail 발송",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        320,
+        752
+      ],
+      "notesInFlow": true,
+      "webhookId": "ed4dc726-9eda-4042-ac05-57129d87357d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "EgqaNvIbHEqaVSCF",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Gmail 크레덴셜 연결 필요\nsendTo를 본인 이메일로 수정"
+    },
+    {
+      "parameters": {},
+      "id": "476e50fc-2041-4005-a98a-eee160844ace",
+      "name": "수동 실행 (테스트용)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        848
+      ]
+    }
+  ],
+  "connections": {
+    "매일 새벽 4시 실행": {
+      "main": [
+        [
+          {
+            "node": "Tableau 데이터 생성 (모의)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "수동 실행 (테스트용)": {
+      "main": [
+        [
+          {
+            "node": "Tableau 데이터 생성 (모의)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tableau 데이터 생성 (모의)": {
+      "main": [
+        [
+          {
+            "node": "경영 보고서 생성",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "경영 보고서 생성": {
+      "main": [
+        [
+          {
+            "node": "Slack 발송",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gmail 발송",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "f7551675-727e-4944-95aa-f0f2e7f4a849",
+  "activeVersionId": null,
+  "versionCounter": 18,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [
+    {
+      "updatedAt": "2026-03-18T01:45:12.275Z",
+      "createdAt": "2026-03-18T01:45:12.275Z",
+      "id": "GQFQYQOXiuAjjGDD",
+      "name": "KISCO홀딩스"
+    },
+    {
+      "updatedAt": "2026-03-18T02:18:04.418Z",
+      "createdAt": "2026-03-18T02:18:04.418Z",
+      "id": "B0OCwjNkKXhLZwOl",
+      "name": "실동작 데모"
+    },
+    {
+      "updatedAt": "2026-03-18T02:25:49.667Z",
+      "createdAt": "2026-03-18T02:25:49.667Z",
+      "id": "0B5vv1ZbFT9NtOvB",
+      "name": "실동작 v2"
+    }
+  ],
+  "shared": [
+    {
+      "updatedAt": "2026-03-18T02:18:05.954Z",
+      "createdAt": "2026-03-18T02:18:05.954Z",
+      "role": "workflow:owner",
+      "workflowId": "FKnWTeZ0UbmuuqeC",
+      "projectId": "0DlWzROCMlJ3ucmM",
+      "project": {
+        "updatedAt": "2026-02-02T12:16:06.626Z",
+        "createdAt": "2026-02-02T12:09:14.598Z",
+        "id": "0DlWzROCMlJ3ucmM",
+        "name": "JUNSEO LEE <aguantar7093@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "9a11d357-1d5c-4acb-8d0b-bdf8d967d173"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

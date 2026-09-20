@@ -1,0 +1,245 @@
+{
+  "updatedAt": "2026-02-26T05:51:57.958Z",
+  "createdAt": "2026-02-26T05:22:30.410Z",
+  "id": "llzHmXgitwhSPBV6",
+  "name": "Circuit Connect Daily Log Export",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e0e5844e-1727-4b3c-8220-eed58ffa7643",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "http://clickhouse:8123/?query=SELECT toTimezone(timestamp, 'Asia/Seoul') as timestamp_kst, event_type, user_key, session_id, app_version, payload FROM circuit_connect.game_events WHERE toDate(toTimezone(timestamp, 'Asia/Seoul')) = toDate(toTimezone(now(), 'Asia/Seoul')) - 1 ORDER BY timestamp DESC FORMAT JSON",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "36eb9565-3d64-48dc-84fc-19b837ab4126",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = JSON.parse($input.first().json.data);\nreturn raw.data.map(row => ({ json: row }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "a0b1a866-30fd-4bea-a9cb-cdca837dce1b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1xpubCGT_diTkMdg8vVr1AaCi92h4er1YP9addX8tCDU",
+          "mode": "list",
+          "cachedResultName": "circuit_connect_daily_logs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xpubCGT_diTkMdg8vVr1AaCi92h4er1YP9addX8tCDU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "시트1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xpubCGT_diTkMdg8vVr1AaCi92h4er1YP9addX8tCDU/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp_kst": "={{ $json.timestamp_kst }}",
+            "event_type": "={{ $json.event_type }}",
+            "user_key": "={{ $json.user_key }}",
+            "session_id": "={{ $json.session_id }}",
+            "app_version": "={{ $json.app_version }}",
+            "payload": "={{ $json.payload }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp_kst",
+              "displayName": "timestamp_kst",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_type",
+              "displayName": "event_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_key",
+              "displayName": "user_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "app_version",
+              "displayName": "app_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        624,
+        0
+      ],
+      "id": "69c5eeb1-dbce-42a1-9c4a-ba4015ec868c",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "dnNqA5ZRVeL1xIV0",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "e9b6416c-578a-4b7c-9dcb-06b21e3f9da3",
+  "activeVersionId": null,
+  "versionCounter": 48,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-02-26T05:22:30.410Z",
+      "createdAt": "2026-02-26T05:22:30.410Z",
+      "role": "workflow:owner",
+      "workflowId": "llzHmXgitwhSPBV6",
+      "projectId": "0DlWzROCMlJ3ucmM",
+      "project": {
+        "updatedAt": "2026-02-02T12:16:06.626Z",
+        "createdAt": "2026-02-02T12:09:14.598Z",
+        "id": "0DlWzROCMlJ3ucmM",
+        "name": "JUNSEO LEE <aguantar7093@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "9a11d357-1d5c-4acb-8d0b-bdf8d967d173"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "log",
+    "description": ""
+  }
+}

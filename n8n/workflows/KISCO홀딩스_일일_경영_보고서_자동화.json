@@ -1,0 +1,310 @@
+{
+  "updatedAt": "2026-03-18T01:45:13.848Z",
+  "createdAt": "2026-03-18T01:45:13.848Z",
+  "id": "rVMY1lR6bwJVDdXs",
+  "name": "KISCO홀딩스 일일 경영 보고서 자동화",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "64cb275e-fe4a-4c36-b665-7417d7a4ce0c",
+      "name": "매일 새벽 4시 실행",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -496,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://tableau.kisco.co.kr/api/3.21/auth/signin",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"credentials\": {\n    \"personalAccessTokenName\": \"{{ $env.TABLEAU_PAT_NAME }}\",\n    \"personalAccessTokenSecret\": \"{{ $env.TABLEAU_PAT_SECRET }}\",\n    \"site\": {\n      \"contentUrl\": \"kisco\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "2d91581b-0917-4057-9923-3bbec64de998",
+      "name": "Tableau 인증 (PAT)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -256,
+        112
+      ],
+      "notesInFlow": true,
+      "notes": "Step 1: Personal Access Token으로 Tableau Server 인증"
+    },
+    {
+      "parameters": {
+        "url": "=https://tableau.kisco.co.kr/api/3.21/sites/{{ $json.credentials.site.id }}/views/a1b2c3d4-5678-9012-abcd-ef1234567890/data",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tableau-Auth",
+              "value": "={{ $json.credentials.token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "text/csv"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "155d1861-42e9-402c-84ea-3d522aafaa4e",
+      "name": "계열사별 일일지표 추출 (CSV)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Step 2-a: Query View Data → 계열사별 매출/수주/원가율/스크랩단가"
+    },
+    {
+      "parameters": {
+        "url": "=https://tableau.kisco.co.kr/api/3.21/sites/{{ $node['Tableau 인증 (PAT)'].json.credentials.site.id }}/views/f9e8d7c6-5432-1098-fedc-ba0987654321/data",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tableau-Auth",
+              "value": "={{ $node['Tableau 인증 (PAT)'].json.credentials.token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "text/csv"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "107b6786-1bb7-4ad0-9077-918b500a79d3",
+      "name": "그룹 종합요약 추출 (CSV)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        208
+      ],
+      "notesInFlow": true,
+      "notes": "Step 2-b: Query View Data → 그룹 합산매출/스프레드/평균원가율"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 3: 데이터 가공 및 보고서 생성\n// 계열사별 CSV + 그룹요약 CSV → Slack/Email 보고서\n\nconst subsidiaryCSV = $('계열사별 일일지표 추출 (CSV)').first().json.data;\nconst summaryCSV = $('그룹 종합요약 추출 (CSV)').first().json.data;\n\n// CSV 파싱\nfunction parseCSV(csv) {\n  const lines = csv.trim().split('\\n');\n  const headers = lines[0].split(',');\n  return lines.slice(1).map(line => {\n    const values = line.split(',');\n    const obj = {};\n    headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());\n    return obj;\n  });\n}\n\nconst subs = parseCSV(subsidiaryCSV);\nconst summary = parseCSV(summaryCSV)[0];\n\n// 이상 감지\nconst alerts = [];\nconst subSections = subs.map(sub => {\n  const rev = parseFloat(sub.daily_revenue_m);\n  const prevRev = parseFloat(sub.prev_day_revenue_m);\n  const revChange = ((rev - prevRev) / prevRev * 100);\n  const costRatio = parseFloat(sub.cost_ratio);\n  const opRate = parseFloat(sub.operating_rate_pct);\n  const scrapPrice = parseInt(sub.scrap_price_kg);\n  const prevScrap = parseInt(sub.prev_week_scrap_price);\n  const scrapChange = scrapPrice - prevScrap;\n\n  if (costRatio > 0.90) alerts.push(`⚠️ ${sub.subsidiary}: 원가율 ${(costRatio*100).toFixed(1)}% 초과`);\n  if (opRate < 55) alerts.push(`⚠️ ${sub.subsidiary}: 가동률 ${opRate}% 저조`);\n  if (Math.abs(scrapChange) >= 10) alerts.push(`⚠️ ${sub.subsidiary}: 스크랩 ${scrapChange > 0 ? '+' : ''}${scrapChange}원/kg 급변동`);\n\n  const revArrow = revChange > 0 ? '🔺' : '🔻';\n  return `*${sub.subsidiary}*\\n  매출: ${rev}백만원 ${revArrow}(${revChange.toFixed(1)}%) | 원가율: ${(costRatio*100).toFixed(1)}% | 가동률: ${opRate}%`;\n});\n\n// 그룹 종합\nconst groupRev = parseFloat(summary.group_total_revenue_m);\nconst prevGroupRev = parseFloat(summary.prev_day_group_revenue_m);\nconst groupChange = ((groupRev - prevGroupRev) / prevGroupRev * 100);\nconst spread = parseFloat(summary.rebar_scrap_spread_k);\nconst prevSpread = parseFloat(summary.prev_week_spread_k);\n\nif (spread < 330) alerts.push(`🚨 스프레드 ${spread.toFixed(0)}천원/톤 마진압박`);\n\nconst reportDate = summary.date;\nconst now = new Date().toISOString().slice(0, 16).replace('T', ' ');\n\nconst slackMsg = `━━━━━━━━━━━━━━━━━━━━━━\\n📊 *KISCO홀딩스 일일 경영 보고서*\\n📅 ${reportDate} | 자동생성: ${now}\\n━━━━━━━━━━━━━━━━━━━━━━\\n\\n📈 *그룹 종합*\\n  합산매출: ${groupRev}백만원 (전일比 ${groupChange.toFixed(1)}%)\\n  평균원가율: ${(parseFloat(summary.group_avg_cost_ratio)*100).toFixed(1)}%\\n  스프레드: ${spread.toFixed(0)}천원/톤 (전주比 ${(spread-prevSpread).toFixed(0)})\\n\\n🏭 *계열사별*\\n${subSections.join('\\n\\n')}${alerts.length ? '\\n\\n⚠️ *이상감지 ' + alerts.length + '건*\\n' + alerts.join('\\n') : ''}\\n━━━━━━━━━━━━━━━━━━━━━━`;\n\nlet emailSubject = `[KISCO] ${reportDate} 일일 경영 보고서`;\nif (alerts.length) emailSubject += ` ⚠️ ${alerts.length}건`;\n\nreturn [{ json: { slack_message: slackMsg, email_subject: emailSubject, email_body: slackMsg, alerts_count: alerts.length } }];"
+      },
+      "id": "86f851b3-ba43-4cdd-81fa-ed55bbccfbd2",
+      "name": "보고서 생성 (Function)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        112
+      ],
+      "notesInFlow": true,
+      "notes": "Step 3: CSV 파싱 → 변동 계산 → 이상감지 → Slack/Email 포맷 생성"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "text": "={{ $json.slack_message }}",
+        "otherOptions": {}
+      },
+      "id": "980c55dd-de22-4acd-aeee-16002926b000",
+      "name": "Slack 발송",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        608,
+        0
+      ],
+      "notesInFlow": true,
+      "webhookId": "c16927e9-412b-4471-ba38-1a03767a2bed",
+      "notes": "Step 4-a: #kisco-daily-report 채널에 보고서 발송"
+    },
+    {
+      "parameters": {
+        "fromEmail": "report@databridge.co.kr",
+        "toEmail": "executives@kiscoholdings.com",
+        "subject": "={{ $json.email_subject }}",
+        "options": {}
+      },
+      "id": "e7324595-359b-4123-84a0-21b54ab3ac19",
+      "name": "Email 발송",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        608,
+        208
+      ],
+      "notesInFlow": true,
+      "webhookId": "d4757dcd-3c59-411a-b38a-3cc6e827152f",
+      "notes": "Step 4-b: 임원진 이메일로 보고서 발송"
+    }
+  ],
+  "connections": {
+    "매일 새벽 4시 실행": {
+      "main": [
+        [
+          {
+            "node": "Tableau 인증 (PAT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tableau 인증 (PAT)": {
+      "main": [
+        [
+          {
+            "node": "계열사별 일일지표 추출 (CSV)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "그룹 종합요약 추출 (CSV)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "계열사별 일일지표 추출 (CSV)": {
+      "main": [
+        [
+          {
+            "node": "보고서 생성 (Function)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "그룹 종합요약 추출 (CSV)": {
+      "main": [
+        [
+          {
+            "node": "보고서 생성 (Function)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "보고서 생성 (Function)": {
+      "main": [
+        [
+          {
+            "node": "Slack 발송",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email 발송",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "cf1ec279-b512-47ae-b11f-00cba6d3483a",
+  "activeVersionId": null,
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [
+    {
+      "updatedAt": "2026-03-18T01:45:12.275Z",
+      "createdAt": "2026-03-18T01:45:12.275Z",
+      "id": "GQFQYQOXiuAjjGDD",
+      "name": "KISCO홀딩스"
+    },
+    {
+      "updatedAt": "2026-03-18T01:45:12.278Z",
+      "createdAt": "2026-03-18T01:45:12.278Z",
+      "id": "jmt9oIrGow4NC3ZN",
+      "name": "일일보고서"
+    },
+    {
+      "updatedAt": "2026-03-18T01:45:12.282Z",
+      "createdAt": "2026-03-18T01:45:12.282Z",
+      "id": "rKj7S4W3fgVHaaPY",
+      "name": "Tableau→Slack"
+    }
+  ],
+  "shared": [
+    {
+      "updatedAt": "2026-03-18T01:45:13.848Z",
+      "createdAt": "2026-03-18T01:45:13.848Z",
+      "role": "workflow:owner",
+      "workflowId": "rVMY1lR6bwJVDdXs",
+      "projectId": "0DlWzROCMlJ3ucmM",
+      "project": {
+        "updatedAt": "2026-02-02T12:16:06.626Z",
+        "createdAt": "2026-02-02T12:09:14.598Z",
+        "id": "0DlWzROCMlJ3ucmM",
+        "name": "JUNSEO LEE <aguantar7093@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "9a11d357-1d5c-4acb-8d0b-bdf8d967d173"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

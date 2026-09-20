@@ -234,8 +234,9 @@ Airflow (Scheduler) → dbt (staging → intermediate → marts) ─────
     └─ health_check (10분) ─→ 이상 시 Slack 알림                            │
     └─ daily_pipeline (01:00 KST) ─→ 품질검증 + 일일 리포트 → Slack         │
                                                                            │
-[실시간 알림]                                                               │
-n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack + Gmail
+[알림 — 2026-09-20 Airflow 로 일원화 (docs/35 §4)]                           │
+Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · weekly_digest(월) → Slack
+  ※ n8n 알림 워크플로는 v1 규칙 삭제(09-17)와 함께 멈췄고 되살리지 않았다. 정의는 n8n/workflows/ 에 보관
 ```
 
 ### 차별화 포인트
@@ -250,7 +251,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 | 감으로 튜닝 | **사고 분석과 실측으로 결정** — 37시간 적재 지연 사고 분석(docs/08), 체크포인트 625MB→18KB(docs/10), 호가 압축률 14배 실측(docs/11), 모든 결정 근거는 docs/worklog.md |
 | 고정 임계값 이상 탐지 | **업비트 정책 + 학술 논문 + 실측 분포 분석 기반 동적 임계값** |
 | cron으로 dbt 실행 | **Airflow 오케스트레이션 (Custom Operator + Dynamic Task Mapping + Slack 리포트)** |
-| 탐지만 하고 끝 | **다중 알림 (n8n 실시간 + Airflow 일일 리포트)** |
+| 탐지만 하고 끝 | **알림 3층 (10분 헬스 · 매시 품질 SLO 판정 · 주간 다이제스트) + 알럿 이력 표** (docs/32) |
 
 ---
 
@@ -760,6 +761,8 @@ cdc-realtime-pipeline/
     ├── 31-stack-dissection-and-binance-expansion.md # 스택 해체 분석(무엇이 일하나) + Binance 실시간 확장 1·2단계, 첫 시간 대조 100%, 스케줄러 OOM 사고, 운영 정리
     ├── 32-slo-and-alerting.md        # SLO 표 15줄, 알럿 3층(즉시/품질 판정/주간 다이제스트), 실무 뒷단 ↔ 개인 규모, alert_events·ops_metrics_5m
     ├── 33-three-lens-review.md       # 금융·DE·AE 세 관점 냉정 평가: 강점의 '왜', 약점의 원인·조치, 우선순위 10, 예상 질문 12
+    ├── 34-hardening-program.md       # 보강 프로그램: docs/33 약점 10건을 왜·무엇·검증·상태로. #1~#7 실행 기록
+    ├── 35-data-inventory.md          # 데이터 인벤토리: 표별 소유·보존·소비자·재생성, 삭제 예정일, 09-20 정리 내역
     ├── 28-layer2-design.md           # 2층 설계: 체결 시각 파티션 재설계(설계 부채 해소)·가상 매매 원장(CDC 제자리)·케이스/내부 신호 (결정 대기)
     ├── 27-trade-orderbook-mart.md    # 체결×호가 분 결합 마트: 우리만의 데이터, volume_over_depth15, EURC 되튐 = 깊이 대비 체결량(500배)
     ├── 26-cdc-segment-review.md      # CDC 구간 재검토: 삭제 이벤트가 토픽의 46%·정리 DELETE 풀스캔·binlog 무기한 → skipped.operations/인덱스/보존, #1 철회, dim_markets (결정 대기)
