@@ -54,7 +54,8 @@ class ClickHouseHook(BaseHook):
         """SQL을 실행하고 raw 텍스트 결과를 반환합니다."""
         base_url = self._get_base_url()
         params = self._get_params()
-        response = requests.post(base_url, params=params, data=sql, timeout=60)
+        # 2026-09-20: str 을 그대로 주면 requests 가 latin-1 로 인코딩해 한글(①·무수집 등)이 UnicodeEncodeError — bytes 로 보낸다 (docs/32 다이제스트 저장 실패에서 발견)
+        response = requests.post(base_url, params=params, data=sql.encode("utf-8"), headers={"Content-Type": "text/plain; charset=utf-8"}, timeout=60)
         response.raise_for_status()
         return response.text.strip()
 

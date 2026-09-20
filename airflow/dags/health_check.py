@@ -455,6 +455,15 @@ with DAG(
         if unhealthy:
             send_health_alert(unhealthy)
             ti.log.warning("Health check FAILED: %s", unhealthy)
+            # 2026-09-20 (docs/32): 울린 알럿을 데이터로 — 주간 다이제스트가 반복·임계 재검토 대상을 집계한다
+            try:
+                import json as _json
+                from hooks.clickhouse_hook import ClickHouseHook
+                now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"); hour = datetime.utcnow().strftime("%Y-%m-%dT%H")
+                rows = [{"fired_at": now, "source": "health_check", "name": u["name"], "severity": "immediate", "message": str(u["message"])[:500], "dedup_key": f"{u['name']}:{hour}"} for u in unhealthy]
+                ClickHouseHook().execute("INSERT INTO cdc_pipeline.alert_events FORMAT JSONEachRow\n" + "\n".join(_json.dumps(r, ensure_ascii=False) for r in rows))
+            except Exception as e:  # noqa: BLE001
+                ti.log.warning("alert_events insert failed: %s", e)
         else:
             ti.log.info("All components healthy")
 

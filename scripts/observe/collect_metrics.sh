@@ -73,3 +73,23 @@ DF=$(df -B1 / | awk 'NR==2{print $3}')
 HEADER="ts,tr_rows5m,tr_markets,tr_lag_p50_s,tr_lag_p95_s,tr_lag_max_s,tr_cdc_lat_ms,tr_flink_lag_p95_s,tr_best_null,ob_rows5m,ob_markets,ob_recv_p50_ms,ob_recv_p95_ms,ob_e2e_p50_ms,ob_e2e_p95_ms,ob_e2e_max_ms,ob1m_rows5m,ob1m_markets,alerts5m,alerts_large,alerts_spike,alerts_surge,ch_mem_bytes,ch_parts_trades,ch_parts_ob,ch_bytes_cdc_pipeline,p_received,p_inserted,p_dups,p_errors,p_buffer,p_warn5m,c_recv,c_deliv_err,c_queue,c_rate,c_lag_p95_ms,c_reconnects,fl_cdc_run,fl_cdc_cp_ok,fl_cdc_cp_fail,fl_cdc_state,fl_cdc_e2e,fl_ob_run,fl_ob_cp_ok,fl_ob_cp_fail,fl_ob_state,fl_ob_e2e,fl_cc_run,fl_cc_cp_ok,fl_cc_cp_fail,fl_cc_state,fl_cc_e2e,tm_heap_used,tm_metaspace_used,k_trade_endoffset,k_ob_endoffset,k_lag_cdc,k_lag_ob,k_disk_b1_bytes,my_rows,my_max_id,ch_mem,ch_cpu,tm_mem,tm_cpu,k1_mem,k1_cpu,k2_mem,k2_cpu,k3_mem,k3_cpu,my_mem,my_cpu,p_mem,p_cpu,c_mem,c_cpu,conn_mem,conn_cpu,load1,load5,load15,host_used_mb,host_avail_mb,swap_used_mb,df_used_bytes"
 [ -f "$CSV" ] || echo "$HEADER" > "$CSV"
 echo "$TS,$TRADE,$OB,$OB1M,$ALERTS,$CHMEM,$CHPARTS,$P_RECV,$P_INS,$P_DUP,$P_ERR,$P_BUF,$P_WARN,$C_RECV,$C_DERR,$C_Q,$C_RATE,$C_P95,$C_RECON,$FL,$TMM,$K_TRADE,$K_OB,$K_LAG_CDC,$K_LAG_OB,$K_DISK,$MY,$DS,$LOAD,$MEM,$DF" >> "$CSV"
+
+# --- 2026-09-20 (docs/32): 호스트·컨테이너 자원 + 유입률을 ClickHouse ops_metrics_5m 에 한 행 (Prometheus 대체). 실패해도 CSV 수집에는 영향 없음 ---
+PU=$(grep '^CLICKHOUSE_PIPELINE_USER=' $ENV_FILE | cut -d= -f2-); PP=$(grep '^CLICKHOUSE_PIPELINE_PASSWORD=' $ENV_FILE | cut -d= -f2-)
+L1=$(cut -d' ' -f1 /proc/loadavg); L5=$(cut -d' ' -f2 /proc/loadavg)
+read -r MU MA SU <<<"$(free -m | awk 'NR==2{u=$3; a=$7} NR==3{s=$3} END{print u, a, s}')"
+read -r DU DF <<<"$(df -m / | awk 'NR==2{print $3, $4}')"
+STATS=$(docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' 2>/dev/null)
+cpu_of(){ echo "$STATS" | awk -v n="$1" '$1==n {gsub("%","",$2); print $2+0; f=1} END{if(!f)print 0}'; }
+mem_of(){ echo "$STATS" | awk -v n="$1" '$1==n {v=$3; if (v ~ /GiB/) {gsub("GiB","",v); print int(v*1024)} else {gsub("MiB","",v); print int(v)}; f=1} END{if(!f)print 0}'; }
+CPU_COLL=$(echo "$(cpu_of cdc-upbit-producer) + $(cpu_of cdc-orderbook-collector) + $(cpu_of cdc-binance-collector) + $(cpu_of cdc-binance-depth-collector)" | bc 2>/dev/null || echo 0)
+chw() { curl -s --max-time 30 "http://localhost:8123/?user=$PU&password=$PP&max_memory_usage=500000000&max_threads=2" --data-binary "$1" 2>/dev/null; }
+UP5=$(chq "SELECT count() FROM cdc_pipeline.crypto_trades WHERE flink_ts >= now() - INTERVAL 5 MINUTE FORMAT TSV")
+UPP95=$(chq "SELECT round(quantile(0.95)(toUnixTimestamp64Milli(flink_ts)-upbit_timestamp)/1000,2) FROM cdc_pipeline.crypto_trades WHERE flink_ts >= now() - INTERVAL 5 MINUTE FORMAT TSV")
+BN5=$(chq "SELECT count() FROM cdc_pipeline.binance_trades WHERE flink_ts >= now() - INTERVAL 5 MINUTE FORMAT TSV")
+BNP95=$(chq "SELECT round(quantile(0.95)(toUnixTimestamp64Milli(flink_ts)-trade_ms)/1000,2) FROM cdc_pipeline.binance_trades WHERE flink_ts >= now() - INTERVAL 5 MINUTE FORMAT TSV")
+OB5=$(chq "SELECT count() FROM cdc_pipeline.orderbook_raw WHERE flink_ts >= now() - INTERVAL 5 MINUTE FORMAT TSV")
+FJ=$(curl -s --max-time 10 localhost:8081/jobs/overview | python3 -c "import sys,json; print(sum(1 for j in json.load(sys.stdin)['jobs'] if j['state']=='RUNNING'))" 2>/dev/null || echo 0)
+FB=$(for j in $(curl -s --max-time 10 localhost:8081/jobs/overview | python3 -c "import sys,json; print(' '.join(j['jid'] for j in json.load(sys.stdin)['jobs'] if j['state']=='RUNNING'))" 2>/dev/null); do v=$(curl -s --max-time 10 localhost:8081/jobs/$j | python3 -c "import sys,json; print(next(x['id'] for x in json.load(sys.stdin)['vertices'] if x['name'].startswith('Source')))" 2>/dev/null); curl -s --max-time 10 -G "localhost:8081/jobs/$j/vertices/$v/subtasks/metrics" --data-urlencode "get=busyTimeMsPerSecond" --data-urlencode "agg=max" | python3 -c "import sys,json; m=json.load(sys.stdin); print(m[0]['max'] if m else 0)" 2>/dev/null; done | sort -n | tail -1)
+chw "INSERT INTO cdc_pipeline.ops_metrics_5m FORMAT CSV
+$(date -u +%Y-%m-%d\ %H:%M:%S),${L1:-0},${L5:-0},${MU:-0},${MA:-0},${SU:-0},${DU:-0},${DF:-0},$(cpu_of cdc-kafka-1),$(cpu_of cdc-flink-taskmanager),$(cpu_of cdc-clickhouse),$(cpu_of cdc-mysql),${CPU_COLL:-0},$(mem_of cdc-kafka-1),$(mem_of cdc-flink-taskmanager),$(mem_of cdc-clickhouse),$(mem_of cdc-mysql),$(mem_of cdc-airflow-scheduler),${UP5:-0},${BN5:-0},${OB5:-0},${UPP95:-0},${BNP95:-0},${FJ:-0},${FB:-0}"

@@ -38,7 +38,7 @@ def test_no_import_errors(dag_bag):
 
 def test_expected_dags_loaded(dag_bag):
     """필수 DAG들이 로드되었는지 확인."""
-    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades", "backup_daily", "rules_daily", "cases_hourly", "reconcile_binance"}
+    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades", "backup_daily", "rules_daily", "cases_hourly", "reconcile_binance", "quality_alerts", "weekly_digest"}
     loaded_dags = set(dag_bag.dag_ids)
     missing = expected_dags - loaded_dags
     assert not missing, f"Missing DAGs: {missing}"
@@ -195,3 +195,11 @@ def test_cases_hourly_dag_structure(dag_bag):
     assert {t.task_id for t in dag.tasks} == {"collect_evidence", "open_cases"}
     assert {t.task_id for t in dag.get_task("open_cases").upstream_list} == {"collect_evidence"}
     assert dag.max_active_runs == 1
+
+
+def test_quality_and_digest_dags(dag_bag):
+    """docs/32: 품질 SLO 판정(매시)·주간 다이제스트(월요일) — 태스크 1개씩, 동시 실행 1."""
+    for dag_id, task, sched in (("quality_alerts", "judge_quality", "50 * * * *"), ("weekly_digest", "build_digest", "0 0 * * 1")):
+        dag = dag_bag.get_dag(dag_id)
+        assert dag is not None and {t.task_id for t in dag.tasks} == {task} and dag.max_active_runs == 1
+        assert str(dag.schedule_interval) == sched

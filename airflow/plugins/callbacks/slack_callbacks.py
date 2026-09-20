@@ -323,3 +323,16 @@ def send_daily_report(report_data: dict[str, Any]) -> None:
     })
 
     _send_slack_message({"blocks": blocks})
+
+
+def send_text_report(title: str, lines: list[str]) -> None:
+    """제목 + 줄 목록(마크다운). 주간 다이제스트·품질 판정용 (docs/32). 3,000자 블록 한도를 넘지 않게 여러 블록으로 나눈다."""
+    blocks: list[dict[str, Any]] = [{"type": "header", "text": {"type": "plain_text", "text": title[:150]}}]
+    chunk: list[str] = []; size = 0
+    for line in lines:
+        if size + len(line) + 1 > 2800 and chunk:
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(chunk)}}); chunk = []; size = 0
+        chunk.append(line); size += len(line) + 1
+    if chunk:
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(chunk)}})
+    _send_slack_message({"blocks": blocks[:50]})
