@@ -14,6 +14,9 @@ declare -A TOPICS=(
   ["ledger.crypto_db.binance_user_events"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
   ["ledger.crypto_db.ledger_reconcile"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
   ["ledger.crypto_db.cases"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
+  # Binance 체결 (docs/31 §3-2, 2026-09-20): 361 msg/s × ~200B ≈ 6GB/일 → 3일 시간 보존 + 바이트 상한. 6 파티션 = Flink 병렬 3 의 2배(키=symbol, 683 심볼 해시 분포)
+  ["binance.trades.v1"]="partitions=6 compression.type=zstd retention.ms=259200000 retention.bytes=8589934592 min.insync.replicas=1"
+  ["binance.dlq.trades"]="partitions=1 compression.type=zstd retention.ms=2592000000 min.insync.replicas=1"
 )
 for t in "${!TOPICS[@]}"; do
   spec="${TOPICS[$t]}"; parts=$(echo "$spec" | grep -oE "partitions=[0-9]+" | cut -d= -f2); cfg=$(echo "$spec" | sed 's/partitions=[0-9]* //' | tr ' ' ',')

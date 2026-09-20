@@ -74,6 +74,8 @@ sources:
         description: "생성기가 시간당 기록한 거래소(REST) vs MySQL 대조. dq_ledger_daily 가 ClickHouse 수를 붙여 3자 완성"
       - name: cases
         description: "케이스(거울 모드). cases_hourly 가 열고 사람이 status·verdict 를 바꾼다 — 그 UPDATE 가 CDC 로 온다. FINAL 로 최신"
+      - name: binance_trades
+        description: "Binance USDT 전 심볼 체결(docs/31). 시세이지 원장 아님. RMT(recv_ms) — 재연결 중복은 FINAL 로. TTL 30일"
 
       - name: anomaly_alerts
         description: "Flink 이상 탐지 알림 (4가지 룰: LARGE_TRADE, PRICE_SPIKE, VOLUME_SURGE, RAPID_TRADES)"
@@ -102,6 +104,8 @@ sources:
         description: "업비트 시장경보 지정/해제 이력 (이상탐지 정답 라벨, docs/16). 매시 증분 동기화."
       - name: upbit_market_events
         description: "거래소 시장경보 플래그 전이(1분 폴링, poll_market_events.py). 마켓·플래그별 최신 state 가 현재 지정 상태"
+      - name: binance_hourly_candles
+        description: "Binance REST 1h 캔들(체결 수 n 포함). reconcile_binance 가 일 1회 적재 — Binance 대조의 정답"
       - name: upbit_market_master
         description: "마켓 마스터 스냅샷(이름·경보 플래그·상장일 근사). reconcile_trades DAG 가 매일 적재, ReplacingMergeTree → FINAL"
       - name: market_alerts

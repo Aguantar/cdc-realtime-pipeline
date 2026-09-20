@@ -38,7 +38,7 @@ def test_no_import_errors(dag_bag):
 
 def test_expected_dags_loaded(dag_bag):
     """필수 DAG들이 로드되었는지 확인."""
-    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades", "backup_daily", "rules_daily", "cases_hourly"}
+    expected_dags = {"health_check", "daily_pipeline", "reconcile_trades", "backup_daily", "rules_daily", "cases_hourly", "reconcile_binance"}
     loaded_dags = set(dag_bag.dag_ids)
     missing = expected_dags - loaded_dags
     assert not missing, f"Missing DAGs: {missing}"
@@ -61,6 +61,7 @@ def test_health_check_dag_structure(dag_bag):
         "check_insert_latency",
         "check_parse_failures",   # 2026-09-19 DLQ 카운터 (docs/29 창2)
         "check_ledger_reconcile", # 2026-09-19 원장 3자 대조 (docs/28 B-5)
+        "check_binance_ingest",   # 2026-09-20 Binance 체결 (docs/31)
         "evaluate_health",
     }
     actual_tasks = {t.task_id for t in dag.tasks}
@@ -83,6 +84,7 @@ def test_health_check_dag_structure(dag_bag):
         "check_insert_latency",
         "check_parse_failures",   # 2026-09-19 DLQ 카운터 (docs/29 창2)
         "check_ledger_reconcile", # 2026-09-19 원장 3자 대조 (docs/28 B-5)
+        "check_binance_ingest",   # 2026-09-20 Binance 체결 (docs/31)
     }
     # 커버리지 체크는 업비트 REST 풀로 직렬화되어야 한다 (한도 10/s, DAG 간 충돌 방지)
     assert dag.get_task("check_market_coverage").pool == "upbit_rest"

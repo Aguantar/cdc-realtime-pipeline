@@ -54,7 +54,7 @@ with DAG(
     check_flink_jobs = FlinkHealthOperator(
         task_id="check_flink_jobs",
         flink_base_url="http://flink-jobmanager:8081",
-        expected_jobs=3,  # 2026-09-09: CDC + Circuit + Orderbook
+        expected_jobs=4,  # 2026-09-20: CDC + Circuit + Orderbook + Binance (docs/31)
     )
 
     # ── Kafka 브로커 상태 확인 (ClickHouse 기반 간접 확인) ───
@@ -277,6 +277,17 @@ with DAG(
         result_type="first",
     )
 
+    # ── Binance 체결 적재 (2026-09-20, docs/31): 수집기·잡 어느 쪽이 멈춰도 60초 0행으로 드러난다. 24h 평균 361/s 라 60초 0 은 확실한 이상
+    check_binance_ingest = ClickHouseOperator(
+        task_id="check_binance_ingest",
+        sql="""
+            SELECT count() AS rows_60s, uniqExact(symbol) AS symbols_60s,
+                   round(quantile(0.95)(toUnixTimestamp64Milli(flink_ts) - trade_ms) / 1000, 2) AS e2e_p95_s
+            FROM cdc_pipeline.binance_trades WHERE flink_ts >= now() - INTERVAL 60 SECOND
+        """,
+        result_type="first",
+    )
+
     check_insert_latency = ClickHouseOperator(
         task_id="check_insert_latency",
         sql="""
@@ -307,8 +318,16 @@ with DAG(
         insert_result = ti.xcom_pull(task_ids="check_insert_latency")
         parse_result = ti.xcom_pull(task_ids="check_parse_failures")
         ledger_result = ti.xcom_pull(task_ids="check_ledger_reconcile")
+        binance_result = ti.xcom_pull(task_ids="check_binance_ingest")
 
         unhealthy = []
+
+        # Binance 체결: 60초 0행 또는 e2e p95 > 30s
+        if binance_result is not None:
+            if int(binance_result.get("rows_60s", 0)) == 0:
+                unhealthy.append({"name": "Binance Ingest", "message": "No binance_trades rows in last 60s (collector or Flink job down)"})
+            elif float(binance_result.get("e2e_p95_s") or 0) > 30:
+                unhealthy.append({"name": "Binance Ingest Lag", "message": f"e2e p95 {binance_result['e2e_p95_s']}s (> 30) rows_60s {binance_result['rows_60s']}"})
 
         # 원장 3자 대조: 마지막 대조에 불일치가 있으면 알린다 (대조가 2시간 넘게 없어도 — 생성기 정지)
         if ledger_result and int(ledger_result.get("symbols", 0)) > 0:
@@ -458,6 +477,7 @@ with DAG(
             check_insert_latency,
             check_parse_failures,
             check_ledger_reconcile,
+            check_binance_ingest,
         ]
         >> evaluate_health
     )

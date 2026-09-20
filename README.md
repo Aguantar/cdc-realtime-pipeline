@@ -221,6 +221,9 @@ Upbit WebSocket → MySQL → Debezium CDC → Kafka (1-broker, 2026-09-18 축�
 [실시간 스트리밍 — 호가: 직접 발행 경로 (2026-09)]                            │
 Upbit WebSocket → orderbook-collector → Kafka upbit.orderbook.v1 → Flink → ClickHouse (raw 7일 / 1분 파생 365일)
                                                                           │
+[실시간 스트리밍 — Binance 체결: 직접 발행 경로 (2026-09-20, docs/31)]                     │
+Binance WebSocket(USDT 493심볼 trade) → binance-collector → Kafka binance.trades.v1(6p) → Flink(병렬 2) → ClickHouse binance_trades (30일)
+                                                                          │
 [2층 원장 — CDC 거울 경로 (2026-09-19, docs/28 B·C)]                          │
 Binance Testnet 주문(실돈 없음) → virtual-trader → MySQL(주문 거울·체결·케이스) → Debezium #2(삭제 유지) → Kafka ledger.* → ClickHouse RMT(version,is_deleted)
                                                                           │
@@ -509,6 +512,7 @@ n8n (매분) → ClickHouse 조회 → FDS 이상거래 / CDC 장애 → Slack +
 - [x] 체결×호가 분 단위 마트 (`docs/27`): 10일 3.78M 행, EURC 되튐의 원인은 스프레드가 아니라 체결/깊이(≥300bp 변동 분의 중앙값 1.0)
 - [x] 체결 테이블 재설계 (`docs/28` A): 체결 시각 일 파티션·시각 포함 키·recv_ms/ingest_source/stream_type, 무정지 RENAME 교체(Debezium 이어 받음), DELETE→DROP PARTITION, 체결 토픽 키 market·zstd·7일 보존
 - [x] 2층 원장 B (`docs/28`): Binance Testnet 주문 생애주기(실돈 없음)를 MySQL 거울 테이블에 반영 → 두 번째 Debezium 커넥터(삭제 유지) → ClickHouse RMT(version, is_deleted). 전이 5종 실증, 거래소=MySQL=ClickHouse 3자 대조 불일치 0, 거래소→Kafka 219ms
+- [x] Binance 실시간 확장 1단계 (`docs/31`): 스택 해체 분석(볼륨으로 일하는 건 호가 경로뿐) → USDT 전 심볼 체결 수집(Kafka 직행, 6파티션 키=symbol) → Flink 별도 잡(병렬 2, DLQ) → ClickHouse RMT 30일 → REST 1h 캔들 체결 수 대조 DAG. 체결 경로 유입 36/s → ~370/s
 - [x] 인계 층 C (`docs/28` C): Upbit 경보 플래그 SCD(거래소 이력 16,202구간 + 폴링), 케이스 테이블(거울 CDC 두 번째, cases_hourly 자동 생성·사람 판정), 교차 거래소 신호(같은 코인 단위, 가격 비교 안 함)
 - [ ] 이후(2026-09-20): 섀도 승격 판단(동등성 10건 누적) → 정리 주간(README·여정 인덱스·교훈 통합·블로그) → 스키마 계약·JMX → KRaft 컷오버(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
