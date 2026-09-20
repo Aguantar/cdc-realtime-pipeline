@@ -490,3 +490,4 @@
 - 09-20 04:00~04:05 UTC **보강 #1 보안(docs/34)**: 3306·8083·8123 → 127.0.0.1, producer 전용 MySQL 사용자(root 제거). 재생성 뒤 Debezium 태스크 2개 FAILED(MySQL 다운 순간 접속 오류) → 즉시 재시작, 유실 0(MySQL 6,001 ⊂ CH 6,190). 남은 노출: Kafka/ZK(정지 창)·Flink 8081(JM 재생성 필요)·Grafana/Airflow(인증 UI). 방화벽은 사용자 sudo 대기
 - 09-20 04:05~04:08 UTC **보강 #2 FINAL**: RMT 를 읽는 모델 6개에 FINAL(7/7), 빌드 6~9초, 중복 주입 실험 원본 2 → stg 1. 실수: 주석을 config 블록 안에 넣어 Jinja 깨짐(4초 만에 조용히 끝남)
 - 09-20 04:10 UTC **정정**: #2 검증에서 "원본 2" 는 틀림(한 INSERT 의 두 행은 RMT 가 삽입 때 접음). 별도 INSERT 두 번으로 재검증 → 원본 2, stg(FINAL) 1. 검증 자체의 검증을 안 한 실수
+- 09-20 04:08~04:15 UTC **보강 #3 시간 규약**: day_utc / day_kst·hour_kst 로 15모델·소비자 4·대시보드 6패널 동시 변경, 검증 통과. 드러난 것 2: MySQL trade_amount DECIMAL(20,4) 로 먼지 체결 64,669행이 amount 0(→ #5), no_long_gaps 테스트 전제가 287마켓에 틀림(스테이블 3~5h 공백 정상) → 유동성 마켓만

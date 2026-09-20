@@ -25,3 +25,12 @@
 - FINAL 추가: stg_trades(뷰)·dim_markets·int_reconcile_hourly·int_alert_transitions_recomputed·int_volume_surge_daily·dq_ingest_daily (RMT 를 읽는 모델 전부, 이제 7/7). 빌드 6~9초/모델 — FINAL 비용은 감당 가능(월 파티션·정렬 키 덕).
 - 검증(정정): 첫 판은 두 행을 **한 INSERT** 로 넣어 RMT 가 삽입 시점에 이미 접었고 원본이 1이었다 — "원본 2" 라고 적은 것은 틀린 기록. **별도 INSERT 두 번**(다른 파트)으로 다시: 원본 2 → `stg_trades`(FINAL) **1** → 삭제. 이제 재시작 뒤 머지 전이라도 마트가 중복을 안 센다는 증거가 맞다.
 - 실수: 설명 주석을 `{{ config(` 블록 **안**에 넣어 Jinja 가 깨짐(dbt 가 4초 만에 조용히 끝남) → 블록 뒤로 이동. 교훈: dbt 가 너무 빨리 끝나면 성공이 아니라 파싱 실패다.
+
+## 3-실행 (09-20 04:08 ~ 04:15 UTC)
+- 규약: **UTC 하루 = `day_utc`**(dq 8·int_volume_surge·mart_trade_orderbook_1m·sig 1), **KST 하루 = `day_kst`, KST 시간 = `hour_kst`**(stg_trades·int_ohlcv_1h/daily·mart_daily_summary). 같은 이름 `day` 를 두 뜻으로 쓰지 않는다. 규약은 stg_trades·dq_reconcile_daily 상단 주석 + 여기.
+- 동시 변경: 모델 15, schema/yml 3, 단일 테스트 2, 소비자 = daily_pipeline 리포트 SQL(day_kst·day_utc)·quality_alerts·weekly_digest·품질 대시보드 6패널. 증분 표는 `RENAME COLUMN`(mart) 또는 `--full-refresh`(dq_ingest_daily 는 day 가 정렬 키라 RENAME 불가 — 30일 재계산 6초, dq_orderbook_gaps 23초).
+- 검증: dbt run 17/17, 일일 리포트(09-19 KST) 생성, 품질 판정 4/4, 다이제스트 ④ 줄, 대시보드 6패널 실행, DAG 테스트 13/13.
+- 이름을 바꾸니 **숨어 있던 테스트 실패 2건**이 드러났다(전엔 ERROR 로 실행조차 안 되던 것):
+  - `assert_positive_volume` FAIL: KRW-LINEA 09-11 05시 amount 0. 원인 = **MySQL trade_amount DECIMAL(20,4)** — 가격×수량 < 0.00005 KRW 인 먼지 체결이 0 으로 저장. 30일 64,669행·252마켓(진짜 금액 4e-12~5e-5 KRW). 합계엔 무의미하지만 "정밀도는 원천에 있었다"는 말이 이 열엔 틀렸다 → #5 에서 amount 를 저장하지 않고 Decimal price×volume 으로 계산. 테스트는 그때까지 0.0001 미만 먼지만 허용.
+  - `assert_no_long_gaps` FAIL 4: KRW-USDS·RLUSD·USDE(하루 115~304건 스테이블) 3~5시간 공백. 5코인 시절 전제("24시간 거래") 가 287마켓엔 틀렸다 → 하루 1,000건 이상 마켓만. 파이프라인 공백은 커버리지·대조가 잡는다.
+- 실수: `quality_alerts` 의 SQL 에서 `WHERE day <` 만 바꾸고 `GROUP BY day`·`ORDER BY day` 를 남겨 404. 정규식으로 SQL 줄 전체를 바꿈.
