@@ -81,3 +81,9 @@
 | 자원 | **Kafka CPU 첫 샘플 152% → 45% → 33%**: 첫 샘플은 직전 `kafka-run-class`(GetOffsetShell) JVM 이 컨테이너 cgroup 에 잡힌 것(docs/23 의 147% 착시 재현). 실제 기준선 ~35~45%(확장 전 26%). TM 35~45%, ClickHouse 7~18%. **호스트 load 4.0~4.7(코어 4) — 확장 전 2.3**, 소스 busy 는 전부 50ms/s 이하라 Flink 는 놀고 있고 부하는 Kafka·수집기·직렬화 쪽 |
 | 감시 | health_check 5/5 잡, DAG 테스트 12/12 |
 **정직한 메모**: ① 이제 코어를 다 쓴다. 평일 낮 피크(체결 2~3배)에 load 가 어떻게 되는지가 24h 관찰의 핵심이고, 넘치면 먼저 끌 것은 kafka-ui·Prometheus 가 아니라(둘은 idle) 수집 심볼 수다. ② 스냅샷을 수집기가 넣는 설계라 Flink 는 REST 를 모른다 — 재동기화 지연 상한 = 스냅샷 주기 5분. 더 빠르길 원하면 gap 사이드 아웃풋 → 수집기 요청 경로가 필요하다(지금은 안 함). ③ 이 잡이 "키별 상태 + 순서 보장 + 재동기화"를 가진 첫 Flink 잡이다.
+
+## 6. 첫 시간 단위 대조 + 사고 1건 (09-20 02:05 UTC)
+- **Binance 체결 01:00 UTC 한 시간(첫 온전한 시간) 셀 대조**: 493 심볼 중 491 조회(REST 실패 2), 우리 1,193,357 = 거래소 캔들 체결 수 1,193,357, **비율 100.000%, 불일치 셀 0/491**. dbt `dq_binance_reconcile_daily` 도 같은 결과(cells 491, below_99 0, above_101 0). 사용자 "24시간이 필수인가" → 아니다: 시간 단위로 방법을 오늘 검증했고, 남은 것은 평일 피크의 load 뿐.
+- **사고 — Airflow 스케줄러 OOM 루프**(01:20~01:45): 컨테이너 640M 에서 5분마다 cgroup OOM, 재시작 12회, health_check 고착·cases_hourly 미실행(감시 공백 30분). 원인: health_check 체크 +2(원장·Binance)로 12개가 LocalExecutor 기본 병렬 32 로 동시에 뜨고 DAG +2 파싱이 겹침. 조치: 1G + 병렬 8 + health_check `max_active_tasks=6`. 01:45 재생성 뒤 재시작 0, health_check 3회 연속 success. 발견은 내 백그라운드 작업이 "호스트 메모리 부족"으로 죽은 알림에서 — 확장 당일에 감시 자체가 죽는 것이 가장 위험한 실패였다.
+- 디스크 +10GB/시간 경보 → 실제는 오늘 빌드 4회의 Docker 빌드 캐시(4.3GB 회수) + 이미지 계층. 파이프라인 자체 증가는 Binance 체결 21.4B/행(하루 ~0.7GB). ClickHouse `system.query_views_log` 2GB 는 2월부터 TTL 없이 쌓인 것(Kafka 엔진 MV 가 폴링마다 기록) → 옛 파티션 DROP + TTL 설정 추가.
+- 재구성 잡 4시간: snapshots 130, diffs 288,418, **gap 0**, unsynced 증가 0.
