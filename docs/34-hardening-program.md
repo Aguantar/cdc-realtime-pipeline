@@ -2,14 +2,15 @@
 
 > 사용자: "말한 모든 내용을 다 보강하자. 철저하게, '왜?'에 답이 되게. Float 도 DE 의 일 아닌가." → 맞다. 저장 층의 숫자 타입은 하류에 주는 계약이고, 정밀도는 원천(DECIMAL·문자열)에 있었는데 Flink 에서 double 로 버린 것이라 DE 책임.
 > 원칙: 항목마다 **왜 → 무엇을 → 어떻게 검증** 을 먼저 적고, 실행 뒤 결과를 §N-실행 에 붙인다. 순서는 위험(보안·정확성) → 계약(시간·차원·타입) → 정리.
+> 진행 상황(09-20 04:36 UTC): #1~#4 완료·커밋·푸시(§1-실행~§4-실행). **#5(Decimal)에서 세션이 끊겼고 코드는 한 줄도 안 바꿨다** — 조사만 끝난 상태(아래 §5-준비).
 
 | # | 항목 | 왜 | 무엇을 | 검증 | 상태 |
 |---|---|---|---|---|---|
-| 1 | 보안 | 3306·8123·9092 등이 LAN 에 무인증 노출, producer 가 root | ① `sudo scripts/ops/lan-firewall.sh`(사용자) ② Kafka/ZK 를 뺀 서비스 포트를 127.0.0.1 바인딩(재생성 1회씩) ③ producer 전용 MySQL 사용자(INSERT/SELECT crypto_trades) | LAN 의 다른 기기에서 `nc -zv <host> 3306` 실패, producer 적재 지속, 재시작 창 대조 | 진행 |
-| 2 | RMT 읽기 FINAL | ReplacingMergeTree 는 "결국" 중복 제거. 읽는 쪽이 보장해야 마트가 재시작 뒤 중복을 안 센다 | stg_trades 에 FINAL, 하류 6모델은 stg 경유(dim_markets·int_reconcile_hourly·int_alert_transitions_recomputed·int_volume_surge_daily·dq_ingest_daily 점검) | dbt build 통과, 중복 주입 뒤 마트 count 불변 실험 | 진행 |
-| 3 | 하루 규약 | 마트=KST, dq=UTC 인데 열 이름이 둘 다 day | `day_kst`/`day_utc` 로 이름 통일, docs 규약 한 줄, Grafana·DAG 쿼리 동시 수정 | dbt build + 대시보드 12패널 조회 + DAG 테스트 | 대기 |
-| 4 | 차원·사이드 | 코인 키가 거래소마다 다르고 문자열 치환으로 조인, 사이드 의미 반대 | `dim_coins`(coin_id·upbit_market·binance_symbol·base·quote·유효기간), `dim_venues`, 마트 `taker_side`. 환율은 Upbit KRW-USDT 마켓(우리 데이터) → `sig_kimchi_premium` | 조인 유일성 테스트, 김프 값이 공개 지표와 같은 부호·자릿수 | 대기 |
-| 5 | Decimal | 금액·수량 Float64 는 회계·대조 등호에 못 쓴다. 원천은 정밀 | Flink 파서 BigDecimal → `setBigDecimal`, ClickHouse crypto_trades/binance_trades price·volume·amount Decimal(20,8)/(24,8) 로 무정지 재생성(EXCHANGE 런북), 마트 파생 타입 확인. 호가 배열은 Float64 유지(파생 지표) — 이유 명시 | 재생성 전후 sum(amount) 등호(Decimal 끼리), 프루닝·적재 지속 | 대기 |
+| 1 | 보안 | 3306·8123·9092 등이 LAN 에 무인증 노출, producer 가 root | ① `sudo scripts/ops/lan-firewall.sh`(사용자) ② Kafka/ZK 를 뺀 서비스 포트를 127.0.0.1 바인딩(재생성 1회씩) ③ producer 전용 MySQL 사용자(INSERT/SELECT crypto_trades) | LAN 의 다른 기기에서 `nc -zv <host> 3306` 실패, producer 적재 지속, 재시작 창 대조 | **완료(부분)** — 방화벽은 사용자 sudo 대기 |
+| 2 | RMT 읽기 FINAL | ReplacingMergeTree 는 "결국" 중복 제거. 읽는 쪽이 보장해야 마트가 재시작 뒤 중복을 안 센다 | stg_trades 에 FINAL, 하류 6모델은 stg 경유(dim_markets·int_reconcile_hourly·int_alert_transitions_recomputed·int_volume_surge_daily·dq_ingest_daily 점검) | dbt build 통과, 중복 주입 뒤 마트 count 불변 실험 | **완료** 04:08 |
+| 3 | 하루 규약 | 마트=KST, dq=UTC 인데 열 이름이 둘 다 day | `day_kst`/`day_utc` 로 이름 통일, docs 규약 한 줄, Grafana·DAG 쿼리 동시 수정 | dbt build + 대시보드 12패널 조회 + DAG 테스트 | **완료** 04:15 |
+| 4 | 차원·사이드 | 코인 키가 거래소마다 다르고 문자열 치환으로 조인, 사이드 의미 반대 | `dim_coins`(coin_id·upbit_market·binance_symbol·base·quote·유효기간), `dim_venues`, 마트 `taker_side`. 환율은 Upbit KRW-USDT 마켓(우리 데이터) → `sig_kimchi_premium` | 조인 유일성 테스트, 김프 값이 공개 지표와 같은 부호·자릿수 | **완료** 04:20 |
+| 5 | Decimal | 금액·수량 Float64 는 회계·대조 등호에 못 쓴다. 원천은 정밀 | Flink 파서 BigDecimal → `setBigDecimal`, ClickHouse crypto_trades/binance_trades price·volume·amount Decimal(20,8)/(24,8) 로 무정지 재생성(EXCHANGE 런북), 마트 파생 타입 확인. 호가 배열은 Float64 유지(파생 지표) — 이유 명시 | 재생성 전후 sum(amount) 등호(Decimal 끼리), 프루닝·적재 지속 | **다음** — 중단 지점 |
 | 6 | 재처리 런북 | 보존은 있는데 절차가 없다 | `scripts/ops/reprocess-day.sh`: 원장(MySQL, 7일) → ClickHouse `mysql()` 함수로 하루 파티션 재생성, Binance 는 Kafka(3일) 재소비 잡, 호가는 Parquet(120일) | 실제 하루를 다시 만들어 대조 100% | 대기 |
 | 7 | 죽은 산출물 | anomaly_alerts(09-17 정지)·coin_metadata·trade_aggregations·mart_alert_rate·mart_volume_spike·load_test_* + Grafana 패널 + n8n 빈 폴링 | 인벤토리 표 → 소비자 없는 것 DROP, Grafana 패널 교체, n8n 워크플로 export 를 repo 에 | Grafana 전 패널 데이터 있음, 참조 0 확인 뒤 DROP | 대기 |
 | 8 | 테스트·계약 | 새 테이블 테스트 0, exposure·메트릭 정의·데이터 사전 없음 | schema.yml(unique·not_null·accepted_values), exposures.yml, `docs/metrics.md`, `docs/data-catalog.md`, 토픽 JSON 스키마 + 파서 테스트 | dbt test 통과, 스키마 테스트 | 대기 |
@@ -42,3 +43,16 @@
 - 환율: 외부 FX 대신 **Upbit KRW-USDT**(하루 58k 체결, 1,365원) 시간 종가 → `int_fx_usdt_krw_hourly`. 우리 데이터라 조건이 같다.
 - `sig_kimchi_premium_hourly`: 어제 "가격은 비교하지 않는다"의 **정정** — 통화·환율·코인 차원이 갖춰지면 비교할 수 있고, 거래소가 다르기 때문에 성립한다. 실측: BTC/ETH/XRP 최근 3시간 −0.10 ~ +0.08%(김프 거의 0 인 날), 196 코인 918행, 중앙값 −0.07%. 극단값 LSK −27.8%·EGLD +38.4% 는 얇은 마켓(체결 ≥10 조건만)이라 조회 시 유동성 필터가 필요 — 그대로 둔 이유: 신호는 원인을 보여야지 숨기면 안 된다.
 - `sig_cross_venue_flag_overlap` 을 dim_coins 조인으로 바꿈(문자열 치환 제거) → 1행.
+
+## 5-준비 (중단 지점, 09-20 04:36 UTC 확인) — 코드 변경 전
+세션이 여기서 끊겼다. **변경된 파일 없음**(git 작업 트리 깨끗, #4 까지 전부 커밋·푸시 f0aac63). 조사로 알아낸 것:
+| 경로 | 지금 | 바꿀 것 |
+|---|---|---|
+| `CryptoTradeEvent` | `double tradePrice/tradeVolume/tradeAmount` | `BigDecimal` 3개 (getter/setter 포함) |
+| `CdcEventParser` | `parseDecimal(data,...)` → double (Debezium 은 `decimal.handling.mode=string` 이라 **원문은 문자열**) | `new BigDecimal(node.asText())` |
+| `ClickHouseSinks.rawTradeSink` | `ps.setDouble(4~6, ...)` | `ps.setBigDecimal(...)` |
+| `MarketAlertDetector:95` | `double p = e.getTradePrice()` (24h 링·등급 판정) | 판정은 비율 비교라 `doubleValue()` 로 받아도 결과 불변 — **규칙 동등성이 깨지지 않게 여기는 double 유지**하고 이유를 주석에 |
+| `BinanceTrade/Parser/Job` | `double price/qty`, `Double.parseDouble(d.get("p").asText())` (원문 문자열) | `BigDecimal` + `setBigDecimal`, `quote_qty` 는 `price.multiply(qty)` |
+| ClickHouse `crypto_trades`·`binance_trades` | `Float64` | `Decimal(20,8)` / 금액 `Decimal(24,8)` — EXCHANGE 런북으로 무정지 재생성 |
+| MySQL `trade_amount` | `DECIMAL(20,4)` — 먼지 체결 64,669행이 0 (§3-실행에서 발견) | **amount 를 저장·전송하지 않고** ClickHouse 에서 `price*volume` 으로 계산(또는 MySQL 스케일 확대). 저장 안 하는 쪽이 단순 |
+순서: ① Flink 코드 + 테스트 → 빌드 ② 새 표 생성·복사·EXCHANGE(체결 1.16억 행, 어제 9분) ③ 잡 재배포 ④ 대조·마트 재빌드 ⑤ 기록. 위험: Flink 재배포 1회(정지 ~50초), ClickHouse 재생성 중 CPU.
