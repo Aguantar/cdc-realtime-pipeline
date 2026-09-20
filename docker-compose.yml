@@ -4,7 +4,7 @@ services:
     container_name: cdc-mysql
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"   # 2026-09-20 docs/34 #1: LAN 노출 차단(호스트 cron·docker exec 만 접근)
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -103,7 +103,7 @@ services:
       mysql:
         condition: service_healthy
     ports:
-      - "8083:8083"
+      - "127.0.0.1:8083:8083"   # 2026-09-20 docs/34 #1: Connect REST 는 무인증 — 로컬만
     environment:
       GROUP_ID: cdc-connect-cluster
       BOOTSTRAP_SERVERS: kafka-1:29092
@@ -227,7 +227,7 @@ services:
     container_name: cdc-clickhouse
     restart: unless-stopped
     ports:
-      - "8123:8123"
+      - "127.0.0.1:8123:8123"   # 2026-09-20 docs/34 #1: ClickHouse HTTP 는 로컬(cron·Airflow 는 컨테이너망)만
     environment:
       CLICKHOUSE_DB: cdc_pipeline
       CLICKHOUSE_USER: default
@@ -297,8 +297,8 @@ services:
     environment:
       MYSQL_HOST: cdc-mysql
       MYSQL_PORT: "3306"
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: producer                       # 2026-09-20 docs/34 #1: root 대신 crypto_trades INSERT/SELECT 만 가진 전용 사용자
+      MYSQL_PASSWORD: ${PRODUCER_MYSQL_PASSWORD}
       MYSQL_DATABASE: crypto_db
       BATCH_SIZE: "100"
       MARKETS: ALL_KRW

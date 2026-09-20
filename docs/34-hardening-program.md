@@ -15,3 +15,8 @@
 | 8 | 테스트·계약 | 새 테이블 테스트 0, exposure·메트릭 정의·데이터 사전 없음 | schema.yml(unique·not_null·accepted_values), exposures.yml, `docs/metrics.md`, `docs/data-catalog.md`, 토픽 JSON 스키마 + 파서 테스트 | dbt test 통과, 스키마 테스트 | 대기 |
 | 9 | 마켓 상태 SCD | 폐지·정지를 유실로 오인 | market/all(is_details)+ticker 의 market_state·delisting_date 를 일 1회 스냅샷 → dim_markets SCD | 폐지 마켓이 커버리지 알럿에서 제외 | 대기 |
 | 10 | 백업 | Binance 표가 자동 포함 | 제외 목록 + 복원 리허설 재실행 | 리허설 시간·행 수 기록 | 대기 |
+
+## 1-실행 (09-20 04:00 ~ 04:05 UTC)
+- 바인딩: `3306`·`8083`·`8123` → 127.0.0.1 (ss 확인). 남은 0.0.0.0: 2181·9092(브로커 재시작 = 호가·Binance 유실 → 정지 창에서), 8081(Flink JM 재생성 = HA 없어 5잡 세이브포인트·재제출 필요 → Decimal 재배포 창과 합침), 3000·8085(인증 있는 UI, 사용자 LAN 접근용 유지). **방화벽(`sudo scripts/ops/lan-firewall.sh`)은 사용자 실행 대기** — 이게 되면 위 넷도 LAN 에서 막힌다.
+- producer 전용 MySQL 사용자 `producer`(SELECT·INSERT crypto_trades) — root 제거. 재시작 뒤 연결 성공·기동 gap-fill 29초 창.
+- 재생성 순서 Connect → ClickHouse(healthy 20초) → MySQL(12초) → producer. **발견**: MySQL 이 내려간 순간 Debezium 태스크 2개가 `Unexpected error while connecting … BINLOG_FORMAT` 로 FAILED(커넥터는 RUNNING). health_check 가 10분 안에 자동 재시작하지만 런북에선 즉시 `tasks/0/restart` → 2개 RUNNING, binlog 오프셋에서 따라붙음: MySQL 창 6,001행 ⊂ ClickHouse 6,190(유실 0). → MySQL 재시작 런북에 "커넥터 태스크 재시작" 한 줄 추가.

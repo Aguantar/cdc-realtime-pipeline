@@ -134,3 +134,6 @@ CREATE TABLE IF NOT EXISTS cases (
     UNIQUE KEY uq_evidence (evidence_key),
     KEY idx_status (status), KEY idx_opened (opened_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 2026-09-20 (docs/34 #1): producer 전용 사용자 — root 대신 crypto_trades INSERT/SELECT 만. 비밀번호는 .env PRODUCER_MYSQL_PASSWORD (여기엔 안 적는다)
+-- CREATE USER 'producer'@'%' IDENTIFIED BY '<.env>'; GRANT SELECT, INSERT ON crypto_db.crypto_trades TO 'producer'@'%';
