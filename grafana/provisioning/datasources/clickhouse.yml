@@ -14,9 +14,12 @@ datasources:
       # 2026-09-20: pipeline → readonly_user. Grafana 는 익명 Viewer 를 허용하므로(GF_AUTH_ANONYMOUS_ENABLED)
       # 이 데이터소스는 **인증 없는 사람이 쓰는 경로**다. 그 경로가 INSERT·ALTER·DROP TABLE 권한을 가진
       # 계정으로 돌고 있었다 — /api/ds/query 는 rawSql 을 그대로 실행한다(실측 확인).
-      # readonly_user 는 SELECT 만 가진다. 익명 공개를 닫았으므로 로그인한 사람만 쓰지만,
-      # 대시보드 도구에 쓰기 권한을 줄 이유는 여전히 없다(최소 권한).
-      username: $CLICKHOUSE_READONLY_USER
+      # 2026-09-20 최종: grafana_public. Caddy basic_auth 뒤에서 데모를 보여줄 예정이라
+      # 이 계정이 '보여주기로 한 범위' 그 자체가 된다.
+      #   줌: cdc_pipeline 읽기 + 대시보드가 실제 조회하는 system 표 6개(24시간 실측으로 추림)
+      #   안 줌: 쓰기 전부, circuit_connect(게임 닉네임 780행), 나머지 system
+      # readonly=1 설정은 주지 않는다 — 플러그인이 세션 설정을 걸어 500 이 난다. 쓰기 차단은 GRANT 로 충분.
+      username: $CLICKHOUSE_GRAFANA_PUBLIC_USER
     secureJsonData:
-      password: $CLICKHOUSE_READONLY_PASSWORD
+      password: $CLICKHOUSE_GRAFANA_PUBLIC_PASSWORD
     editable: true

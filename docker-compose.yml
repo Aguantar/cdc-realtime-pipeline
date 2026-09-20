@@ -283,8 +283,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       # 2026-09-20: 데이터소스를 읽기 전용 계정으로 내렸다. 익명 Viewer 가 켜져 있어 이 자격증명은
       # 사실상 '인증 없는 사람의 권한'이다 (grafana/provisioning/datasources/clickhouse.yml 주석 참고)
-      CLICKHOUSE_READONLY_USER: ${CLICKHOUSE_READONLY_USER}
-      CLICKHOUSE_READONLY_PASSWORD: ${CLICKHOUSE_READONLY_PASSWORD}
+      CLICKHOUSE_GRAFANA_PUBLIC_USER: ${CLICKHOUSE_GRAFANA_PUBLIC_USER}
+      CLICKHOUSE_GRAFANA_PUBLIC_PASSWORD: ${CLICKHOUSE_GRAFANA_PUBLIC_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
