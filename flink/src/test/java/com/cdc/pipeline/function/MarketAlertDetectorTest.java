@@ -78,7 +78,8 @@ public class MarketAlertDetectorTest {
         assertEquals(100.0, a.get(0).getRefPrice(), 0.001);
         assertTrue(a.get(0).getValue() > 50 && a.get(0).getValue() < 52);
         assertEquals(t + MIN, a.get(0).getEventTime());                 // event_time = 분 끝
-        assertEquals("v2.1.1-shadow", a.get(0).getRuleVersion());
+        // 2026-09-20 승격: 섀도 접미사를 뗐다. 판정은 한 글자도 안 바뀌었고, 나머지 기대값이 전부 그대로인 것이 그 증거
+        assertEquals("v2.1.1", a.get(0).getRuleVersion());
     }
 
     @Test

@@ -36,7 +36,12 @@ import java.util.Arrays;
  *   MapState 대신 배열인 이유: 참조 조회가 O(1) 이어야 한다(피크 초당 59 체결). 체크포인트 크기 287 × 1,500 × 8B ≈ 3.4MB.
  *   v2 → v2.1 은 링·마지막 분·등급 상태를 그대로 이어받는다(새 상태 2개는 비어 있어도 됨) → savepoint 복원 후 워밍업 없음.
  * 늦은 이벤트 가드(docs/20): 적재 지연 > 60초인 행(백필·gap-fill)은 상태·판정 모두 건너뛴다.
- * 섀도: rule_version 'v2.1.1-shadow' 로 market_alerts 에만 기록, 발송 없음. dq_rule_eval_daily·dq_alert_parity_daily 가 승격을 결정한다.
+ * 승격 (2026-09-20): rule_version 'v2.1.1-shadow' → **'v2.1.1'**. 기준(docs/22 §4)은 "실전 전이 10건 이상이
+ *   1분봉 재계산과 전부 일치" 였고, 09-19 에 전이 116건 중 미매칭 0 으로 충족했다(dq_alert_parity_daily.parity_ok=1).
+ *   달력이 아니라 전이 표본 수가 기준인 이유: 임계 자체는 6개월 역검증(3,220/3,221)이 근거이고,
+ *   섀도가 확인할 것은 임계가 아니라 **이 구현(링·forward-fill·늦은 이벤트 가드)이 그 백테스트와 같은 답을 내는가** 였다.
+ *   승격 뒤에도 판정 로직은 한 글자도 바뀌지 않는다 — 바뀌는 것은 '이 전이를 사람에게 보내는가' 뿐이다.
+ *   발송은 Airflow market_alerts_notify DAG 가 한다(10분, alert_events 로 중복 제거). 섀도 기간 기록은 문자열로 남는다.
  */
 public class MarketAlertDetector extends KeyedProcessFunction<String, CryptoTradeEvent, MarketAlert> {
 
@@ -47,7 +52,7 @@ public class MarketAlertDetector extends KeyedProcessFunction<String, CryptoTrad
     static final int LOOKBACK = 1_440;           // 24h
     static final long TIMER_CHAIN_MINUTES = 1_440; // 마지막 체결 뒤 이 시간까지만 빈 분을 계속 닫는다
     static final double[] THRESHOLDS = {0.5, 1.0, 2.0};
-    static final String RULE_VERSION = "v2.1.1-shadow";
+    static final String RULE_VERSION = "v2.1.1";   // 2026-09-20 승격. 섀도 기간 행은 "v2.1.1-shadow" 로 남아 구분된다
 
     private transient ValueState<double[]> ring;
     private transient ValueState<Long> lastMinute;       // 링에 값이 있는 가장 최근 분 (체결 또는 채움)

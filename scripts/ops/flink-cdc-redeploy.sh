@@ -17,8 +17,16 @@ deploy)
   J=$(jid); [ -n "$J" ] || { say "prod job not running"; exit 1; }
   PRE_MAX=$(CH "SELECT max(trade_id) FROM cdc_pipeline.crypto_trades"); say "pre: job $J, max trade_id $PRE_MAX, dlq end $(dlq_end)"
   SP=$(FL stop --savepointPath /opt/flink/savepoints "$J" | grep -oE "savepoint-[a-f0-9]+-[a-f0-9]+" | tail -1); say "savepoint: $SP"
-  C=$(docker create cdc-flink-build); docker cp "$C:/output/flink-cdc-job-1.0.0.jar" flink/target/flink-cdc-job-1.0.0.jar; docker rm "$C" >/dev/null
+  # 2026-09-20 함정: 여기서 이미지 `cdc-flink-build` 에서 JAR 을 꺼냈는데, 정상 빌드 경로인
+  # scripts/build-flink-job.sh 는 `flink-cdc-builder` 라는 **다른 이름**으로 빌드하고 끝나면 그 이미지를 지운다.
+  # 그래서 방금 빌드한 JAR 을 옛 이미지의 JAR 로 덮어쓰고도 "배포 성공"이라고 보고했다(규칙 승격이 반영 안 됨).
+  # → 재배포는 스스로 빌드한다. 무엇이 배포되는지 한 곳에서만 정해져야 한다.
+  say "JAR 빌드 (scripts/build-flink-job.sh)"
+  scripts/build-flink-job.sh 2>&1 | grep -E "Tests run:.*Failures|BUILD|Size:" | sed 's/^/   /'
   say "jar: $(ls -la flink/target/flink-cdc-job-1.0.0.jar | awk '{print $5, $6, $7, $8}')"
+  # 배포 전 가드: JAR 이 어떤 소스보다도 새것인가. 아니면 빌드가 실패했거나 옛 파일을 보고 있는 것이다.
+  NEWEST_SRC=$(find flink/src -type f -newer flink/target/flink-cdc-job-1.0.0.jar | head -1)
+  [ -z "$NEWEST_SRC" ] || { say "중단: JAR 이 소스보다 오래됐다 ($NEWEST_SRC)"; exit 1; }
   # --allowNonRestoredState: 폐기한 5분 집계 창 상태와 자동 uid 였던 소스·싱크 상태는 버린다. 소스는 커밋된 그룹 오프셋에서 재개(OffsetsInitializer.committedOffsets)
   FL run -d -s "/opt/flink/savepoints/$SP" --allowNonRestoredState /opt/flink/usrlib/flink-cdc-job-1.0.0.jar | grep -i "JobID\|submitted" | sed 's/^/  /'
   sleep 45; J2=$(jid); say "new job: ${J2:-NOT RUNNING}"
