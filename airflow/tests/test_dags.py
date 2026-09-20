@@ -203,3 +203,22 @@ def test_quality_and_digest_dags(dag_bag):
         dag = dag_bag.get_dag(dag_id)
         assert dag is not None and {t.task_id for t in dag.tasks} == {task} and dag.max_active_runs == 1
         assert str(dag.schedule_interval) == sched
+
+
+# ── 마켓 커버리지 제외 판정 (2026-09-20, docs/34 #9) ─────────
+# 프로덕션에서는 거래불가 마켓이 0개라 이 분기가 타지 않는다. 타지 않는 코드는 믿을 수 없어 여기서 증명한다.
+def test_coverage_verdict_excludes_only_non_tradable():
+    from health_check import coverage_verdict
+
+    cases = [
+        ("거래 정지",        {"market_state": "ACTIVE", "is_tradable": 0}, "exclude"),
+        ("폐지 완료",        {"market_state": "DELISTED", "is_tradable": 0}, "exclude"),
+        ("정상",            {"market_state": "ACTIVE", "is_tradable": 1}, "alert"),
+        # 폐지 예정이어도 아직 거래된다 → 체결이 안 들어오면 그건 진짜 문제다
+        ("폐지 예정",        {"market_state": "PREDELISTING", "is_tradable": 1}, "alert"),
+        # 상태를 모르면 빼지 않는다. 모른다고 넘어가면 진짜 유실을 놓친다
+        ("상태 모름(폴러 전)", None, "alert"),
+        ("상태 모름(행 있음)", {"market_state": "UNKNOWN"}, "alert"),
+    ]
+    for name, row, expected in cases:
+        assert coverage_verdict("KRW-TEST", row) == expected, name

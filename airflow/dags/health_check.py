@@ -18,6 +18,20 @@ from callbacks.slack_callbacks import send_health_alert, task_failure_callback
 from operators.clickhouse_operator import ClickHouseOperator
 from operators.flink_health_operator import FlinkHealthOperator
 
+def coverage_verdict(market, state_row):
+    """커버리지 판정에서 이 마켓을 뺄 것인가 (2026-09-20, docs/34 #9).
+
+    'exclude'  거래 정지·폐지된 마켓 — 거래소도 체결을 안 만들므로 우리에게 없는 게 정상이다.
+    'alert'    그 외 — 상태를 모르는 마켓(UNKNOWN)도 포함한다. 모른다고 넘어가면 진짜 유실을 놓친다.
+
+    분기를 함수로 둔 이유: 지금 거래불가 마켓이 0개라 프로덕션에서는 이 분기가 타지 않는다.
+    타지 않는 코드는 믿을 수 없으므로 테스트로 증명한다.
+    """
+    if state_row and int(state_row.get("is_tradable", 1)) == 0:
+        return "exclude"
+    return "alert"
+
+
 default_args = {
     "owner": "calme",
     "retries": 1,
@@ -130,15 +144,32 @@ with DAG(
         """)
         ours_last = {r["market"]: int(r["last_ms"]) for r in rows}
 
+        # 2026-09-20 (docs/34 #9): 거래 정지·폐지 마켓은 거래소도 체결을 안 만든다. 우리에게 없는 게 정상이다.
+        # 이걸 빼지 않으면 "폐지 = 유실"로 보이고, 그런 알럿은 몇 번 반복되면 무시당한다.
+        # 상태는 웹소켓 ticker 에만 있어(REST 에는 없다) 10분 폴러가 ClickHouse 에 적재한 것을 읽는다.
+        state_rows = ClickHouseHook().get_records("""
+            SELECT market, market_state, is_tradable, toString(delisting_date) AS delisting_date
+            FROM cdc_pipeline.dim_market_state_scd WHERE is_current = 1
+        """)
+        states = {r["market"]: r for r in state_rows}
+
         now_ms = int(time.time() * 1000)
-        missing = []
+        missing, excluded = [], []
         for market, ex_ms in exchange_last.items():
             if now_ms - ex_ms > 86_400_000:
                 continue
             if ex_ms > ours_last.get(market, 0) and now_ms - ex_ms > 60_000:
-                missing.append({"market": market, "behind_s": round((now_ms - ex_ms) / 1000), "ours": market in ours_last})
+                st = states.get(market)
+                if coverage_verdict(market, st) == "exclude":
+                    excluded.append({"market": market, "state": st["market_state"]})
+                    continue
+                missing.append({"market": market, "behind_s": round((now_ms - ex_ms) / 1000),
+                                "ours": market in ours_last,
+                                "state": (st or {}).get("market_state", "UNKNOWN"),
+                                "delisting_date": (st or {}).get("delisting_date") or None})
         missing.sort(key=lambda x: -x["behind_s"])
-        result = {"checked": len(exchange_last), "missing": missing[:20], "missing_count": len(missing)}
+        result = {"checked": len(exchange_last), "missing": missing[:20], "missing_count": len(missing),
+                  "excluded_not_tradable": excluded, "state_known": len(states)}
         context["ti"].log.info("market coverage: %s", result)
         return result
 
@@ -361,11 +392,21 @@ with DAG(
 
         # 마켓 커버리지: 거래소에는 최신 체결이 있는데 우리에게 60초 넘게 없는 마켓
         if coverage_result and int(coverage_result.get("missing_count", 0)) > 0:
-            top = ", ".join(f"{m['market']}({m['behind_s']}s{'' if m['ours'] else ', 무수집'})" for m in coverage_result["missing"][:8])
+            # 상태를 함께 적는 이유(2026-09-20): "뒤처짐"만 보면 받는 사람이 유실인지 폐지 절차인지 모른다.
+            # PREDELISTING 은 거래가 줄어드는 게 정상이라 대응이 다르다.
+            def _fmt(m):
+                tail = "" if m["ours"] else ", 무수집"
+                st = m.get("state")
+                if st and st != "ACTIVE":
+                    tail += f", {st}" + (f" 폐지 {m['delisting_date']}" if m.get("delisting_date") else "")
+                return f"{m['market']}({m['behind_s']}s{tail})"
+            top = ", ".join(_fmt(m) for m in coverage_result["missing"][:8])
+            excl = coverage_result.get("excluded_not_tradable") or []
+            note = f" (거래불가 {len(excl)}개 제외)" if excl else ""
             unhealthy.append(
                 {
                     "name": "Market Coverage",
-                    "message": f"{coverage_result['missing_count']}/{coverage_result['checked']} markets behind exchange: {top}",
+                    "message": f"{coverage_result['missing_count']}/{coverage_result['checked']} markets behind exchange{note}: {top}",
                 }
             )
 

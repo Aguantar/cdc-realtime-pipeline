@@ -69,8 +69,25 @@ def _build(**context) -> dict:
         if days is not None and days < 60: fixes.append(f"디스크 {int(days)}일 뒤 가득: TTL·토픽 보존 조정")
     else:
         lines.append("*⑤ 자원*  ops_metrics_5m 데이터 없음(수집기 확인)")
-    # ⑥ 고칠 것
-    lines.append("*⑥ 고칠 것*  " + (" / ".join(f"({i+1}) {f}" for i, f in enumerate(fixes)) if fixes else "없음 — 임계 안"))
+    # ⑥ 마켓 생애주기 (2026-09-20, docs/34 #9)
+    # 왜 다이제스트에 넣나: 폐지는 예고된 뒤에 일어난다. 미리 알면 마켓 수 감소를 유실로 오해하지 않고,
+    # 대조 분모가 바뀌는 날을 준비할 수 있다. 이 정보는 웹소켓 ticker 에만 있다(REST 에는 없다).
+    ms = _q(hook, """SELECT market_state, count() AS n,
+                            arrayStringConcat(arraySort(groupArrayIf(concat(market, ' ', toString(delisting_date)), delisting_date IS NOT NULL)), ', ') AS sched
+                     FROM cdc_pipeline.dim_market_state_scd WHERE is_current = 1 GROUP BY market_state ORDER BY n DESC""")
+    chg = _q(hook, """SELECT market, market_state, toString(valid_from) AS at
+                      FROM cdc_pipeline.dim_market_state_scd
+                      WHERE valid_from >= now() - INTERVAL 7 DAY AND kind != 'snapshot' ORDER BY valid_from DESC LIMIT 10""")
+    if ms:
+        cur = " ".join(f"{r['market_state']} {r['n']}" for r in ms)
+        sched = ", ".join(r["sched"] for r in ms if r.get("sched"))
+        moved = ", ".join(f"{r['market']}→{r['market_state']}({r['at'][5:10]})" for r in chg) or "없음"
+        lines.append(f"*⑥ 마켓 상태*  {cur} | 폐지 예정: {sched or '없음'} | 7일 변화: {moved}")
+        if sched:
+            fixes.append(f"폐지 예정 마켓 있음({sched}): 그날 마켓 수·대조 분모가 줄어든다 — 유실 아님")
+
+    # ⑦ 고칠 것
+    lines.append("*⑦ 고칠 것*  " + (" / ".join(f"({i+1}) {f}" for i, f in enumerate(fixes)) if fixes else "없음 — 임계 안"))
     week = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
     body = "\n".join(lines)
     send_text_report(f"주간 운영 다이제스트 {week} ~ {datetime.utcnow().strftime('%Y-%m-%d')}", lines)

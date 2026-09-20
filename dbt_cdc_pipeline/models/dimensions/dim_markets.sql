@@ -10,6 +10,12 @@ ours AS (
     SELECT market, min(source_ts) AS first_seen_ours, max(source_ts) AS last_seen_ours
     FROM {{ source('raw', 'crypto_trades') }} FINAL GROUP BY market
 ),
+state AS (
+    -- 2026-09-20 (docs/34 #9): 현재 거래 상태. is_active(거래소 목록에 있나) 만으로는
+    -- "폐지 예정이라 곧 사라진다"를 알 수 없어 커버리지 감소를 유실과 구분하지 못했다.
+    SELECT market, market_state, delisting_date, is_tradable
+    FROM {{ ref('dim_market_state_scd') }} WHERE is_current = 1
+),
 flags AS (
     SELECT market, groupArrayIf(flag, state = 1) AS active_flags
     FROM (SELECT market, flag, argMax(state, observed_at) AS state FROM {{ source('reference', 'upbit_market_events') }} GROUP BY market, flag)
@@ -24,7 +30,12 @@ SELECT m.market AS market, m.korean_name AS korean_name, m.english_name AS engli
        if(m.listing_date_source = 'daily_candle_first' AND m.listing_date_est >= toDate('2026-09-09') AND o.market != '',
           dateDiff('day', m.listing_date_est, toDate(o.first_seen_ours)), NULL) AS coverage_gap_days,
        coalesce(f.active_flags, []) AS active_flags,
+       -- 상태를 모르는 마켓(폴링 시작 전에 이미 사라진 것)은 UNKNOWN. '' 로 두면 하류가 ACTIVE 와 헷갈린다
+       if(s.market = '', 'UNKNOWN', s.market_state) AS market_state,
+       s.delisting_date AS delisting_date,
+       toUInt8(s.market != '' AND s.is_tradable = 1) AS is_tradable,
        m.is_active AS is_active, m.fetched_at AS fetched_at
 FROM master AS m
 LEFT JOIN ours AS o ON o.market = m.market
 LEFT JOIN flags AS f ON f.market = m.market
+LEFT JOIN state AS s ON s.market = m.market

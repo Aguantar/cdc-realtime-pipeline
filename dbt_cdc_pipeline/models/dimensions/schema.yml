@@ -26,6 +26,24 @@ models:
           - unique:
               where: "binance_symbol != ''"
 
+  - name: dim_market_state_scd
+    description: >
+      마켓 거래 상태 이력(SCD2, docs/34 #9). ACTIVE | PREDELISTING | DELISTED + 폐지 예정일.
+      원천은 10분 폴링(poll_market_state.py) — 이 정보는 웹소켓 ticker 에만 있고 REST 에는 없다.
+      쓰임: 커버리지 판정에서 거래불가 마켓 제외, 마켓 수 감소가 폐지인지 유실인지 구분.
+      한계: 첫 구간의 valid_from 은 관측 시작(2026-09-20)이라 '적어도 그때부터'다.
+    columns:
+      - name: market
+        tests: [not_null]
+      - name: market_state
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ACTIVE', 'PREDELISTING', 'DELISTED', 'PREVIEW', 'UNKNOWN']
+      - name: valid_from
+        tests: [not_null]
+      - name: is_tradable
+        tests: [not_null]
   - name: dim_market_flag_scd
     description: "Upbit 시장경보 플래그의 이력(SCD type 2). 거래소 지정/해제 이력 + 우리 폴링 전이를 합쳐 '언제부터 언제까지 켜져 있었나'를 답한다."
     columns:
