@@ -518,7 +518,7 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 - [x] Binance 2단계 호가장 재구성 (`docs/31` §5): 증분+스냅샷 → 키별 상태(TreeMap)·U/u 순번·desync 복구, 1초 상위 20 을 Upbit 호가와 같은 스키마로. gap 0, 최우선 호가 = 거래소 bookTicker
 - [x] Binance 실시간 확장 1단계 (`docs/31`): 스택 해체 분석(볼륨으로 일하는 건 호가 경로뿐) → USDT 전 심볼 체결 수집(Kafka 직행, 6파티션 키=symbol) → Flink 별도 잡(병렬 2, DLQ) → ClickHouse RMT 30일 → REST 1h 캔들 체결 수 대조 DAG. 체결 경로 유입 36/s → ~370/s
 - [x] 인계 층 C (`docs/28` C): Upbit 경보 플래그 SCD(거래소 이력 16,202구간 + 폴링), 케이스 테이블(거울 CDC 두 번째, cases_hourly 자동 생성·사람 판정), 교차 거래소 신호(같은 코인 단위, 가격 비교 안 함)
-- [x] 보강 프로그램 #1~#9 (`docs/34`): 세 관점 평가(`docs/33`)에서 나온 약점을 항목마다 **왜 → 무엇 → 검증**으로. 보안 3건·하루 규약 통일·차원/사이드·**금액·수량 Decimal 무정지 전환**·재처리 런북·죽은 산출물 정리(`docs/35`)·테스트/계약(dbt test 68/68, 지표 사전 `docs/36`, 토픽 JSON Schema 5종 + 검증기)·마켓 상태 SCD(폐지·정지를 유실과 구분 — REST 에 없고 웹소켓에만 있는 필드, 지금 폐지 예정 2건)
+- [x] 보강 프로그램 #1~#10 (`docs/34`): 세 관점 평가(`docs/33`)에서 나온 약점을 항목마다 **왜 → 무엇 → 검증**으로. 보안 3건·하루 규약 통일·차원/사이드·**금액·수량 Decimal 무정지 전환**·재처리 런북·죽은 산출물 정리(`docs/35`)·테스트/계약(dbt test 68/68, 지표 사전 `docs/36`, 토픽 JSON Schema 5종 + 검증기)·마켓 상태 SCD(폐지·정지를 유실과 구분 — REST 에 없고 웹소켓에만 있는 필드, 지금 폐지 예정 2건)·백업 제외 기준 재정의(증분 8.7GB→5.0GB)와 복원 리허설 스크립트화
 - [ ] 이후(2026-09-20): 섀도 승격 판단(동등성 10건 누적) → 정리 주간(README·여정 인덱스·교훈 통합·블로그) → 스키마 계약·JMX → KRaft 컷오버(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
 ---
@@ -739,6 +739,7 @@ cdc-realtime-pipeline/
 │   ├── labels/poll_market_state.py     # 마켓 거래 상태 10분 폴링 (상장폐지·정지를 유실과 구분) — 이 정보는 웹소켓에만 있다
 │   ├── lib/minws.py                    # 표준 라이브러리 웹소켓 클라이언트 (의존성을 늘리지 않으려고 직접)
 │   ├── ops/reprocess-day.sh            # 하루 재처리 런북 (보존 경계 표 + 커버리지 측정)
+│   ├── ops/restore-rehearsal.sh        # 복원 리허설 — 표 단위 복원(DB째 하면 Kafka 엔진 표가 프로덕션 컨슈머를 가로챈다) + 금액 합 대조
 │   └── observe/collect_metrics.sh      # 7일 관찰용 5분 지표 스냅샷 (87컬럼, crontab)
 │
 └── docs/
@@ -769,7 +770,7 @@ cdc-realtime-pipeline/
     ├── 31-stack-dissection-and-binance-expansion.md # 스택 해체 분석(무엇이 일하나) + Binance 실시간 확장 1·2단계, 첫 시간 대조 100%, 스케줄러 OOM 사고, 운영 정리
     ├── 32-slo-and-alerting.md        # SLO 표 15줄, 알럿 3층(즉시/품질 판정/주간 다이제스트), 실무 뒷단 ↔ 개인 규모, alert_events·ops_metrics_5m
     ├── 33-three-lens-review.md       # 금융·DE·AE 세 관점 냉정 평가: 강점의 '왜', 약점의 원인·조치, 우선순위 10, 예상 질문 12
-    ├── 34-hardening-program.md       # 보강 프로그램: docs/33 약점 10건을 왜·무엇·검증·상태로. #1~#9 실행 기록
+    ├── 34-hardening-program.md       # 보강 프로그램: docs/33 약점 10건을 왜·무엇·검증·상태로. #1~#10 실행 기록
     ├── 35-data-inventory.md          # 데이터 인벤토리: 표별 소유·보존·소비자·재생성, 삭제 예정일, 09-20 정리 내역
     ├── 36-metrics.md                 # 지표 사전: 모든 지표의 수식·단위·산출 위치·함정 (taker_side 방향, 김프 분모, e2e 지연의 여섯 타임스탬프)
     ├── 28-layer2-design.md           # 2층 설계: 체결 시각 파티션 재설계(설계 부채 해소)·가상 매매 원장(CDC 제자리)·케이스/내부 신호 (결정 대기)

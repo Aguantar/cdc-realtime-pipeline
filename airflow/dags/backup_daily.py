@@ -1,7 +1,7 @@
 """DAG 4: backup_daily — ClickHouse 증분 백업 + 호가 원본 Parquet 롤링 + Oracle 오프사이트 동기화 (일 1회).
 
 무엇을 (docs/21 §1·§4):
-  1. ClickHouse 네이티브 백업. 매월 1일은 전체, 나머지는 최신 전체를 base 로 한 증분. 대상 = cdc_pipeline 전체 − orderbook_raw.
+  1. ClickHouse 네이티브 백업. 매월 1일은 전체, 나머지는 최신 전체를 base 로 한 증분. 대상 = cdc_pipeline 전체 − BACKUP_EXCLUDE(호가 원본은 Parquet 으로 따로, 전환 롤백본은 중복).
   2. orderbook_raw 의 전날(UTC) 파티션을 Parquet(zstd) 로 내보내 120일 롤링. 원본은 7일 TTL 로 지워지므로 이것이 유일한 장기 보존본.
   3. rsync 로 Oracle /mnt/backup 에 동기화하고, 원격 보존 정책(Parquet 120일, 백업 전체 3세대)을 적용한 뒤, dry-run rsync 로 "전송할 것 0" 을 확인한다.
 왜 이렇게:
@@ -26,6 +26,22 @@ from airflow.operators.python import PythonOperator
 
 from callbacks.slack_callbacks import task_failure_callback
 
+# 백업에서 빼는 표와 그 이유 (2026-09-20, docs/34 #10).
+# 원칙: "지금 복구에 쓸 수 있는 유일한 사본인가". 아니면 뺀다. 크기가 기준이 아니다.
+BACKUP_EXCLUDE = {
+    # 호가 원본: 같은 DAG 이 하루치를 Parquet(zstd, 원격 120일)으로 따로 내보낸다. 백업에 또 넣으면 두 배다.
+    "orderbook_raw",
+    # 아래 넷은 전환 롤백본이다. 살아 있는 표가 이미 백업에 들어가므로 같은 데이터를 두 번 담는 꼴이고,
+    # 삭제 예정일이 정해져 있다(docs/35). 09-20 증분이 8.7GB 가 된 원인이 이것이었다.
+    "crypto_trades_rmt",          # 09-25 삭제 예정 (RMT 전환 롤백본, docs/25)
+    "crypto_trades_v2",           # 09-26 삭제 예정 (체결 시각 파티션 전환 롤백본, docs/28 A-7)
+    "crypto_trades_float_bak",    # 09-27 삭제 예정 (Decimal 전환 롤백본, docs/34 §5)
+    "binance_trades_float_bak",   # 09-27 삭제 예정 (같음)
+}
+# binance_orderbook_raw 는 일부러 **넣는다**. Parquet 아카이브가 없어 백업이 30일 TTL 밖의 유일한 사본이고,
+# 23 MiB 라 비용이 사실상 없다. docs/34 #10 의 원래 계획("Binance 표 제외")을 실측 뒤 뒤집은 것 — 제외 기준은
+# 거래소별 소속이 아니라 '다른 사본이 있는가' 여야 한다.
+
 BACKUP_ROOT = "/backups"                     # 호스트 ~/clickhouse-backups (compose 바인드 마운트, ClickHouse 컨테이너와 공유)
 REMOTE = "ubuntu@10.88.0.1"                  # Oracle, WireGuard 터널
 REMOTE_ROOT = "/mnt/backup"
@@ -47,6 +63,14 @@ def _ch_exec(sql: str, **params) -> str:
     return r.text.strip()
 
 
+def _except() -> str:
+    """EXCEPT TABLES 절. 실재하지 않는 표를 적으면 ClickHouse 가 에러를 내므로 지금 있는 것만 넣는다
+    (롤백본은 삭제 예정이라 곧 사라진다 — 그때 백업이 깨지면 안 된다)."""
+    live = set(_ch_exec("SELECT name FROM system.tables WHERE database = 'cdc_pipeline' FORMAT TSV").split())
+    names = sorted(BACKUP_EXCLUDE & live)
+    return ", ".join(names)
+
+
 def _latest_full() -> str | None:
     fulls = sorted(d for d in os.listdir(BACKUP_ROOT) if d.startswith("full_") and os.path.isdir(os.path.join(BACKUP_ROOT, d)))
     return fulls[-1] if fulls else None
@@ -58,10 +82,10 @@ def _clickhouse_backup(**context) -> dict:
     base = _latest_full()
     if run_day.day == 1 or base is None:
         name = f"full_{tag}"
-        sql = f"BACKUP DATABASE cdc_pipeline EXCEPT TABLES orderbook_raw TO File('{BACKUP_ROOT}/{name}')"
+        sql = f"BACKUP DATABASE cdc_pipeline EXCEPT TABLES {_except()} TO File('{BACKUP_ROOT}/{name}')"
     else:
         name = f"incr_{tag}"
-        sql = f"BACKUP DATABASE cdc_pipeline EXCEPT TABLES orderbook_raw TO File('{BACKUP_ROOT}/{name}') SETTINGS base_backup = File('{BACKUP_ROOT}/{base}')"
+        sql = f"BACKUP DATABASE cdc_pipeline EXCEPT TABLES {_except()} TO File('{BACKUP_ROOT}/{name}') SETTINGS base_backup = File('{BACKUP_ROOT}/{base}')"
     if os.path.isdir(os.path.join(BACKUP_ROOT, name)):
         context["ti"].log.info("backup %s already exists — idempotent skip", name)
     else:

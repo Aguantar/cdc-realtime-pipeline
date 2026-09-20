@@ -319,6 +319,7 @@ class Trader:
     def __init__(self):
         self.key = load_private_key(PRIVATE_KEY_PATH); self.ledger = Ledger(); self.api = WsApi(self.key, self.on_event)
         self.filters: dict[str, SymbolFilters] = {}; self.stats = Stats(); self.stop = asyncio.Event()
+        self._capped_logged: set[str] = set()   # 일 상한 로그를 심볼당 하루 한 번만 (UTC 자정에 비운다)
 
     async def on_event(self, ev: dict, recv_ms: int):
         try:
@@ -372,10 +373,17 @@ class Trader:
 
     async def cycle(self):
         day_start_ms = int(time.time() // 86400 * 86400 * 1000)
+        if getattr(self, '_capped_day', None) != day_start_ms:
+            self._capped_day = day_start_ms; self._capped_logged.clear()
         for symbol in SYMBOLS:
             if symbol not in self.filters: continue
             n = self.ledger.orders_today(symbol, day_start_ms)
             if n >= MAX_ORDERS_PER_SYMBOL_PER_DAY:
+                # 2026-09-20: 상한에 닿으면 STATS 카운터가 하루 내내 멈춘 채로 있어 '조용한 실패'처럼 보인다.
+                # 실제로 한 번 그렇게 보고 4시간짜리 정지로 오해해 조사했다. 멈춘 이유를 로그에 남긴다.
+                if symbol not in self._capped_logged:
+                    self._capped_logged.add(symbol)
+                    log.info(f"{symbol} 일 상한 도달 {n}/{MAX_ORDERS_PER_SYMBOL_PER_DAY} — 다음 UTC 자정까지 신규 주문 없음(정상)")
                 continue
             try:
                 bt = rest_get('/api/v3/ticker/bookTicker', {'symbol': symbol}); bid = Decimal(bt['bidPrice']); ask = Decimal(bt['askPrice'])
