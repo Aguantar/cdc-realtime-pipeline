@@ -183,7 +183,7 @@
     },
     {
       "id": 3,
-      "title": "⚠ Market Alerts v2 (섀도 · 최근 1시간 지정 전이)",
+      "title": "⚠ 이상탐지 지정 전이 (최근 1시간)",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -233,7 +233,8 @@
         },
         "colorMode": "background",
         "graphMode": "none"
-      }
+      },
+      "description": "PRICE_24H v2.1.1 은 2026-09-20 승격(전이 116건 미매칭 0, docs/22 §6). 승격이 바꾼 것은 판정이 아니라 '사람에게 보내는가'다 — 발송은 market_alerts_notify DAG."
     },
     {
       "id": 4,
@@ -559,7 +560,7 @@
     },
     {
       "id": 8,
-      "title": "Market Alerts v2 (등급 전이 · 섀도)",
+      "title": "이상탐지 등급 전이 (PRICE_24H 정식 v2.1.1 · VOLUME_24H 섀도)",
       "type": "table",
       "gridPos": {
         "h": 8,
@@ -688,7 +689,8 @@
             "desc": true
           }
         ]
-      }
+      },
+      "description": "rule_version 으로 시대를 구분한다: v2.1.1-shadow = 승격 전, v2.1.1 = 정식, v2-shadow = VOLUME_24H(7일 창 판정 대기)."
     },
     {
       "id": 9,
@@ -769,6 +771,121 @@
           }
         ]
       }
+    },
+    {
+      "id": 100,
+      "type": "row",
+      "title": "🌐 거래소 확장 · 2층 가상 원장 (2026-09-20 추가)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 101,
+      "type": "timeseries",
+      "title": "거래소별 유입 (분당 행 수)",
+      "description": "Upbit 체결(289 마켓)·Binance 체결(493 심볼)·양쪽 호가. Binance 체결은 Kafka 직행이고 호가는 증분+스냅샷을 Flink 가 재구성한 1초 상위 20.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "-- 2026-09-20: 파이프라인이 Upbit 단일에서 Upbit+Binance 두 거래소로 넓어졌다(docs/31).\n-- 네 경로를 한 축에 놓아야 '무엇이 볼륨으로 일하는지'가 보인다.\nSELECT time,\n       sum(upbit_trades)     AS `Upbit 체결`,\n       sum(binance_trades)   AS `Binance 체결`,\n       sum(upbit_orderbook)  AS `Upbit 호가`,\n       sum(binance_orderbook) AS `Binance 호가`\nFROM (\n  SELECT toStartOfMinute(flink_ts) AS time, count() AS upbit_trades, 0 AS binance_trades, 0 AS upbit_orderbook, 0 AS binance_orderbook\n    FROM cdc_pipeline.crypto_trades WHERE flink_ts >= now() - INTERVAL 1 HOUR GROUP BY time\n  UNION ALL SELECT toStartOfMinute(flink_ts), 0, count(), 0, 0 FROM cdc_pipeline.binance_trades WHERE flink_ts >= now() - INTERVAL 1 HOUR GROUP BY 1\n  UNION ALL SELECT toStartOfMinute(recv_ts), 0, 0, count(), 0 FROM cdc_pipeline.orderbook_raw WHERE recv_ts >= now() - INTERVAL 1 HOUR GROUP BY 1\n  UNION ALL SELECT toStartOfMinute(ts), 0, 0, 0, count() FROM cdc_pipeline.binance_orderbook_raw WHERE ts >= now() - INTERVAL 1 HOUR GROUP BY 1\n)\nGROUP BY time ORDER BY time",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 102,
+      "type": "table",
+      "title": "2층 원장 — 24시간 상태 전이 (CDC 가 잡은 UPDATE)",
+      "description": "Binance Testnet 에 우리 규칙대로 주문을 내고, 상태를 바꾸는 주체는 거래소 매칭 엔진이다. 실돈은 없다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 39,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "-- 시세는 전부 INSERT 뿐이라 CDC 의 본질인 상태 변경이 없다. 그 전이를 만들려고 2층 원장을 둔다(docs/28 B).\n-- avg_versions 가 1 보다 크다는 것이 곧 '한 주문 행이 여러 번 갱신됐다' = UPDATE 를 잡았다는 증거다.\nSELECT last_exec_type AS `전이`, count() AS `건수`, uniqExact(order_id) AS `주문 수`,\n       round(avg(version), 2) AS `평균 버전(=갱신 횟수)`\nFROM cdc_pipeline.virtual_orders FINAL\nWHERE is_deleted = 0 AND updated_ms >= toUnixTimestamp(now() - INTERVAL 24 HOUR) * 1000\nGROUP BY last_exec_type ORDER BY count() DESC",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 103,
+      "type": "table",
+      "title": "2층 원장 — 최근 주문 (거울 CDC, 삭제까지 따라온다)",
+      "description": "체결 토픽은 보관소 모드(삭제 무시)이고 원장 토픽은 거울 모드(삭제 유지)다. 테스트넷 월 리셋 때 reset_epoch 가 오르고 이전 세대는 물리 삭제된다 — 그것이 DELETE 실증이다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 47,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT fromUnixTimestamp64Milli(updated_ms) AS time, symbol, side, strategy, status,\n       last_exec_type, toFloat64(price) AS price, version, reset_epoch\nFROM cdc_pipeline.virtual_orders FINAL\nWHERE is_deleted = 0 ORDER BY updated_ms DESC LIMIT 20",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
     }
   ],
   "schemaVersion": 39,

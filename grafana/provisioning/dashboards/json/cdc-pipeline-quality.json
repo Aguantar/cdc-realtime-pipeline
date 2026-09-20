@@ -176,6 +176,155 @@
           "queryType": "sql"
         }
       ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "🆕 2026-09-20 추가 — Binance 대조 · 2층 원장 3자 대조 · 토픽 계약",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Binance 대조 — 일별 가중 비율 (%)",
+      "description": "493 심볼 × 시간 셀. 첫 온전한 시간(09-20 01:00 UTC) 실측 100.000%, 불일치 셀 0/491.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "-- Upbit 은 '원장 대조'(체결 수량), Binance 는 REST 1시간 캔들의 체결 수와 우리 행 수를 센다(docs/31).\n-- 분모가 다르므로 같은 패널에 겹치지 않고 따로 둔다 — 같은 이름의 지표라도 정의가 다르면 나란히 두지 않는다.\nSELECT toDateTime(day_utc) AS time, weighted_pct AS `가중 비율(%)`, min_cell_pct AS `최소 셀(%)`\nFROM cdc_pipeline.dq_binance_reconcile_daily ORDER BY day_utc",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 22,
+      "type": "table",
+      "title": "2층 원장 — 3자 대조 (거래소 = MySQL = ClickHouse)",
+      "description": "불일치가 0 이어야 한다. 0 이 아니면 어느 구간이 깨졌는지를 두 열이 가른다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "-- 우리 원장이 거래소와 같은가(ex_my), 그리고 CDC 가 그것을 온전히 옮겼는가(my_ch).\n-- 둘을 나눠 보는 이유: 앞은 '원장이 맞나', 뒤는 '파이프라인이 맞나' — 고칠 곳이 다르다.\nSELECT toString(day_utc) AS `날짜`, count() AS `심볼`,\n       sum(ex_my_mismatch) AS `거래소≠MySQL`, sum(my_ch_mismatch) AS `MySQL≠ClickHouse`,\n       sum(my_orders) AS `주문`, sum(my_filled) AS `체결`\nFROM cdc_pipeline.dq_ledger_daily GROUP BY day_utc ORDER BY day_utc DESC LIMIT 10",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 23,
+      "type": "table",
+      "title": "토픽 계약 검증 (매시 cron → Airflow 판정)",
+      "description": "위반이 있거나 3시간 넘게 기록이 없으면 quality_alerts DAG 이 Slack 으로 알린다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "-- Debezium 을 schemas.enable=false 로 쓰므로 메시지 안에 스키마가 없다. 계약을 schemas/ 에 밖에 적고\n-- 살아 있는 토픽 표본과 매시 대조한다. '위반 없음'과 '검사 안 함'은 다르므로 마지막 실행 시각도 본다.\nSELECT topic AS `토픽`, status AS `상태`, checked AS `검사`, violations AS `위반`,\n       toString(max(ran_at)) AS `마지막 검증`\nFROM cdc_pipeline.schema_validation_runs\nWHERE ran_at >= (SELECT max(ran_at) FROM cdc_pipeline.schema_validation_runs)\nGROUP BY topic, status, checked, violations ORDER BY violations DESC, topic",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 24,
+      "type": "table",
+      "title": "수집 공백 — 거래소 공지로 설명되나",
+      "description": "코인별 거래지원 중단은 본문에 재개 시각만 있는 경우가 있어 창을 지어내지 않고 후보로만 둔다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "-- 공백을 세는 것만으로는 사고인지 점검인지 모른다. 업비트 서버 점검 중에는 전 마켓 거래가 멈춘다(정상).\n-- explained=1 이면 그 공백은 유실이 아니다(docs/37).\nSELECT toString(window_start) AS `시작`, gap_seconds AS `초`, reason AS `사유`,\n       inserted_rows AS `복구 행`, explained_by_maintenance AS `점검으로 설명됨`,\n       arrayStringConcat(maintenance_notices, ' / ') AS `공지`\nFROM cdc_pipeline.dq_ingest_gaps_labeled ORDER BY window_start DESC LIMIT 15",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
     }
   ],
   "description": "파이프라인 품질 층(dbt dq_*): 원장 대조·수리 계보·적재 지연·규칙 평가. docs/22"

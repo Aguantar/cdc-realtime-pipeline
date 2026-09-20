@@ -1,393 +1,426 @@
 {
-  "annotations": {
-    "list": []
+  "uid": "airflow-operations",
+  "title": "파이프라인 운영 (자원 · 유입 · 알럿)",
+  "tags": [
+    "cdc",
+    "ops"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
   },
-  "description": "Airflow DAG 오케스트레이션 모니터링",
-  "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 1,
-  "links": [],
   "panels": [
     {
-      "title": "Scheduler Heartbeat (스케줄러 생존)",
+      "id": 1,
       "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
-            ]
-          },
-          "mappings": [
-            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
-          ]
-        }
+      "title": "Flink 잡 (정상 5)",
+      "description": "5개: CDC 체결 · Upbit 호가 · Binance 체결 · Binance 호가 · Circuit Connect",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
       },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
       "targets": [
         {
-          "expr": "rate(airflow_scheduler_heartbeat[5m]) > 0",
-          "legendFormat": "Heartbeat",
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "graphMode": "none",
-        "textMode": "value_and_name",
-        "colorMode": "background"
-      }
-    },
-    {
-      "title": "DAG Bag Size (로드된 DAG 수)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "steps": [
-              { "color": "blue", "value": null }
-            ]
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "airflow_dagbag_size",
-          "legendFormat": "DAGs",
-          "refId": "A"
-        }
-      ],
-      "options": { "graphMode": "none", "colorMode": "background" }
-    },
-    {
-      "title": "Executor - Open Slots (여유 실행 슬롯)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 5 },
-              { "color": "green", "value": 20 }
-            ]
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "airflow_executor_open_slots",
-          "legendFormat": "Open",
-          "refId": "A"
-        }
-      ],
-      "options": { "graphMode": "area", "colorMode": "background" }
-    },
-    {
-      "title": "Running Tasks (실행 중 태스크)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 10 },
-              { "color": "red", "value": 25 }
-            ]
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "airflow_executor_running_tasks",
-          "legendFormat": "Running",
-          "refId": "A"
-        }
-      ],
-      "options": { "graphMode": "area", "colorMode": "background" }
-    },
-    {
-      "title": "Queued Tasks (대기 중 태스크)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 5 },
-              { "color": "red", "value": 15 }
-            ]
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "airflow_executor_queued_tasks",
-          "legendFormat": "Queued",
-          "refId": "A"
-        }
-      ],
-      "options": { "graphMode": "area", "colorMode": "background" }
-    },
-    {
-      "title": "DAG Import Errors (DAG 로드 에러)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
-            ]
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "airflow_dag_processing_import_errors",
-          "legendFormat": "Errors",
-          "refId": "A"
-        }
-      ],
-      "options": { "graphMode": "none", "colorMode": "background" }
-    },
-    {
-      "title": "Task Finished (태스크 성공/실패 추이)",
-      "description": "5분 단위 태스크 완료 건수 (전체 DAG 합산)",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "bars",
-            "barAlignment": 0,
-            "fillOpacity": 80,
-            "stacking": { "mode": "normal" }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "성공" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "실패" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
-          }
-        ]
-      },
-      "targets": [
-        {
-          "expr": "sum(increase(airflow_ti_finish{state=\"success\"}[5m]))",
-          "legendFormat": "성공",
-          "refId": "A"
-        },
-        {
-          "expr": "sum(increase(airflow_ti_finish{state=\"failed\"}[5m]))",
-          "legendFormat": "실패",
-          "refId": "B"
-        }
-      ],
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" }
-      }
-    },
-    {
-      "title": "DAG Run Duration (DAG 실행 소요시간)",
-      "description": "DAG 1회 실행에 걸린 시간 (초)",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": {
-            "drawStyle": "points",
-            "pointSize": 8,
-            "fillOpacity": 0,
-            "lineWidth": 0,
-            "showPoints": "always"
-          }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "health_check" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "daily_pipeline" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
-          }
-        ]
-      },
-      "targets": [
-        {
-          "expr": "airflow_dagrun_duration{dag_id=\"health_check\",status=\"success\",quantile=\"0.5\"}",
-          "legendFormat": "health_check",
-          "refId": "A"
-        },
-        {
-          "expr": "airflow_dagrun_duration{dag_id=\"daily_pipeline\",status=\"success\",quantile=\"0.5\"}",
-          "legendFormat": "daily_pipeline",
-          "refId": "B"
-        }
-      ],
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" }
-      }
-    },
-    {
-      "title": "DAG Parse Time (DAG 파싱 소요시간)",
-      "description": "스케줄러가 DAG 파일을 읽는 데 걸리는 시간",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "lineWidth": 2
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "airflow_dag_processing_last_duration_health_check",
-          "legendFormat": "health_check",
-          "refId": "A"
-        },
-        {
-          "expr": "airflow_dag_processing_last_duration_daily_pipeline",
-          "legendFormat": "daily_pipeline",
-          "refId": "B"
-        }
-      ],
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" }
-      }
-    },
-    {
-      "title": "Task Duration (태스크별 평균 소요시간)",
-      "description": "daily_pipeline의 각 태스크가 평균적으로 걸리는 시간",
-      "type": "bargauge",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 10 },
-              { "color": "red", "value": 60 }
-            ]
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "airflow_dag_task_duration_sum{dag_id=\"daily_pipeline\"} / airflow_dag_task_duration_count{dag_id=\"daily_pipeline\"} > 0",
-          "legendFormat": "{{task_id}}",
           "refId": "A",
-          "instant": true
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "-- 2026-09-20 재작성: 원래 이 대시보드는 Prometheus 12패널이었는데 Prometheus 는 09-20 에 ops 프로필로\n-- 내려서 평소엔 꺼져 있다 → **12패널 전부 빈 화면**이었다. 만든 것과 도는 것은 다르다.\n-- 대체재로 만들어 둔 ops_metrics_5m(5분 cron 호스트 지표, docs/32)로 다시 세웠다.\nSELECT argMax(flink_running, ts) AS `잡` FROM cdc_pipeline.ops_metrics_5m",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
         }
-      ],
-      "options": {
-        "orientation": "horizontal",
-        "displayMode": "gradient",
-        "showUnfilled": true,
-        "reduceOptions": {
-          "calcs": ["lastNotNull"]
-        }
-      }
+      ]
     },
     {
-      "title": "Last DAG Run (마지막 실행 경과시간)",
-      "description": "각 DAG이 마지막으로 실행된 후 경과한 시간 (초)",
+      "id": 2,
       "type": "stat",
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 900 },
-              { "color": "red", "value": 1800 }
-            ]
-          }
-        }
+      "title": "호스트 load1 (코어 4)",
+      "description": "4 를 넘으면 코어 수만큼 일이 밀려 있다는 뜻. 주간 다이제스트가 p95 로 판정한다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
       },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
       "targets": [
         {
-          "expr": "airflow_dag_processing_last_run_seconds_ago_health_check",
-          "legendFormat": "health_check",
-          "refId": "A"
-        },
-        {
-          "expr": "airflow_dag_processing_last_run_seconds_ago_daily_pipeline",
-          "legendFormat": "daily_pipeline",
-          "refId": "B"
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT round(argMax(load1, ts), 2) AS `load1` FROM cdc_pipeline.ops_metrics_5m",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
         }
-      ],
-      "options": {
-        "graphMode": "area",
-        "colorMode": "value",
-        "textMode": "value_and_name",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"]
-        }
-      }
+      ]
     },
     {
-      "title": "DAG Processing Total Parse Time (전체 DAG 파싱 총 소요시간)",
-      "description": "모든 DAG 파일의 파싱 시간 합계",
-      "type": "timeseries",
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
-      "datasource": { "uid": "prometheus-airflow", "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "lineWidth": 2
-          }
-        }
+      "id": 3,
+      "type": "stat",
+      "title": "디스크 여유 (GB)",
+      "description": "",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
       },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
       "targets": [
         {
-          "expr": "airflow_dag_processing_total_parse_time",
-          "legendFormat": "Total Parse Time",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT round(argMax(disk_free_mb, ts) / 1024, 1) AS `GB` FROM cdc_pipeline.ops_metrics_5m",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
         }
-      ],
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" }
-      }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Upbit e2e p95 (초)",
+      "description": "거래소 체결 시각 → ClickHouse 적재까지. SLO 30초(docs/32).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT round(argMax(upbit_e2e_p95_s, ts), 2) AS `p95` FROM cdc_pipeline.ops_metrics_5m",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Binance e2e p95 (초)",
+      "description": "",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT round(argMax(binance_e2e_p95_s, ts), 2) AS `p95` FROM cdc_pipeline.ops_metrics_5m",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Flink 소스 busy max (ms/s)",
+      "description": "1,000 = 포화. 500 을 넘으면 유실 전에 알린다 — 포화 선행 지표(docs/23 §5).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT round(argMax(flink_busy_max, ts), 0) AS `busy` FROM cdc_pipeline.ops_metrics_5m",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "유입 (5분 행 수)",
+      "description": "Binance 체결이 압도적으로 많다 — 493 심볼 × 전 체결. Upbit 은 289 마켓.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT ts AS time, upbit_trades_5m AS `Upbit 체결`, binance_trades_5m AS `Binance 체결`, orderbook_5m AS `Upbit 호가`\nFROM cdc_pipeline.ops_metrics_5m ORDER BY ts",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "종단 지연 p95 (초)",
+      "description": "튀는 구간은 대개 배포·재생성이다. 밀렸다가 따라잡는 것이지 유실이 아니다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT ts AS time, upbit_e2e_p95_s AS `Upbit`, binance_e2e_p95_s AS `Binance`\nFROM cdc_pipeline.ops_metrics_5m ORDER BY ts",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "컨테이너 메모리 (MiB)",
+      "description": "16GB 한 대에서 전부 돈다. 한도의 90% 를 넘으면 주간 다이제스트가 '고칠 것'에 올린다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT ts AS time, mem_kafka_mb AS Kafka, mem_tm_mb AS `Flink TM`, mem_ch_mb AS ClickHouse,\n       mem_mysql_mb AS MySQL, mem_scheduler_mb AS `Airflow 스케줄러`\nFROM cdc_pipeline.ops_metrics_5m ORDER BY ts",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "호스트 부하 · 스왑",
+      "description": "스왑이 오르면 메모리 한도가 실사용보다 작다는 신호다(09-18 n8n 크래시 루프의 원인).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT ts AS time, load1 AS load1, load5 AS load5, swap_used_mb / 100 AS `swap(100MiB)`\nFROM cdc_pipeline.ops_metrics_5m ORDER BY ts",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "울린 알럿 (alert_events)",
+      "description": "알림은 Airflow 한 경로로만 나간다(n8n 은 09-20 에 비활성 확인 후 정리). 중복은 dedup_key 로 막는다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT toString(fired_at) AS `시각`, source AS `출처`, name AS `이름`, severity AS `등급`, message AS `내용`\nFROM cdc_pipeline.alert_events ORDER BY fired_at DESC LIMIT 20",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "마켓 상태 — 폐지·정지 (유실과 구분)",
+      "description": "이 정보는 웹소켓 ticker 에만 있고 REST 에는 없다(docs/34 #9). 폐지일에 마켓 수가 줄어도 유실이 아니다.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "rawSql": "SELECT market AS `마켓`, market_state AS `상태`, toString(delisting_date) AS `폐지 예정`,\n       toString(valid_from) AS `관측 시작`\nFROM cdc_pipeline.dim_market_state_scd\nWHERE is_current = 1 AND market_state != 'ACTIVE' ORDER BY delisting_date",
+          "format": 1,
+          "queryType": "sql",
+          "editorType": "sql"
+        }
+      ]
     }
-  ],
-  "schemaVersion": 39,
-  "tags": ["airflow", "operations"],
-  "templating": { "list": [] },
-  "time": { "from": "now-6h", "to": "now" },
-  "timepicker": {},
-  "timezone": "Asia/Seoul",
-  "title": "Airflow Operations",
-  "uid": "airflow-operations",
-  "version": 2
+  ]
 }
