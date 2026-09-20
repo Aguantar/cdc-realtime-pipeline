@@ -49,6 +49,20 @@ cron 은 자기 산출물을 표에 남기므로, **그 표의 마지막 기록�
 **실패는 알리는데 지연은 안 알리고 있었다.**
 외부 API 를 쓰는 4개 DAG 에 `retry_exponential_backoff` + `max_retry_delay=10m` — 고정 간격 재시도는 같은 실패를 반복한다.
 
+### 작업 중 내가 만든 실수 — 일괄 편집이 코드를 깨뜨렸다
+SLA 를 네 DAG 에 한 번에 넣으려고 `task_id="…"` 뒤에 문자열을 끼워 넣었는데,
+`quality_alerts`·`market_alerts_notify` 는 **한 줄짜리 연산자**였다.
+
+```python
+PythonOperator(task_id="judge_quality",
+    sla=timedelta(minutes=20),   # …다, python_callable=_judge)   ← 주석이 나머지 인자를 삼켰다
+```
+
+`SyntaxError: '(' was never closed` 로 DAG 2개가 죽었고 테스트 4개가 실패했다.
+**같은 패턴이 두 가지 형태로 존재하는 파일을 정규식으로 일괄 편집하면 이렇게 된다.**
+두 파일은 손으로 여러 줄 형태로 고쳤고, 편집 직후 **전 DAG 문법 검사 + 테스트**를 돌려 잡았다.
+(교훈: 일괄 편집 뒤에는 반드시 전수 문법 검사를 한다 — docs/30 의 '검증 전 커밋' 과 같은 부류)
+
 ### ⑩ 로그 보존
 | | 값 |
 |---|---|
