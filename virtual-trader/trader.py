@@ -29,11 +29,17 @@ REST_URL = os.getenv('BINANCE_REST_URL', 'https://testnet.binance.vision')
 API_KEY = os.getenv('BINANCE_API_KEY', '')
 PRIVATE_KEY_PATH = os.getenv('BINANCE_ED25519_PRIVATE_KEY_PATH', '/run/secrets/binance_ed25519.pem')
 SYMBOLS = [s for s in os.getenv('SYMBOLS', 'BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT').split(',') if s]
-CYCLE_SEC = float(os.getenv('CYCLE_SEC', '300'))
+# 2026-09-20: 300초·심볼당 60건이면 하루치를 100분 만에 다 쓰고 22시간을 쉬었다.
+# 이 원장은 '합성 거래 카나리아'다 — 양이 아니라 CDC 경로가 24시간 내내 신호를 내는 것이 목적이고,
+# 매시 도는 3자 대조가 매번 새 데이터를 봐야 한다. 그래서 주기를 늘려 하루에 고르게 편다.
+#   900초 × 24시간 = 96 사이클, 심볼당 3건 → 288건/일, 매시 4 사이클(빈 시간 없음).
+# 상한 288 은 임의 숫자가 아니라 '15분 주기로 24시간'의 결과다. 거래소 한도 대비:
+#   주문 1,440건/일 = 일 한도 160,000 의 0.9%, 사이클당 25 요청 = 10초 50건 한도 안(주문 사이 1초 대기).
+CYCLE_SEC = float(os.getenv('CYCLE_SEC', '900'))
 CANCEL_AFTER_SEC = float(os.getenv('CANCEL_AFTER_SEC', '90'))
 ORDER_NOTIONAL_USDT = Decimal(os.getenv('ORDER_NOTIONAL_USDT', '20'))
 MAKER_TICKS = int(os.getenv('MAKER_TICKS', '5'))
-MAX_ORDERS_PER_SYMBOL_PER_DAY = int(os.getenv('MAX_ORDERS_PER_SYMBOL_PER_DAY', '60'))
+MAX_ORDERS_PER_SYMBOL_PER_DAY = int(os.getenv('MAX_ORDERS_PER_SYMBOL_PER_DAY', '288'))   # = 3건 × (86400/CYCLE_SEC)
 STATS_INTERVAL = int(os.getenv('STATS_INTERVAL_SEC', '30'))
 MYSQL = dict(host=os.getenv('MYSQL_HOST', 'cdc-mysql'), port=int(os.getenv('MYSQL_PORT', '3306')), user=os.getenv('MYSQL_USER', 'ledger'),
              password=os.getenv('MYSQL_PASSWORD', ''), database=os.getenv('MYSQL_DATABASE', 'crypto_db'), autocommit=True)

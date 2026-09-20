@@ -204,7 +204,8 @@ B 에 쓸 수 있는 "우리가 만들지 않은 상태 변경" 후보: (a) Bina
 
 ### B-4. 생성기 `virtual-trader/` (코드·테스트 완료, 실행은 키 뒤)
 - 인증 Ed25519(WS-API `session.logon` 뒤 서명 생략), 유저 스트림 `userDataStream.subscribe` 를 같은 연결에서(2026-03 listenKey 폐지).
-- 규칙(CYCLE_SEC=300 마다 심볼 5개): A maker-probe = 최우선 매수 −5틱 LIMIT GTC → 90초 뒤 **amend keepPriority(수량 절반)** → 90초 뒤 취소 (NEW·REPLACED·CANCELED) / B taker-ioc = 최우선 매도가 LIMIT IOC (TRADE→FILLED 또는 PARTIALLY_FILLED→EXPIRED) / C unwind = 순매수 잔량을 IOC 매도. 금액 20 USDT, 거래소 필터(tick·step·minNotional) 양자화, 심볼당 일 60건 상한.
+- 규칙(CYCLE_SEC=300 마다 심볼 5개): A maker-probe = 최우선 매수 −5틱 LIMIT GTC → 90초 뒤 **amend keepPriority(수량 절반)** → 90초 뒤 취소 (NEW·REPLACED·CANCELED) / B taker-ioc = 최우선 매도가 LIMIT IOC (TRADE→FILLED 또는 PARTIALLY_FILLED→EXPIRED) / C unwind = 순매수 잔량을 IOC 매도. 금액 20 USDT, 거래소 필터(tick·step·minNotional) 양자화, 심볼당 일 288건 상한.
+- **주기·상한 개정 (2026-09-20)**: 원래 `CYCLE_SEC=300` · 심볼당 60건이었는데, 하루치를 **100분 만에 소진**하고 나머지 22시간은 원장 경로가 비었다. 양은 문제가 아니었다(원장은 시세 경로와 달리 양을 만드는 층이 아니다) — **커버리지**가 문제였다. 매시 도는 3자 대조가 새 데이터 없이 돌고, CDC 경로 모니터링이 볼 트래픽이 없었다. 이 원장은 합성 거래 카나리아이므로 실무의 synthetic monitoring 과 같이 **낮은 비율로 24시간 끊김 없이** 돌아야 한다. → `CYCLE_SEC=900`(15분), 상한 288. 288 은 임의 숫자가 아니라 `3건 × (86400/900)` 의 결과이고, 매시 4 사이클이라 빈 시간이 없다. 거래소 한도 대비 주문 1,440건/일 = 일 한도 160,000 의 **0.9%**(실측: testnet exchangeInfo 의 ORDERS 160000/1DAY·50/10SECOND, REQUEST_WEIGHT 6000/1MINUTE). 잔고 영향 없음 — unwind 가 순포지션을 되돌려 09-20 심볼별 순수량 드리프트가 0 수준(최대 0.2 XRP).
 - clientOrderId = `<mkr|ioc|unw>.<yyyymmdd>.<symbol>.<n>.<sec>` (Binance 규칙 36자 안에서 전략을 읽게). 첫 구현이 `-` 구분자를 써서 전략 이름의 `-` 와 충돌 → 테스트가 잡음.
 - 리셋 감지(10분마다): 우리 열린 주문이 거래소에 -2013(없음) **이고** 최근 FILLED 주문도 없음 → 세대 +1, 이전 세대 주문·체결 물리 DELETE(→ CDC op=d), 원문 로그에 RESET_DETECTED. 하나만 없으면 단순 취소·만료일 수 있어 둘 다 요구.
 - 테스트 7개(네트워크·DB 없음): 서명 payload 정렬, Ed25519 검증, 필터 양자화·지수표기 방지, 규칙 A/B/C 계획, minNotional 미달 스킵, executionReport→주문/체결 행, 취소 이벤트의 원 주문 id·dedup 키.

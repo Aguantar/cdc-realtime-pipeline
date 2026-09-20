@@ -351,10 +351,13 @@ services:
       MYSQL_PASSWORD: ${LEDGER_MYSQL_PASSWORD}
       MYSQL_DATABASE: crypto_db
       SYMBOLS: BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT
-      CYCLE_SEC: "300"
+      # 2026-09-20 (docs/28 B 주기·상한 개정): 300초·60건이면 하루치를 100분에 소진하고 22시간을 쉬었다.
+      # 이 원장은 합성 거래 카나리아라 CDC 경로가 24시간 신호를 내야 한다 → 15분 주기로 하루에 고르게.
+      # 288 = 3건 × (86400/900), 매시 4 사이클이라 빈 시간이 없다. 주문 1,440건/일 = 거래소 일 한도의 0.9%.
+      CYCLE_SEC: "900"
       CANCEL_AFTER_SEC: "90"
       ORDER_NOTIONAL_USDT: "20"
-      MAX_ORDERS_PER_SYMBOL_PER_DAY: "60"
+      MAX_ORDERS_PER_SYMBOL_PER_DAY: "288"
     volumes:
       - ./secrets/binance_testnet_ed25519.pem:/run/secrets/binance_ed25519.pem:ro
     deploy:
