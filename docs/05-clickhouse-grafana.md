@@ -33,7 +33,7 @@ Flink Job
                                         │
                                         ▼
                               Caddy Reverse Proxy
-                         (grafana.calmee.store, HTTPS)
+                         (grafana.<내-도메인>, HTTPS)
 ```
 
 ---
@@ -392,7 +392,7 @@ docker compose up -d grafana    # ✓
 
 ### 6.8 Grafana 외부 접속 — VS Code Proxy 문제
 
-**증상:** `localhost:3000`으로 접속 불가 (ERR_CONNECTION_REFUSED). `https://code.calmee.store/proxy/3000/`으로 접속하면 "Grafana has failed to load its application files" 에러.
+**증상:** `localhost:3000`으로 접속 불가 (ERR_CONNECTION_REFUSED). `https://code.<내-도메인>/proxy/3000/`으로 접속하면 "Grafana has failed to load its application files" 에러.
 
 **원인:** 이 프로젝트의 미니PC는 VS Code Remote Tunnel을 통해 접속한다. VS Code는 포트를 자동 포워딩할 때 `/proxy/3000/` 서브패스를 사용하는데, Grafana는 이 서브패스를 인식하지 못해 정적 파일(JS, CSS)을 `/public/...` 경로에서 찾으려 했다.
 
@@ -401,13 +401,13 @@ docker compose up -d grafana    # ✓
 | 시도 | 결과 | 원인 |
 |------|------|------|
 | `localhost:3000` 직접 접속 | ERR_CONNECTION_REFUSED | 미니PC에서 실행 중이라 localhost가 다름 |
-| `192.168.219.114:3000` | ERR_CONNECTION_TIMED_OUT | 공유기 방화벽으로 내부 포트 차단 |
+| `192.168.x.x:3000` | ERR_CONNECTION_TIMED_OUT | 공유기 방화벽으로 내부 포트 차단 |
 | VS Code Proxy `/proxy/3000/` | 정적 파일 로드 실패 | 서브패스 미인식 |
 | `GF_SERVER_SERVE_FROM_SUB_PATH=true` | TOO_MANY_REDIRECTS | VS Code Proxy와 Grafana 리다이렉트 충돌 |
 
 **최종 해결: Caddy 리버스 프록시**
 
-이 미니PC에는 이미 Caddy 리버스 프록시가 구동 중이었다. `code.calmee.store`와 `n8n.calmee.store`가 각각 VS Code Server와 n8n으로 라우팅되고 있었다.
+이 미니PC에는 이미 Caddy 리버스 프록시가 구동 중이었다. `code.<내-도메인>`와 `n8n.<내-도메인>`가 각각 VS Code Server와 n8n으로 라우팅되고 있었다.
 
 같은 방식으로 Grafana 전용 서브도메인을 추가했다:
 
@@ -415,7 +415,7 @@ Step 1: 가비아 DNS에 `grafana` A 레코드 추가 (같은 공인 IP)
 
 Step 2: Caddyfile에 블록 추가:
 ```
-grafana.calmee.store {
+grafana.<내-도메인> {
     reverse_proxy localhost:3000
 }
 ```
@@ -425,7 +425,7 @@ Step 3: Caddy 리로드:
 sudo systemctl reload caddy
 ```
 
-Caddy가 자동으로 Let's Encrypt SSL 인증서를 발급하여, `https://grafana.calmee.store`로 즉시 HTTPS 접속이 가능해졌다.
+Caddy가 자동으로 Let's Encrypt SSL 인증서를 발급하여, `https://grafana.<내-도메인>`로 즉시 HTTPS 접속이 가능해졌다.
 
 **교훈:** VS Code Remote Tunnel의 포트 프록시는 단순한 API 서버에는 잘 동작하지만, SPA(Single Page Application)처럼 정적 리소스를 많이 로드하는 서비스에는 적합하지 않다. 이런 경우 Caddy나 Nginx 같은 전용 리버스 프록시가 훨씬 안정적이다.
 
@@ -506,7 +506,7 @@ Phase 1~4를 거쳐 완성된 전체 파이프라인:
   Grafana (11개 패널, 10초 자동 갱신)
      │
      ▼
-  Caddy (HTTPS, grafana.calmee.store)
+  Caddy (HTTPS, grafana.<내-도메인>)
 ```
 
 | 지표 | 달성값 |
@@ -515,7 +515,7 @@ Phase 1~4를 거쳐 완성된 전체 파이프라인:
 | 이상 탐지 규칙 | 4종 (LARGE_ORDER, HIGH_AMOUNT, PRICE_SPIKE, RAPID_ORDERS) |
 | 컨테이너 수 | 11개 |
 | 총 메모리 사용 | ~4.1GB / 16GB |
-| HTTPS 접근 | grafana.calmee.store (자동 SSL) |
+| HTTPS 접근 | grafana.<내-도메인> (자동 SSL) |
 
 ---
 

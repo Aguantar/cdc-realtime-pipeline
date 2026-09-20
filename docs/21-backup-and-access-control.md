@@ -253,17 +253,17 @@ Upbit 호가 약 250/s 라 각각 9분·13분치다. 정지가 1분이었으니 
 
 **내가 앞에서 틀렸다.** §5-8 에서 "익명 접근은 LAN 범위"라고 적었는데, 사실이 아니었다.
 포트 3000 은 공유기가 막고 있었지만(휴대폰 셀룰러 테스트에서 로딩만 계속됨 = 포워딩 없음),
-**Caddy 가 `grafana.calmee.store` 를 인증 없이 3000 으로 넘기고 있었다.**
+**Caddy 가 `grafana.<내-도메인>` 를 인증 없이 3000 으로 넘기고 있었다.**
 
 ```
-grafana.calmee.store {
+grafana.<내-도메인> {
     reverse_proxy localhost:3000        # ← airflow·code 블록과 달리 basic_auth 가 없다
 }
 ```
 
 | 실측 | 결과 |
 |---|---|
-| `https://grafana.calmee.store/` | **HTTP 200** (인증 없이) |
+| `https://grafana.<내-도메인>/` | **HTTP 200** (인증 없이) |
 | `/api/search` | **200** — 대시보드 목록 |
 | `/api/ds/query` 에 rawSql | **200, SQL 실행됨** |
 
@@ -311,7 +311,7 @@ grafana.calmee.store {
 사용자: "그라파나 진입 자체에 암호를 거는 건? 그게 닫는 것보다 의미 있지 않아? 결국 누군가 궁금해하면 보여주긴 해야 하는데."
 
 맞다. 완전히 닫으면 보여줄 수 없고, 열어 두면 아무나 본다. **문을 달면 둘 다 된다.**
-이미 `airflow.calmee.store`·`code.calmee.store` 에 쓰고 있는 방식이라 구조도 일관된다.
+이미 `airflow.<내-도메인>`·`code.<내-도메인>` 에 쓰고 있는 방식이라 구조도 일관된다.
 
 | 층 | 무엇 | 역할 |
 |---|---|---|

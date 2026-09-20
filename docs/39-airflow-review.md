@@ -128,7 +128,7 @@ return gate_result          # ← 예외를 던지지 않는다
 ### ⑤ 모니터링 · 디버깅 UI — **됨**
 | 항목 | 상태 |
 |---|---|
-| UI | ✅ `airflow.calmee.store`(Caddy basic_auth + Airflow 로그인), Grid·Gantt·로그 기본 제공 |
+| UI | ✅ `airflow.<내-도메인>`(Caddy basic_auth + Airflow 로그인), Grid·Gantt·로그 기본 제공 |
 | 로그 | ✅ 호스트 볼륨에 보존 — **다만 3.4 GB, 정리 정책 없음**(아래) |
 
 ### 4-1. 이 대조로 새로 나온 항목

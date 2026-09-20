@@ -1,10 +1,14 @@
 version: 2
 
+# 주의: exposure 의 `url` 에 적힌 `<내-도메인>` 은 **일부러 가린 것**이다(2026-09-21).
+# 공개 저장소에 실제 도메인을 적으면 공격자에게 표적을 알려 주는 셈이고, 도메인은 문서의 뜻과 무관하다.
+# 실제 주소는 로컬 `.env`·Caddyfile 에만 있다. 도메인은 공개 저장소에서 가린다.
+
 exposures:
   - name: crypto_market_dashboard
     type: dashboard
     maturity: medium
-    url: https://grafana.calmee.store
+    url: https://grafana.<내-도메인>
     description: "코인 시세 실시간 대시보드 — 일별 시세, 시간봉 캔들"
     depends_on:
       - ref('mart_daily_summary')
@@ -15,7 +19,7 @@ exposures:
   - name: pipeline_quality_dashboard
     type: dashboard
     maturity: low
-    url: https://grafana.calmee.store
+    url: https://grafana.<내-도메인>
     description: "파이프라인 품질 — 일별 원장 대조, 수리 계보, 적재 지연, 규칙 평가(정밀도·재현율)"
     depends_on:
       - ref('dq_reconcile_daily')
@@ -67,7 +71,7 @@ exposures:
     label: "Grafana · 파이프라인 관측 · 오류 탐지"
     type: dashboard
     maturity: high
-    url: https://grafana.calmee.store/d/cdc-pipeline-main
+    url: https://grafana.<내-도메인>/d/cdc-pipeline-main
     description: >
       "지금 파이프라인이 제대로 도는가"에 답하는 대시보드(23패널, 6섹션: 지금 상태 · 유입 · 지연 · 정확성 · 오류/공백 · 자원/알럿).
       새로고침 10초. Caddy basic_auth 뒤에서 데모 자격증명으로 공개한다.
@@ -86,7 +90,7 @@ exposures:
     label: "Grafana · 이상탐지 (시장 경보)"
     type: dashboard
     maturity: high
-    url: https://grafana.calmee.store/d/cdc-anomaly
+    url: https://grafana.<내-도메인>/d/cdc-anomaly
     description: >
       "무엇이 언제 지정됐고 그 판정이 맞나"에 답하는 대시보드(18패널, 5섹션: 지정 상태 · 전이 · 규칙 평가 · 거래대금 급등 · 마켓 상태와 시장 맥락).
       PRICE_24H 는 2026-09-20 정식 승격(v2.1.1), VOLUME_24H 는 섀도.
