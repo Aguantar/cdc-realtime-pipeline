@@ -28,6 +28,25 @@ RULES = [
      lambda r: int(r["parity_ok"]) == 0 and int(r["sql_transitions"]) >= 10, lambda r: f"{r['day_s']} sql {r['sql_transitions']} flink {r['flink_transitions']} matched {r['matched']}", "docs/22 §4"),
     ("Ledger 3-way", "SELECT toString(day_utc) AS day_s, sum(ex_my_mismatch) AS ex_my, sum(my_ch_mismatch) AS my_ch, count() AS symbols FROM cdc_pipeline.dq_ledger_daily WHERE day_utc < today() GROUP BY day_utc ORDER BY day_utc DESC LIMIT 1",
      lambda r: int(r["ex_my"]) > 0 or int(r["my_ch"]) > 0, lambda r: f"{r['day_s']} exchange≠mysql {r['ex_my']} mysql≠clickhouse {r['my_ch']} of {r['symbols']} symbols", "docs/28 B-5"),
+    # 토픽 계약 (2026-09-20, docs/34 #8 의 "cron 에 없다" 한계 해소).
+    # 검증기는 호스트 cron 이 매시 돌려 결과를 표에 적고, 판정·발송은 여기서 한다 — 알림은 한 경로로만 나간다.
+    # 두 가지를 본다: ① 마지막 실행에 위반이 있나 ② 검증기가 아직 도나(3시간 넘게 기록이 없으면 멈춘 것).
+    # ②가 필요한 이유: 검증기가 죽으면 위반이 0 으로 보인다. "위반 없음"과 "검사를 안 함"은 다르다.
+    # 별칭 주의: sum(violations) AS violations 로 두면 argMax(detail, violations) 가 "집계 안의 집계"가 되어 500.
+    # ClickHouse 의 SELECT 별칭이 같은 이름의 원본 열을 가린다 — docs/34 #3 에서 WHERE 로 겪은 것과 같은 함정.
+    ("Topic Schema", """SELECT toString(toDate(max(ran_at))) AS day_s,
+                               toString(max(ran_at)) AS last_run,
+                               dateDiff('minute', max(ran_at), now()) AS stale_min,
+                               sum(violations) AS violation_count,
+                               countIf(status = 'violation') AS bad_topics,
+                               argMax(detail, violations) AS worst
+                        FROM cdc_pipeline.schema_validation_runs
+                        WHERE ran_at >= (SELECT max(ran_at) FROM cdc_pipeline.schema_validation_runs)""",
+     lambda r: int(r["bad_topics"]) > 0 or int(r["stale_min"]) > 180,
+     lambda r: (f"토픽 계약 위반 {r['bad_topics']}개 토픽 / {r['violation_count']}건 — {str(r['worst'])[:200]}"
+                if int(r["bad_topics"]) > 0
+                else f"계약 검증기가 {r['stale_min']}분째 기록 없음(마지막 {r['last_run']}) — cron 확인. 위반 없음과 검사 안 함은 다르다"),
+     "docs/34 #8 · schemas/"),
 ]
 
 

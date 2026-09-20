@@ -8,6 +8,15 @@ models:
         tests: [not_null, unique]
       - name: weighted_pct
         description: "거래소 시간봉 거래량 대비 우리 체결 거래량, 하루 가중."
+  - name: dq_ingest_gaps_labeled
+    description: >
+      수집 공백에 거래소 공지로 설명을 붙인 표. explained_by_maintenance=1 이면 그 공백은 유실이 아니라
+      거래소 점검이다. 코인별 중단은 창을 지어내지 않고 후보로만 둔다(본문에 재개 시각만 있는 경우가 있다).
+    columns:
+      - name: window_start
+        tests: [not_null]
+      - name: explained_by_maintenance
+        tests: [not_null]
   - name: dq_repairs_daily
     description: "유입 공백 수리 계보(창 단위)의 일별 요약. reason = reconnect | startup | manual."
     columns:

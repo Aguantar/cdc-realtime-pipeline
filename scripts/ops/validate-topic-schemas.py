@@ -7,7 +7,7 @@
 반환: 위반이 하나라도 있으면 exit 1 (CI·배포 전 게이트로 쓸 수 있다).
 의존성 없음 — JSON Schema 의 부분집합(type/required/properties/items/oneOf/enum)만 직접 검사한다.
 """
-import argparse, glob, json, os, subprocess, sys
+import argparse, datetime, glob, json, os, subprocess, sys
 
 TYPES = {'object': dict, 'array': list, 'string': str, 'integer': int, 'number': (int, float), 'boolean': bool, 'null': type(None)}
 
@@ -70,6 +70,7 @@ def main():
     ap.add_argument('--samples', type=int, default=3)
     ap.add_argument('--topic')
     ap.add_argument('--self-test', action='store_true', help='검증기가 위반을 실제로 잡는지 확인(계약 파일·토픽 불필요)')
+    ap.add_argument('--record', action='store_true', help='결과를 cdc_pipeline.schema_validation_runs 에 적는다(cron 용)')
     a = ap.parse_args()
     if a.self_test:
         sch = json.load(open(os.path.join(os.path.dirname(__file__), '..', '..', 'schemas', 'binance.trades.v1.json')))
@@ -89,6 +90,8 @@ def main():
         sys.exit(1 if bad else 0)
     root = os.path.join(os.path.dirname(__file__), '..', '..', 'schemas')
     failed = 0
+    records = []
+    ran_at = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0, tzinfo=None).isoformat(sep=' ')
     for f in sorted(glob.glob(os.path.join(root, '*.json'))):
         topic = os.path.basename(f)[:-5]
         if a.topic and a.topic != topic:
@@ -100,6 +103,7 @@ def main():
             msgs = sample(topic, a.samples, from_beginning=True)
         if not msgs:
             print(f"  {topic:38s} 표본 없음 (토픽이 조용하거나 tombstone 뿐) — 건너뜀")
+            records.append({'ran_at': ran_at, 'topic': topic, 'status': 'no_sample', 'checked': 0, 'violations': 0, 'detail': ''})
             continue
         errs = []
         for i, m in enumerate(msgs):
@@ -109,8 +113,21 @@ def main():
             print(f"  {topic:38s} 위반 {len(errs)}건")
             for e in errs[:6]:
                 print(f"      {e}")
+            records.append({'ran_at': ran_at, 'topic': topic, 'status': 'violation', 'checked': len(msgs),
+                            'violations': len(errs), 'detail': ' | '.join(errs[:6])[:1000]})
         else:
             print(f"  {topic:38s} OK ({len(msgs)}건 검사) — {schema.get('title','')}")
+            records.append({'ran_at': ran_at, 'topic': topic, 'status': 'ok', 'checked': len(msgs), 'violations': 0, 'detail': ''})
+    if a.record and records:
+        payload = '\n'.join(json.dumps(r, ensure_ascii=False) for r in records)
+        p = subprocess.run(['docker', 'exec', '-i', 'cdc-clickhouse', 'clickhouse-client', '-q',
+                            'INSERT INTO cdc_pipeline.schema_validation_runs FORMAT JSONEachRow'],
+                           input=payload, text=True, capture_output=True)
+        # 적재 실패를 조용히 넘기면 "위반 없음"과 "검사를 못 했음"이 구분되지 않는다
+        if p.returncode != 0:
+            print(f"  기록 실패: {p.stderr.strip()[:200]}")
+            sys.exit(2)
+        print(f"  기록 {len(records)}건 → cdc_pipeline.schema_validation_runs")
     print(f"\n결과: {'위반 있음' if failed else '전부 계약대로'}")
     sys.exit(1 if failed else 0)
 

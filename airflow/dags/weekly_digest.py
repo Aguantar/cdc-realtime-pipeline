@@ -86,8 +86,28 @@ def _build(**context) -> dict:
         if sched:
             fixes.append(f"폐지 예정 마켓 있음({sched}): 그날 마켓 수·대조 분모가 줄어든다 — 유실 아님")
 
-    # ⑦ 고칠 것
-    lines.append("*⑦ 고칠 것*  " + (" / ".join(f"({i+1}) {f}" for i, f in enumerate(fixes)) if fixes else "없음 — 임계 안"))
+    # ⑦ 수집 공백과 그 설명 (2026-09-20): 공백을 세는 것만으로는 사고인지 점검인지 모른다.
+    # 거래소 공지로 설명되는 것은 빼고, 남는 것만 '고칠 것'에 올린다.
+    # '고칠 것'에 올리는 기준을 60초 이상으로 두는 이유: 실측상 공백의 대부분은 재기동·재연결이 만든
+    # 수 초짜리이고(09-20 기준 8건 중 6건이 startup, 최소 5초) 전부 자동으로 메워졌다. 그것까지 매주 올리면
+    # '고칠 것'이 늘 차 있어 아무도 안 본다. 60초는 늦은 이벤트 가드·커버리지 판정과 같은 '실시간 아님' 기준(docs/20).
+    gp = _q(hook, """SELECT count() AS gaps, sum(gap_seconds) AS secs,
+                            countIf(explained_by_maintenance = 1) AS explained,
+                            countIf(explained_by_maintenance = 0 AND gap_seconds >= 60) AS unexplained_long,
+                            arrayStringConcat(arraySlice(arraySort(groupArrayIf(concat(toString(window_start), '(', toString(gap_seconds), 's,', reason, ')'),
+                                                                                explained_by_maintenance = 0 AND gap_seconds >= 60)), 1, 3), ', ') AS worst
+                     FROM cdc_pipeline.dq_ingest_gaps_labeled WHERE window_start >= now() - INTERVAL 7 DAY""")
+    if gp and int(gp[0].get("gaps") or 0) > 0:
+        r = gp[0]; long_unexp = int(r["unexplained_long"])
+        lines.append(f"*⑦ 수집 공백*  {r['gaps']}건 / {r['secs']}초 | 거래소 점검으로 설명됨 {r['explained']} | "
+                     f"설명 없고 60초 이상 {long_unexp}" + (f" ({r['worst']})" if long_unexp else ""))
+        if long_unexp:
+            fixes.append(f"설명되지 않는 60초 이상 공백 {long_unexp}건: 거래소 공지에 없다 — 원인 확인({r['worst']})")
+    else:
+        lines.append("*⑦ 수집 공백*  없음")
+
+    # ⑧ 고칠 것
+    lines.append("*⑧ 고칠 것*  " + (" / ".join(f"({i+1}) {f}" for i, f in enumerate(fixes)) if fixes else "없음 — 임계 안"))
     week = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
     body = "\n".join(lines)
     send_text_report(f"주간 운영 다이제스트 {week} ~ {datetime.utcnow().strftime('%Y-%m-%d')}", lines)

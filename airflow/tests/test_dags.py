@@ -222,3 +222,28 @@ def test_coverage_verdict_excludes_only_non_tradable():
     ]
     for name, row, expected in cases:
         assert coverage_verdict("KRW-TEST", row) == expected, name
+
+
+# ── 토픽 계약 품질 규칙 (2026-09-20, docs/34 #8) ─────────
+# 평소엔 위반이 0 이라 이 판정식이 '통과'만 한다. 통과만 하는 판정은 없느니만 못하므로 여기서 증명한다.
+def test_topic_schema_rule_fires_on_violation_and_on_staleness():
+    from quality_alerts import RULES
+
+    rule = next(r for r in RULES if r[0] == "Topic Schema")
+    _, _, violated, msg, _ = rule
+    ok = {"day_s": "2026-09-20", "last_run": "2026-09-20 07:45:55", "stale_min": 2,
+          "violation_count": 0, "bad_topics": 0, "worst": ""}
+    assert violated(ok) is False, "정상인데 울리면 거짓 경보"
+
+    broken = {**ok, "bad_topics": 1, "violation_count": 3, "worst": "$.p: float 인데 ['string'] 를 기대"}
+    assert violated(broken) is True
+    assert "위반" in msg(broken) and "string" in msg(broken), "무엇이 깨졌는지 메시지에 있어야 한다"
+
+    # 검증기가 멈추면 위반이 0 으로 보인다. '위반 없음'과 '검사 안 함'은 다르다
+    stale = {**ok, "stale_min": 240}
+    assert violated(stale) is True
+    assert "기록 없음" in msg(stale)
+
+    # 경계: 3시간(180분) 이하는 정상 — 매시 도는 cron 이 한 번 걸러도 울리지 않는다
+    assert violated({**ok, "stale_min": 180}) is False
+    assert violated({**ok, "stale_min": 181}) is True

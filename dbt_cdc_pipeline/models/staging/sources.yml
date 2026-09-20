@@ -88,6 +88,8 @@ sources:
         description: "거래소 시장경보 플래그 전이(1분 폴링, poll_market_events.py). 마켓·플래그별 최신 state 가 현재 지정 상태"
       - name: upbit_market_state_events
         description: "마켓 거래 상태 전이(10분 폴링, poll_market_state.py). ACTIVE/PREDELISTING/DELISTED + 폐지 예정일. 웹소켓 ticker 에만 있는 정보 — REST 에는 없다"
+      - name: exchange_notices
+        description: "거래소 공지 원문 보관소(매시 폴링, poll_exchange_notices.py). 공지는 사후 갱신되므로 RMT. 수집 공백이 점검인지 유실인지 가르는 근거"
       - name: binance_symbols
         description: "Binance exchangeInfo 스냅샷(base/quote/status). dim_coins 원천. reconcile_binance 가 일 1회"
       - name: binance_hourly_candles

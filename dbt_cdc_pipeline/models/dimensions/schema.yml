@@ -26,6 +26,21 @@ models:
           - unique:
               where: "binance_symbol != ''"
 
+  - name: dim_exchange_notices
+    description: >
+      거래소 공지 분류(docs/33 라벨링). scope = exchange_wide(서버 점검, 전 마켓 정지) | market(코인별 거래지원 중단)
+      | deposit_withdrawal(입출금만, 거래는 계속) | other. 카테고리가 아니라 제목으로 나누는 이유는
+      업비트 category='점검' 이 대부분 신분증·원화 입출금이라 거래를 멈추지 않기 때문(실측 1,200건).
+    columns:
+      - name: notice_id
+        tests: [not_null, unique]
+      - name: scope
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['exchange_wide', 'market', 'deposit_withdrawal', 'other']
+      - name: halts_trading
+        tests: [not_null]
   - name: dim_market_state_scd
     description: >
       마켓 거래 상태 이력(SCD2, docs/34 #9). ACTIVE | PREDELISTING | DELISTED + 폐지 예정일.
