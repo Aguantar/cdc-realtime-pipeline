@@ -38,14 +38,17 @@
           "color": {
             "mode": "thresholds"
           },
+          "mappings": [],
+          "decimals": 0,
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               {
-                "color": "semi-dark-blue",
+                "color": "green",
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 1
               },
               {
@@ -54,7 +57,8 @@
               }
             ]
           }
-        }
+        },
+        "overrides": []
       },
       "gridPos": {
         "x": 0,
@@ -64,13 +68,18 @@
       },
       "id": 102,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
-        }
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
       },
       "targets": [
         {
@@ -97,23 +106,23 @@
           "color": {
             "mode": "thresholds"
           },
+          "mappings": [],
+          "decimals": 0,
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               {
                 "color": "green",
                 "value": null
               },
               {
-                "color": "orange",
-                "value": 5
-              },
-              {
-                "color": "red",
-                "value": 10
+                "color": "yellow",
+                "value": 1
               }
             ]
           }
-        }
+        },
+        "overrides": []
       },
       "gridPos": {
         "x": 6,
@@ -123,13 +132,18 @@
       },
       "id": 103,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
-        }
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
       },
       "targets": [
         {
@@ -155,15 +169,19 @@
           "color": {
             "mode": "thresholds"
           },
+          "mappings": [],
+          "decimals": 0,
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               {
-                "color": "dark-blue",
+                "color": "green",
                 "value": null
               }
             ]
           }
-        }
+        },
+        "overrides": []
       },
       "gridPos": {
         "x": 12,
@@ -173,13 +191,18 @@
       },
       "id": 104,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
-        }
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
       },
       "targets": [
         {
@@ -205,17 +228,20 @@
           "color": {
             "mode": "thresholds"
           },
+          "mappings": [],
+          "unit": "currencyKRW",
           "decimals": 0,
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               {
-                "color": "blue",
+                "color": "green",
                 "value": null
               }
             ]
-          },
-          "unit": "currencyKRW"
-        }
+          }
+        },
+        "overrides": []
       },
       "gridPos": {
         "x": 18,
@@ -225,13 +251,18 @@
       },
       "id": 105,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
-        }
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
       },
       "targets": [
         {
@@ -268,13 +299,21 @@
       "description": "2026-09-20: 원래 mart_alert_rate·mart_volume_spike 를 봤는데 그 표들은 v1 규칙 산출물이라 09-20 에 삭제됐다(docs/35). 지금 규칙의 산출물인 market_alerts·int_volume_surge_daily 로 교체.",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "drawStyle": "bars",
+            "lineWidth": 2,
             "fillOpacity": 70,
-            "stacking": {
-              "mode": "normal"
-            }
-          }
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0
+          },
+          "mappings": [],
+          "unit": "short",
+          "decimals": 0
         },
         "overrides": [
           {
@@ -333,14 +372,14 @@
       "id": 107,
       "options": {
         "legend": {
-          "calcs": [
-            "sum"
-          ],
-          "displayMode": "table",
-          "placement": "bottom"
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "multi",
+          "sort": "desc"
         }
       },
       "targets": [
@@ -410,14 +449,22 @@
       "description": "rule_version 으로 시대를 구분한다: v2.1.1-shadow = 승격 전, v2.1.1 = 정식, v2-shadow = VOLUME_24H(7일 창 판정 대기).",
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "fixedColor": "#FF4444",
-            "mode": "fixed"
-          },
           "custom": {
+            "align": "auto",
             "cellOptions": {
-              "type": "color-text"
-            }
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": [
@@ -519,12 +566,15 @@
       "id": 109,
       "options": {
         "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "time"
-          }
-        ]
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
       },
       "targets": [
         {
@@ -544,894 +594,992 @@
       "id": 110,
       "type": "row",
       "title": "③ 규칙이 맞는가 — 거래소 지정과 대조",
-      "collapsed": false,
+      "collapsed": true,
       "gridPos": {
         "x": 0,
         "y": 22,
         "w": 24,
         "h": 1
       },
-      "panels": []
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 23,
-        "w": 12,
-        "h": 8
-      },
-      "id": 111,
-      "targets": [
+      "panels": [
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "format": 1,
-          "queryType": "sql",
-          "rawSql": "SELECT toDateTime(day_utc) as time, rule, ours, matched, exchange, precision, recall, lead_median_s FROM cdc_pipeline.dq_rule_eval_daily ORDER BY day_utc DESC LIMIT 30",
-          "refId": "A"
-        }
-      ],
-      "title": "규칙 평가 — 정밀도·재현율·선행(초) vs 거래소 지정",
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "description": "2026-09-20: 원래 mart_alert_rate·mart_volume_spike 를 봤는데 그 표들은 v1 규칙 산출물이라 09-20 에 삭제됐다(docs/35). 지금 규칙의 산출물인 market_alerts·int_volume_surge_daily 로 교체.",
-      "fieldConfig": {
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "volume_ratio"
+          "gridPos": {
+            "x": 0,
+            "y": 23,
+            "w": 12,
+            "h": 8
+          },
+          "id": 111,
+          "targets": [
+            {
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+              },
+              "format": 1,
+              "queryType": "sql",
+              "rawSql": "SELECT toDateTime(day_utc) as time, rule, ours, matched, exchange, precision, recall, lead_median_s FROM cdc_pipeline.dq_rule_eval_daily ORDER BY day_utc DESC LIMIT 30",
+              "refId": "A"
+            }
+          ],
+          "title": "규칙 평가 — 정밀도·재현율·선행(초) vs 거래소 지정",
+          "type": "table",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
             },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          }
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "description": "2026-09-20: 원래 mart_alert_rate·mart_volume_spike 를 봤는데 그 표들은 v1 규칙 산출물이라 09-20 에 삭제됐다(docs/35). 지금 규칙의 산출물인 market_alerts·int_volume_surge_daily 로 교체.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
               },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": [
               {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "steps": [
-                    {
-                      "color": "yellow",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 5
-                    },
-                    {
-                      "color": "red",
-                      "value": 10
+                "matcher": {
+                  "id": "byName",
+                  "options": "volume_ratio"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
                     }
-                  ]
-                }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "steps": [
+                        {
+                          "color": "yellow",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 5
+                        },
+                        {
+                          "color": "red",
+                          "value": 10
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "amount"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyKRW"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
               }
             ]
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "amount"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "currencyKRW"
-              },
-              {
-                "id": "decimals",
-                "value": 0
+          "gridPos": {
+            "x": 12,
+            "y": 23,
+            "w": 12,
+            "h": 8
+          },
+          "id": 112,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          },
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "SELECT day_utc AS time, market, round(ratio, 2) AS ratio,\n       round(toFloat64(amount) / 100000000, 1) AS amount_eok, days_in_window\nFROM cdc_pipeline.int_volume_surge_daily\nWHERE flagged = 1 ORDER BY day_utc DESC, ratio DESC LIMIT 30",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
               }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 23,
-        "w": 12,
-        "h": 8
-      },
-      "id": 112,
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "time"
-          }
-        ]
-      },
-      "targets": [
-        {
-          "format": 1,
-          "rawSql": "SELECT day_utc AS time, market, round(ratio, 2) AS ratio,\n       round(toFloat64(amount) / 100000000, 1) AS amount_eok, days_in_window\nFROM cdc_pipeline.int_volume_surge_daily\nWHERE flagged = 1 ORDER BY day_utc DESC, ratio DESC LIMIT 30",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "PDEE91DDB90597936"
-          }
+            }
+          ],
+          "title": "거래대금 급등 지정 목록 (7일 평균 ×4 이상 AND ≥10억)",
+          "type": "table"
         }
-      ],
-      "title": "거래대금 급등 지정 목록 (7일 평균 ×4 이상 AND ≥10억)",
-      "type": "table"
+      ]
     },
     {
       "id": 113,
       "type": "row",
       "title": "④ 시장 맥락",
-      "collapsed": false,
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 23,
         "w": 24,
         "h": 1
       },
-      "panels": []
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 5,
-            "lineWidth": 2
+      "panels": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
           },
-          "unit": "currencyKRW"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "high"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#FF6666",
-                  "mode": "fixed"
-                }
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
               },
-              {
-                "id": "custom.lineStyle",
-                "value": {
-                  "dash": [
-                    5,
-                    5
-                  ],
-                  "fill": "dash"
-                }
+              "mappings": [],
+              "unit": "percent",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
               }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "low"
             },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#6688FF",
-                  "mode": "fixed"
-                }
-              },
-              {
-                "id": "custom.lineStyle",
-                "value": {
-                  "dash": [
-                    5,
-                    5
-                  ],
-                  "fill": "dash"
-                }
-              }
-            ]
+            "overrides": []
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "close"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#FFCC00",
-                  "mode": "fixed"
-                }
-              },
-              {
-                "id": "custom.lineWidth",
-                "value": 3
-              }
-            ]
+          "gridPos": {
+            "x": 0,
+            "y": 24,
+            "w": 6,
+            "h": 4
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "open"
+          "id": 116,
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
             },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#88CC88",
-                  "mode": "fixed"
-                }
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "SELECT close_change_pct FROM cdc_pipeline.mart_daily_summary WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
               }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 32,
-        "w": 12,
-        "h": 8
-      },
-      "id": 114,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "min",
-            "max"
+            }
           ],
-          "displayMode": "table",
-          "placement": "bottom"
+          "title": "전일 대비",
+          "type": "stat"
         },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
         {
-          "format": 1,
-          "rawSql": "SELECT day_kst as time, open, high, low, close FROM cdc_pipeline.int_ohlcv_daily WHERE market = '${market}' ORDER BY day_kst",
-          "refId": "A",
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
-          }
-        }
-      ],
-      "title": "${market} 일봉 가격 추이 (시가/고가/저가/종가)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "lineWidth": 2
           },
-          "unit": "currencyKRW"
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "unit": "percent",
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "x": 6,
+            "y": 24,
+            "w": 6,
+            "h": 4
+          },
+          "id": 117,
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "SELECT volume_change_pct FROM cdc_pipeline.mart_daily_summary WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+              }
+            }
+          ],
+          "title": "거래량 변동",
+          "type": "stat"
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "close"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#FFCC00",
-                  "mode": "fixed"
-                }
-              },
-              {
-                "id": "custom.lineWidth",
-                "value": 3
-              }
-            ]
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "vwap"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#CC66FF",
-                  "mode": "fixed"
-                }
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
               },
-              {
-                "id": "custom.lineStyle",
-                "value": {
-                  "dash": [
-                    5,
-                    5
-                  ],
-                  "fill": "dash"
-                }
+              "mappings": [],
+              "unit": "percent",
+              "decimals": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 50
+                  }
+                ]
               }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 32,
-        "w": 12,
-        "h": 8
-      },
-      "id": 115,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 24,
+            "w": 6,
+            "h": 4
+          },
+          "id": 118,
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "SELECT bid_ratio_pct FROM cdc_pipeline.mart_daily_summary WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+              }
+            }
+          ],
+          "title": "매수 비율",
+          "type": "stat"
         },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
         {
-          "format": 1,
-          "rawSql": "SELECT hour_kst as time, open, high, low, close, vwap FROM cdc_pipeline.int_ohlcv_1h WHERE market = '${market}' AND $__timeFilter(hour_kst) ORDER BY hour_kst",
-          "refId": "A",
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
-          }
-        }
-      ],
-      "title": "${market} 시간봉 가격 (24h)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
           },
-          "decimals": 2,
-          "thresholds": {
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
               },
-              {
-                "color": "red",
-                "value": -999
-              },
-              {
-                "color": "green",
-                "value": 0
+              "mappings": [],
+              "unit": "percent",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 10
+                  },
+                  {
+                    "color": "red",
+                    "value": 30
+                  }
+                ]
               }
-            ]
+            },
+            "overrides": []
           },
-          "unit": "percent"
-        }
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 40,
-        "w": 4,
-        "h": 4
-      },
-      "id": 116,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "format": 1,
-          "rawSql": "SELECT close_change_pct FROM cdc_pipeline.mart_daily_summary WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "PDEE91DDB90597936"
-          }
-        }
-      ],
-      "title": "전일 대비",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
+          "gridPos": {
+            "x": 18,
+            "y": 24,
+            "w": 6,
+            "h": 4
           },
-          "decimals": 1,
-          "thresholds": {
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": -999
-              },
-              {
-                "color": "orange",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 200
+          "id": 119,
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "SELECT daily_range_pct FROM cdc_pipeline.int_ohlcv_daily WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
               }
-            ]
-          },
-          "unit": "percent"
-        }
-      },
-      "gridPos": {
-        "x": 4,
-        "y": 40,
-        "w": 4,
-        "h": 4
-      },
-      "id": 117,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "format": 1,
-          "rawSql": "SELECT volume_change_pct FROM cdc_pipeline.mart_daily_summary WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "PDEE91DDB90597936"
-          }
-        }
-      ],
-      "title": "거래량 변동",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "decimals": 1,
-          "thresholds": {
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 45
-              },
-              {
-                "color": "green",
-                "value": 55
-              }
-            ]
-          },
-          "unit": "percent"
-        }
-      },
-      "gridPos": {
-        "x": 8,
-        "y": 40,
-        "w": 4,
-        "h": 4
-      },
-      "id": 118,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "format": 1,
-          "rawSql": "SELECT bid_ratio_pct FROM cdc_pipeline.mart_daily_summary WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "PDEE91DDB90597936"
-          }
-        }
-      ],
-      "title": "매수 비율",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "decimals": 2,
-          "thresholds": {
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 3
-              },
-              {
-                "color": "red",
-                "value": 5
-              }
-            ]
-          },
-          "unit": "percent"
-        }
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 40,
-        "w": 4,
-        "h": 4
-      },
-      "id": 119,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "format": 1,
-          "rawSql": "SELECT daily_range_pct FROM cdc_pipeline.int_ohlcv_daily WHERE market = '${market}' ORDER BY day_kst DESC LIMIT 1",
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "PDEE91DDB90597936"
-          }
-        }
-      ],
-      "title": "일중 변동폭",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "fillOpacity": 80
-          }
+            }
+          ],
+          "title": "일중 변동폭",
+          "type": "stat"
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "bid"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#3274D9",
-                  "mode": "fixed"
-                }
-              },
-              {
-                "id": "displayName",
-                "value": "매수 (BID)"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "ask"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#E02F44",
-                  "mode": "fixed"
-                }
-              },
-              {
-                "id": "displayName",
-                "value": "매도 (ASK)"
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "x": 16,
-        "y": 40,
-        "w": 8,
-        "h": 8
-      },
-      "id": 120,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "stacking": "normal",
-        "xField": "market"
-      },
-      "targets": [
         {
-          "format": 1,
-          "rawSql": "-- 2026-09-19: Flink 5분 처리 시간 집계 폐기(docs/29 창2) → 원본 테이블을 체결 시각으로 직접\nSELECT market, countIf(ask_bid = 'BID') AS bid, countIf(ask_bid = 'ASK') AS ask\nFROM cdc_pipeline.crypto_trades\nWHERE upbit_timestamp >= toUnixTimestamp(now() - INTERVAL 1 HOUR) * 1000\nGROUP BY market ORDER BY bid + ask DESC",
-          "refId": "A",
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
-          }
-        }
-      ],
-      "title": "Bid vs Ask (매수/매도 비율)",
-      "type": "barchart"
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "fieldConfig": {
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "close_chg"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 5,
+                "lineWidth": 2
+              },
+              "unit": "currencyKRW"
             },
-            "properties": [
+            "overrides": [
               {
-                "id": "unit",
-                "value": "percent"
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "steps": [
-                    {
-                      "color": "red",
-                      "value": null
-                    },
-                    {
-                      "color": "green",
-                      "value": 0
+                "matcher": {
+                  "id": "byName",
+                  "options": "high"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#FF6666",
+                      "mode": "fixed"
                     }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "close"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "currencyKRW"
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "dash": [
+                        5,
+                        5
+                      ],
+                      "fill": "dash"
+                    }
+                  }
+                ]
               },
               {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "amount"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "currencyKRW"
+                "matcher": {
+                  "id": "byName",
+                  "options": "low"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#6688FF",
+                      "mode": "fixed"
+                    }
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "dash": [
+                        5,
+                        5
+                      ],
+                      "fill": "dash"
+                    }
+                  }
+                ]
               },
               {
-                "id": "decimals",
-                "value": 0
+                "matcher": {
+                  "id": "byName",
+                  "options": "close"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#FFCC00",
+                      "mode": "fixed"
+                    }
+                  },
+                  {
+                    "id": "custom.lineWidth",
+                    "value": 3
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "open"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#88CC88",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
               }
             ]
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "vol_chg"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percent"
-              }
-            ]
+          "gridPos": {
+            "x": 0,
+            "y": 28,
+            "w": 12,
+            "h": 8
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "bid_pct"
+          "id": 114,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "min",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom"
             },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percent"
-              }
-            ]
+            "tooltip": {
+              "mode": "multi"
+            }
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "range_pct"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percent"
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "SELECT day_kst as time, open, high, low, close FROM cdc_pipeline.int_ohlcv_daily WHERE market = '${market}' ORDER BY day_kst",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
               }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 44,
-        "w": 16,
-        "h": 8
-      },
-      "id": 121,
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "amount"
-          }
-        ]
-      },
-      "targets": [
+            }
+          ],
+          "title": "${market} 일봉 가격 추이 (시가/고가/저가/종가)",
+          "type": "timeseries"
+        },
         {
-          "format": 1,
-          "rawSql": "SELECT market, close, close_change_pct as close_chg, amount, volume_change_pct as vol_chg, bid_ratio_pct as bid_pct, daily_range_pct as range_pct, trade_count as trades FROM cdc_pipeline.mart_daily_summary WHERE day_kst = today() ORDER BY amount DESC",
-          "refId": "A",
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
-          }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 2
+              },
+              "unit": "currencyKRW"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "close"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#FFCC00",
+                      "mode": "fixed"
+                    }
+                  },
+                  {
+                    "id": "custom.lineWidth",
+                    "value": 3
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "vwap"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#CC66FF",
+                      "mode": "fixed"
+                    }
+                  },
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "dash": [
+                        5,
+                        5
+                      ],
+                      "fill": "dash"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 28,
+            "w": 12,
+            "h": 8
+          },
+          "id": 115,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "SELECT hour_kst as time, open, high, low, close, vwap FROM cdc_pipeline.int_ohlcv_1h WHERE market = '${market}' AND $__timeFilter(hour_kst) ORDER BY hour_kst",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+              }
+            }
+          ],
+          "title": "${market} 시간봉 가격 (24h)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisPlacement": "auto",
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "lineWidth": 1
+              },
+              "unit": "short",
+              "decimals": 0,
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 36,
+            "w": 8,
+            "h": 8
+          },
+          "id": 120,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "orientation": "auto",
+            "showValue": "auto",
+            "stacking": "none",
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "-- 2026-09-19: Flink 5분 처리 시간 집계 폐기(docs/29 창2) → 원본 테이블을 체결 시각으로 직접\nSELECT market, countIf(ask_bid = 'BID') AS bid, countIf(ask_bid = 'ASK') AS ask\nFROM cdc_pipeline.crypto_trades\nWHERE upbit_timestamp >= toUnixTimestamp(now() - INTERVAL 1 HOUR) * 1000\nGROUP BY market ORDER BY bid + ask DESC",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+              }
+            }
+          ],
+          "title": "테이커 방향 비율 (매수/매도)",
+          "type": "barchart",
+          "description": "업비트 ask_bid 는 테이커 방향이다(docs/34 #4). BID=테이커 매수."
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "close_chg"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "green",
+                          "value": 0
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "close"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyKRW"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "amount"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyKRW"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "vol_chg"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "bid_pct"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "range_pct"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percent"
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "x": 8,
+            "y": 36,
+            "w": 16,
+            "h": 8
+          },
+          "id": 121,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          },
+          "targets": [
+            {
+              "format": 1,
+              "rawSql": "SELECT market, close, close_change_pct as close_chg, amount, volume_change_pct as vol_chg, bid_ratio_pct as bid_pct, daily_range_pct as range_pct, trade_count as trades FROM cdc_pipeline.mart_daily_summary WHERE day_kst = today() ORDER BY amount DESC",
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+              }
+            }
+          ],
+          "title": "종목별 오늘 성적표",
+          "type": "table"
         }
-      ],
-      "title": "종목별 오늘 성적표",
-      "type": "table"
+      ]
     },
     {
       "id": 122,
       "type": "row",
       "title": "⑤ 마켓 상태 — 지정·폐지·정지",
-      "collapsed": false,
+      "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 24,
         "w": 24,
         "h": 1
       },
-      "panels": []
-    },
-    {
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "description": "이 정보는 웹소켓 ticker 에만 있고 REST 에는 없다(docs/34 #9). 폐지일에 마켓 수가 줄어도 유실이 아니다.",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 53,
-        "w": 24,
-        "h": 7
-      },
-      "id": 123,
-      "options": {},
-      "targets": [
+      "panels": [
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "editorType": "sql",
-          "format": 1,
-          "queryType": "sql",
-          "rawSql": "SELECT market AS `마켓`, market_state AS `상태`, toString(delisting_date) AS `폐지 예정`,\n       toString(valid_from) AS `관측 시작`\nFROM cdc_pipeline.dim_market_state_scd\nWHERE is_current = 1 AND market_state != 'ACTIVE' ORDER BY delisting_date",
-          "refId": "A"
+          "description": "이 정보는 웹소켓 ticker 에만 있고 REST 에는 없다(docs/34 #9). 폐지일에 마켓 수가 줄어도 유실이 아니다.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 25,
+            "w": 24,
+            "h": 7
+          },
+          "id": 123,
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false,
+              "fields": ""
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "grafana-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+              },
+              "editorType": "sql",
+              "format": 1,
+              "queryType": "sql",
+              "rawSql": "SELECT market AS `마켓`, market_state AS `상태`, toString(delisting_date) AS `폐지 예정`,\n       toString(valid_from) AS `관측 시작`\nFROM cdc_pipeline.dim_market_state_scd\nWHERE is_current = 1 AND market_state != 'ACTIVE' ORDER BY delisting_date",
+              "refId": "A"
+            }
+          ],
+          "title": "마켓 상태 — 폐지·정지 (유실과 구분)",
+          "type": "table"
         }
-      ],
-      "title": "마켓 상태 — 폐지·정지 (유실과 구분)",
-      "type": "table"
+      ]
     }
   ],
   "templating": {

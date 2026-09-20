@@ -533,8 +533,12 @@ services:
       - ./airflow/plugins:/opt/airflow/plugins
       - ./airflow/webserver_config.py:/opt/airflow/webserver_config.py
       # IcePush (외부 프로젝트 마운트 — DAE 트랙)
-      - /home/calme/icepush/airflow/dags:/opt/airflow/dags/icepush
-      - /home/calme/icepush:/opt/airflow/icepush
+      # 2026-09-20: 타 프로젝트(icepush) DAG 마운트 제거 — 이 Airflow 를 이 파이프라인 전용으로.
+      # 해당 DAG 은 이미 일시정지 상태였고(마지막 예약 실행 09-05 실패, 09-06 수동 성공이 마지막)
+      # 제거해도 기능 변화가 없다. 실행 이력 121건은 메타DB 에 그대로 남는다.
+      # 되살리려면 아래 두 줄을 복구하고 compose 재생성:
+      #   - /home/calme/icepush/airflow/dags:/opt/airflow/dags/icepush
+      #   - /home/calme/icepush:/opt/airflow/icepush
     deploy:
       resources:
         limits:
@@ -582,8 +586,12 @@ services:
       - ./dbt_cdc_pipeline:/opt/airflow/dbt
       - ./airflow/dbt_profiles:/opt/airflow/dbt_profiles
       # IcePush (외부 프로젝트 마운트 — DAE 트랙)
-      - /home/calme/icepush/airflow/dags:/opt/airflow/dags/icepush
-      - /home/calme/icepush:/opt/airflow/icepush
+      # 2026-09-20: 타 프로젝트(icepush) DAG 마운트 제거 — 이 Airflow 를 이 파이프라인 전용으로.
+      # 해당 DAG 은 이미 일시정지 상태였고(마지막 예약 실행 09-05 실패, 09-06 수동 성공이 마지막)
+      # 제거해도 기능 변화가 없다. 실행 이력 121건은 메타DB 에 그대로 남는다.
+      # 되살리려면 아래 두 줄을 복구하고 compose 재생성:
+      #   - /home/calme/icepush/airflow/dags:/opt/airflow/dags/icepush
+      #   - /home/calme/icepush:/opt/airflow/icepush
     deploy:
       resources:
         limits:
