@@ -29,8 +29,9 @@ WITH
 closes AS (
     SELECT market, intDiv(upbit_timestamp, 60000) AS m,
            argMax(trade_price, (upbit_timestamp, sequential_id)) AS close
-    FROM {{ source('raw', 'crypto_trades') }} FINAL
-    WHERE op = 'c'
+    -- 2026-09-20 (docs/40 ①): 원본 직접 읽기 → stg_trades 경유(술어를 한 곳에서만 정의). 날짜·필터 기준은 그대로.
+    FROM {{ ref('stg_trades') }}
+    WHERE 1 = 1
       AND toUnixTimestamp64Milli(source_ts) - upbit_timestamp <= 60000
       AND upbit_timestamp >= {{ (from_unix - 86400) * 1000 }}
       AND upbit_timestamp <  {{ to_unix * 1000 }}

@@ -2,8 +2,9 @@
 -- Binance 체결 대조 (docs/31 §3-2): 거래소 1h 캔들의 체결 수(n) vs 우리 binance_trades FINAL count, (symbol, hour) 셀.
 -- Upbit 대조(dq_reconcile_daily)와 같은 원리: 가중 비율 + 셀 최소값 + 0행 셀. 우리 > 거래소 는 중복(RMT 미머지)이나 시각 경계 문제, 우리 < 거래소 는 유실.
 WITH ours AS (
-    SELECT symbol, toStartOfHour(fromUnixTimestamp64Milli(trade_ms)) AS hour_utc, count() AS ours_n
-    FROM {{ source('raw', 'binance_trades') }} FINAL
+    -- 2026-09-20 (docs/40 ⑥): 원본 직접 → stg_binance_trades 경유. FINAL·중복 제거 규칙을 한 곳에서만 정의한다.
+    SELECT symbol, trade_hour_utc AS hour_utc, count() AS ours_n
+    FROM {{ ref('stg_binance_trades') }}
     GROUP BY symbol, hour_utc
 ),
 ex AS (

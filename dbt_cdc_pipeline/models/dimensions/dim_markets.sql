@@ -8,7 +8,8 @@ WITH master AS (
 ),
 ours AS (
     SELECT market, min(source_ts) AS first_seen_ours, max(source_ts) AS last_seen_ours
-    FROM {{ source('raw', 'crypto_trades') }} FINAL GROUP BY market
+    -- 2026-09-20 (docs/40 ①): stg_trades 경유. 최초 관측 시각이 스냅샷(op='r') 행까지 포함해 더 정확해진다.
+    FROM {{ ref('stg_trades') }} GROUP BY market
 ),
 state AS (
     -- 2026-09-20 (docs/34 #9): 현재 거래 상태. is_active(거래소 목록에 있나) 만으로는

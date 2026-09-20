@@ -4,5 +4,10 @@
 SELECT
     symbol, trade_id, price, qty, quote_qty,
     if(is_buyer_maker = 1, 'ASK', 'BID') AS taker_side,
-    fromUnixTimestamp64Milli(trade_ms) AS trade_ts, trade_ms, recv_ms, flink_ts
+    fromUnixTimestamp64Milli(trade_ms) AS trade_ts, trade_ms, recv_ms, flink_ts,
+    -- 2026-09-20 (docs/40 ⑥): 이 모델은 만들어 놓고 **하류가 하나도 없었다**(소비자들이 원본을 직접 읽었다).
+    -- 이유는 Upbit 쪽과 같았다 — 소비자가 필요한 시간 축이 여기 없었다. 내주면 우회할 이유가 사라진다.
+    -- 이름에 trade_ 를 붙이는 것도 같은 이유(별칭이 원본 열을 가리는 함정 회피).
+    toStartOfHour(fromUnixTimestamp64Milli(trade_ms)) AS trade_hour_utc,
+    toDate(fromUnixTimestamp64Milli(trade_ms))        AS trade_day_utc
 FROM {{ source('raw', 'binance_trades') }} FINAL

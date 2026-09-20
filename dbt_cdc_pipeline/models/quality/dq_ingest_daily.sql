@@ -12,8 +12,10 @@ SELECT
     round(maxIf(toUnixTimestamp64Milli(source_ts) - upbit_timestamp, toUnixTimestamp64Milli(source_ts) - upbit_timestamp <= 60000) / 1000, 1)      AS lag_max_live_s,
     countIf(toUnixTimestamp64Milli(source_ts) - upbit_timestamp > 60000)           AS late_rows_gt_60s,
     countIf(best_bid_price IS NULL)                                                AS rows_without_bbo
-FROM {{ source('raw', 'crypto_trades') }} FINAL
-WHERE op = 'c'
+-- 2026-09-20 (docs/40 ①): 원본 직접 읽기 → stg_trades 경유. 술어가 모델마다 달랐던 것을 한 곳으로 모은다.
+-- 날짜 기준은 **바꾸지 않았다** — 한 번에 한 가지만 바꾼다(변화가 섞이면 무엇 때문인지 못 가린다).
+FROM {{ ref('stg_trades') }}
+WHERE 1 = 1
 {% if is_incremental() %}
   AND source_ts >= toStartOfDay(now() - INTERVAL 1 DAY)
 {% else %}

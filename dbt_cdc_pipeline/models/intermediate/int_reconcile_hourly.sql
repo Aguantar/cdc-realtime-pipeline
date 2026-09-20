@@ -21,8 +21,9 @@ trades AS (
         toStartOfHour(fromUnixTimestamp64Milli(upbit_timestamp)) AS hour_utc,
         sum(trade_volume) AS ch_vol,
         count() AS ch_n
-    FROM {{ source('raw', 'crypto_trades') }} FINAL
-    WHERE op = 'c'
+    -- 2026-09-20 (docs/40 ①): 원본 직접 읽기 → stg_trades 경유(술어를 한 곳에서만 정의). 날짜·필터 기준은 그대로.
+    FROM {{ ref('stg_trades') }}
+    WHERE 1 = 1
       AND source_ts >= (SELECT h_min FROM bounds) - INTERVAL 1 DAY          -- 정렬키 프루닝용 (적재 지연 여유 1일)
       AND upbit_timestamp >= toUnixTimestamp64Milli(toDateTime64((SELECT h_min FROM bounds), 3))
       AND upbit_timestamp <  toUnixTimestamp64Milli(toDateTime64((SELECT h_max FROM bounds), 3))

@@ -17,8 +17,10 @@
 -- 데이터 출처는 우리 체결(crypto_trades) 이고 거래소 일봉이 아니다 — 우리 파이프라인이 낸 값으로 판정해야 파이프라인의 규칙이다.
 WITH daily AS (
     SELECT market, toDate(source_ts) AS day_utc, sum(trade_amount) AS amount
-    FROM {{ source('raw', 'crypto_trades') }} FINAL
-    WHERE op = 'c' AND source_ts >= toStartOfDay(now() - INTERVAL 40 DAY)
+    -- 2026-09-20 (docs/40 ①): 원본 직접 읽기 → stg_trades 경유. 술어가 모델마다 달랐던 것을 한 곳으로 모은다.
+    -- 날짜 기준은 **바꾸지 않았다** — 한 번에 한 가지만 바꾼다(변화가 섞이면 무엇 때문인지 못 가린다).
+    FROM {{ ref('stg_trades') }}
+    WHERE source_ts >= toStartOfDay(now() - INTERVAL 40 DAY)
     GROUP BY market, day_utc
 ),
 w AS (

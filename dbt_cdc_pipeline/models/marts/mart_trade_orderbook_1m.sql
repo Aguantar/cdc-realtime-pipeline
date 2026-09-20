@@ -26,8 +26,9 @@ WITH trades AS (
            min(trade_price)                               AS low,
            argMax(trade_price, (upbit_timestamp, sequential_id)) AS close,
            countIf(ask_bid = 'BID') / count()             AS buy_ratio
-    FROM {{ source('raw', 'crypto_trades') }} FINAL
-    WHERE op = 'c'
+    -- 2026-09-20 (docs/40 ①): 원본 직접 읽기 → stg_trades 경유(술어를 한 곳에서만 정의). 날짜·필터 기준은 그대로.
+    FROM {{ ref('stg_trades') }}
+    WHERE 1 = 1
       AND upbit_timestamp >= toUnixTimestamp({{ day_from }}) * 1000
       AND upbit_timestamp <  toUnixTimestamp({{ day_to }} + INTERVAL 1 DAY) * 1000
     GROUP BY market, minute

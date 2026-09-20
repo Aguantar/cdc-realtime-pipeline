@@ -6,6 +6,8 @@
 SELECT toStartOfHour(fromUnixTimestamp64Milli(upbit_timestamp)) AS hour_utc,
        argMax(trade_price, upbit_timestamp) AS usdt_krw_close,
        ifNull(toFloat64(sum(trade_amount)) / nullIf(toFloat64(sum(trade_volume)), 0), 0) AS usdt_krw_vwap, count() AS trades
-FROM {{ source('raw', 'crypto_trades') }} FINAL
+-- 2026-09-20 (docs/40 ①): 원본 직접 읽기 → stg_trades 경유. 술어가 모델마다 달랐던 것을 한 곳으로 모은다.
+-- 날짜 기준은 **바꾸지 않았다** — 한 번에 한 가지만 바꾼다(변화가 섞이면 무엇 때문인지 못 가린다).
+FROM {{ ref('stg_trades') }}
 WHERE market = 'KRW-USDT' AND upbit_timestamp >= toUnixTimestamp(now() - INTERVAL 14 DAY) * 1000 AND trade_volume > 0
 GROUP BY hour_utc
