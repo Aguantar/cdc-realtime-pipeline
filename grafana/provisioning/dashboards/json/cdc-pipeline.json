@@ -1,519 +1,404 @@
 {
-  "id": null,
   "uid": "cdc-pipeline-main",
-  "title": "CDC Crypto Realtime Pipeline",
+  "title": "파이프라인 관측 · 오류 탐지",
   "tags": [
     "cdc",
-    "crypto",
-    "flink",
-    "clickhouse"
+    "pipeline"
   ],
-  "timezone": "Asia/Seoul",
-  "refresh": "10s",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
   "time": {
-    "from": "now-1h",
+    "from": "now-6h",
     "to": "now"
   },
   "panels": [
     {
-      "id": 11,
-      "title": "",
-      "type": "stat",
+      "id": 1,
+      "type": "row",
+      "title": "① 지금 상태",
+      "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 3,
-        "x": 21,
-        "y": 14
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
       },
+      "panels": []
+    },
+    {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
-      "targets": [
-        {
-          "rawSql": "SELECT if(max(inserted_at) >= now() - INTERVAL 5 MINUTE, 1, 0) as status FROM cdc_pipeline.crypto_trades",
-          "refId": "A",
-          "format": 1
-        }
-      ],
+      "description": "5개: CDC 체결 · Upbit 호가 · Binance 체결 · Binance 호가 · Circuit Connect",
       "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "text": "🔴 STALE",
-                  "index": 0
-                },
-                "1": {
-                  "text": "🟢 LIVE",
-                  "index": 1
-                }
-              },
-              "type": "value"
-            }
-          ]
-        },
+        "defaults": {},
         "overrides": []
       },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      }
-    },
-    {
-      "id": 1,
-      "title": "Total Trades (총 체결 건수)",
-      "type": "stat",
       "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 5,
-        "y": 2
-      },
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
-      "targets": [
-        {
-          "rawSql": "SELECT count() as total FROM cdc_pipeline.crypto_trades WHERE op = 'c'",
-          "refId": "A",
-          "format": 1
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "steps": [
-              {
-                "color": "dark-blue",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "locale",
-          "decimals": 0
-        }
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "background",
-        "graphMode": "none"
-      }
-    },
-    {
-      "id": 2,
-      "title": "Avg CDC Latency (평균 지연시간)",
-      "type": "stat",
-      "gridPos": {
-        "h": 4,
+        "x": 0,
+        "y": 1,
         "w": 4,
-        "x": 10,
-        "y": 2
+        "h": 4
       },
+      "id": 2,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "-- 2026-09-20 재작성: 원래 이 대시보드는 Prometheus 12패널이었는데 Prometheus 는 09-20 에 ops 프로필로\n-- 내려서 평소엔 꺼져 있다 → **12패널 전부 빈 화면**이었다. 만든 것과 도는 것은 다르다.\n-- 대체재로 만들어 둔 ops_metrics_5m(5분 cron 호스트 지표, docs/32)로 다시 세웠다.\nSELECT argMax(flink_running, ts) AS `잡` FROM cdc_pipeline.ops_metrics_5m",
+          "refId": "A"
+        }
+      ],
+      "title": "Flink 잡 (정상 5)",
+      "type": "stat"
+    },
+    {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
-      "targets": [
-        {
-          "rawSql": "SELECT round(avg(cdc_latency_ms), 1) as avg_latency FROM cdc_pipeline.crypto_trades WHERE op = 'c' AND source_ts >= now() - INTERVAL 1 HOUR",
-          "refId": "A",
-          "format": 1
-        }
-      ],
+      "description": "4 를 넘으면 코어 수만큼 일이 밀려 있다는 뜻. 주간 다이제스트가 p95 로 판정한다.",
       "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "thresholds": {
-            "steps": [
-              {
-                "color": "dark-blue",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        }
+        "defaults": {},
+        "overrides": []
       },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "background",
-        "graphMode": "none"
-      }
-    },
-    {
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "id": 3,
-      "title": "⚠ 이상탐지 지정 전이 (최근 1시간)",
-      "type": "stat",
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 0,
-        "y": 2
-      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT round(argMax(load1, ts), 2) AS `load1` FROM cdc_pipeline.ops_metrics_5m",
+          "refId": "A"
+        }
+      ],
+      "title": "호스트 load1 (코어 4)",
+      "type": "stat"
+    },
+    {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
-      "targets": [
-        {
-          "rawSql": "SELECT count() as alerts FROM cdc_pipeline.market_alerts WHERE detected_at >= now() - INTERVAL 1 HOUR AND prev_level = 0 AND level > 0",
-          "refId": "A",
-          "format": 1
-        }
-      ],
+      "description": "",
       "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "steps": [
-              {
-                "color": "semi-dark-blue",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 10
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        }
+        "defaults": {},
+        "overrides": []
       },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "background",
-        "graphMode": "none"
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
       },
-      "description": "PRICE_24H v2.1.1 은 2026-09-20 승격(전이 116건 미매칭 0, docs/22 §6). 승격이 바꾼 것은 판정이 아니라 '사람에게 보내는가'다 — 발송은 market_alerts_notify DAG."
-    },
-    {
       "id": 4,
-      "title": "Total Volume (최근 1시간 거래금액)",
-      "type": "stat",
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 14,
-        "y": 2
-      },
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
+      "options": {},
       "targets": [
         {
-          "rawSql": "SELECT sum(trade_amount) as volume FROM cdc_pipeline.crypto_trades WHERE op = 'c' AND source_ts >= now() - INTERVAL 1 HOUR",
-          "refId": "A",
-          "format": 1
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyKRW",
-          "thresholds": {
-            "steps": [
-              {
-                "color": "dark-blue",
-                "value": null
-              }
-            ]
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
           },
-          "color": {
-            "mode": "thresholds"
-          }
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT round(argMax(disk_free_mb, ts) / 1024, 1) AS `GB` FROM cdc_pipeline.ops_metrics_5m",
+          "refId": "A"
         }
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "background",
-        "graphMode": "none"
-      }
+      ],
+      "title": "디스크 여유 (GB)",
+      "type": "stat"
     },
     {
-      "id": 10,
-      "title": "Markets Tracked (모니터링 마켓)",
-      "type": "stat",
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 19,
-        "y": 2
-      },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
+      "description": "거래소 체결 시각 → ClickHouse 적재까지. SLO 30초(docs/32).",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "id": 5,
+      "options": {},
       "targets": [
         {
-          "rawSql": "SELECT uniq(market) as markets FROM cdc_pipeline.crypto_trades",
-          "refId": "A",
-          "format": 1
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "steps": [
-              {
-                "color": "dark-blue",
-                "value": null
-              }
-            ]
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
           },
-          "color": {
-            "mode": "thresholds"
-          }
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT round(argMax(upbit_e2e_p95_s, ts), 2) AS `p95` FROM cdc_pipeline.ops_metrics_5m",
+          "refId": "A"
         }
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "background",
-        "graphMode": "none"
-      }
+      ],
+      "title": "Upbit e2e p95 (초)",
+      "type": "stat"
     },
     {
-      "id": 12,
-      "title": "BTC Price (실시간 BTC 가격) | 🔴 빨간 점선 = 이상 탐지",
-      "type": "timeseries",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 6
-      },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "id": 6,
+      "options": {},
       "targets": [
         {
-          "rawSql": "SELECT toStartOfMinute(source_ts) as time, avg(trade_price) as price, min(trade_price) as low, max(trade_price) as high FROM cdc_pipeline.crypto_trades WHERE market = 'KRW-BTC' AND op = 'c' AND source_ts >= now() - INTERVAL 1 HOUR GROUP BY time ORDER BY time",
-          "refId": "A",
-          "format": 1
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT round(argMax(binance_e2e_p95_s, ts), 2) AS `p95` FROM cdc_pipeline.ops_metrics_5m",
+          "refId": "A"
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyKRW",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        }
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
+      "title": "Binance e2e p95 (초)",
+      "type": "stat"
     },
     {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "description": "1,000 = 포화. 500 을 넘으면 유실 전에 알린다 — 포화 선행 지표(docs/23 §5).",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "id": 7,
-      "title": "Bid vs Ask (매수/매도 비율)",
-      "type": "barchart",
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT round(argMax(flink_busy_max, ts), 0) AS `busy` FROM cdc_pipeline.ops_metrics_5m",
+          "refId": "A"
+        }
+      ],
+      "title": "Flink 소스 busy max (ms/s)",
+      "type": "stat"
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "② 유입 — 두 거래소 네 경로",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "description": "Upbit 체결(289 마켓)·Binance 체결(493 심볼)·양쪽 호가. Binance 체결은 Kafka 직행이고 호가는 증분+스냅샷을 Flink 가 재구성한 1초 상위 20.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "id": 9,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "-- 2026-09-20: 파이프라인이 Upbit 단일에서 Upbit+Binance 두 거래소로 넓어졌다(docs/31).\n-- 네 경로를 한 축에 놓아야 '무엇이 볼륨으로 일하는지'가 보인다.\nSELECT time,\n       sum(upbit_trades)     AS `Upbit 체결`,\n       sum(binance_trades)   AS `Binance 체결`,\n       sum(upbit_orderbook)  AS `Upbit 호가`,\n       sum(binance_orderbook) AS `Binance 호가`\nFROM (\n  SELECT toStartOfMinute(flink_ts) AS time, count() AS upbit_trades, 0 AS binance_trades, 0 AS upbit_orderbook, 0 AS binance_orderbook\n    FROM cdc_pipeline.crypto_trades WHERE flink_ts >= now() - INTERVAL 1 HOUR GROUP BY time\n  UNION ALL SELECT toStartOfMinute(flink_ts), 0, count(), 0, 0 FROM cdc_pipeline.binance_trades WHERE flink_ts >= now() - INTERVAL 1 HOUR GROUP BY 1\n  UNION ALL SELECT toStartOfMinute(recv_ts), 0, 0, count(), 0 FROM cdc_pipeline.orderbook_raw WHERE recv_ts >= now() - INTERVAL 1 HOUR GROUP BY 1\n  UNION ALL SELECT toStartOfMinute(ts), 0, 0, 0, count() FROM cdc_pipeline.binance_orderbook_raw WHERE ts >= now() - INTERVAL 1 HOUR GROUP BY 1\n)\nGROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "거래소별 유입 (분당 행 수)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "description": "위 패널은 ClickHouse 를 직접 세고, 이 패널은 5분 cron 이 남긴 스냅샷이다. 둘이 어긋나면 수집기 자체를 의심한다.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
       "gridPos": {
         "x": 12,
         "y": 6,
         "w": 12,
         "h": 8
       },
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "PDEE91DDB90597936"
-      },
+      "id": 10,
+      "options": {},
       "targets": [
         {
-          "rawSql": "-- 2026-09-19: Flink 5분 처리 시간 집계 폐기(docs/29 창2) → 원본 테이블을 체결 시각으로 직접\nSELECT market, countIf(ask_bid = 'BID') AS bid, countIf(ask_bid = 'ASK') AS ask\nFROM cdc_pipeline.crypto_trades\nWHERE upbit_timestamp >= toUnixTimestamp(now() - INTERVAL 1 HOUR) * 1000\nGROUP BY market ORDER BY bid + ask DESC",
-          "refId": "A",
-          "format": 1
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT ts AS time, upbit_trades_5m AS `Upbit 체결`, binance_trades_5m AS `Binance 체결`, orderbook_5m AS `Upbit 호가`\nFROM cdc_pipeline.ops_metrics_5m ORDER BY ts",
+          "refId": "A"
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "fillOpacity": 80
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "bid"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#3274D9"
-                }
-              },
-              {
-                "id": "displayName",
-                "value": "매수 (BID)"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "ask"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#E02F44"
-                }
-              },
-              {
-                "id": "displayName",
-                "value": "매도 (ASK)"
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "xField": "market",
-        "stacking": "normal",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      }
+      "title": "유입 추세 (5분 스냅샷, ops_metrics_5m)",
+      "type": "timeseries"
     },
     {
-      "id": 5,
-      "title": "Trade Volume (5분 총 거래금액)",
-      "type": "timeseries",
+      "id": 11,
+      "type": "row",
+      "title": "③ 지연 — 어디서 밀리나",
+      "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 0,
-        "y": 14
+        "y": 14,
+        "w": 24,
+        "h": 1
       },
+      "panels": []
+    },
+    {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
-      "targets": [
-        {
-          "rawSql": "-- 2026-09-19: Flink 5분 처리 시간 집계 폐기(docs/29 창2) → 체결 시각 5분 버킷으로 직접\nSELECT toStartOfFiveMinutes(fromUnixTimestamp64Milli(upbit_timestamp)) AS time, sum(trade_amount) AS total_volume\nFROM cdc_pipeline.crypto_trades\nWHERE upbit_timestamp >= toUnixTimestamp(now() - INTERVAL 1 HOUR) * 1000\nGROUP BY time ORDER BY time",
-          "refId": "A",
-          "format": 1
-        }
-      ],
+      "description": "튀는 구간은 대개 배포·재생성이다. 밀렸다가 따라잡는 것이지 유실이 아니다.",
       "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "green"
-          },
-          "custom": {
-            "fillOpacity": 15,
-            "lineWidth": 2,
-            "gradientMode": "scheme"
-          },
-          "unit": "currencyKRW",
-          "decimals": 1
-        },
+        "defaults": {},
         "overrides": []
-      }
-    },
-    {
-      "id": 6,
-      "title": "CDC Latency (CDC 지연시간)",
-      "type": "timeseries",
+      },
       "gridPos": {
-        "x": 12,
-        "y": 14,
-        "w": 9,
+        "x": 0,
+        "y": 15,
+        "w": 8,
         "h": 8
       },
+      "id": 12,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT ts AS time, upbit_e2e_p95_s AS `Upbit`, binance_e2e_p95_s AS `Binance`\nFROM cdc_pipeline.ops_metrics_5m ORDER BY ts",
+          "refId": "A"
+        }
+      ],
+      "title": "종단 지연 p95 (초)",
+      "type": "timeseries"
+    },
+    {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
+      "gridPos": {
+        "x": 8,
+        "y": 15,
+        "w": 8,
+        "h": 8
+      },
+      "id": 13,
       "targets": [
         {
-          "rawSql": "SELECT toStartOfMinute(source_ts) as time, avg(cdc_latency_ms) as avg_latency, max(cdc_latency_ms) as max_latency FROM cdc_pipeline.crypto_trades WHERE op = 'c' AND source_ts >= now() - INTERVAL 1 HOUR GROUP BY time ORDER BY time",
-          "refId": "A",
-          "format": 1
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "format": 0,
+          "queryType": "sql",
+          "rawSql": "SELECT toDateTime(day_utc) as time, lag_p50_s, lag_p95_s, lag_max_live_s FROM cdc_pipeline.dq_ingest_daily WHERE day_utc >= today() - 30 ORDER BY day_utc",
+          "refId": "A"
         }
       ],
+      "title": "적재 지연 p50/p95/max (초)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "ms",
           "custom": {
             "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 20
-          }
+            "fillOpacity": 20,
+            "lineWidth": 2
+          },
+          "unit": "ms"
         },
         "overrides": [
           {
@@ -525,8 +410,8 @@
               {
                 "id": "color",
                 "value": {
-                  "mode": "fixed",
-                  "fixedColor": "green"
+                  "fixedColor": "green",
+                  "mode": "fixed"
                 }
               }
             ]
@@ -540,14 +425,21 @@
               {
                 "id": "color",
                 "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
+                  "fixedColor": "orange",
+                  "mode": "fixed"
                 }
               }
             ]
           }
         ]
       },
+      "gridPos": {
+        "x": 16,
+        "y": 15,
+        "w": 8,
+        "h": 8
+      },
+      "id": 14,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -556,226 +448,195 @@
         "tooltip": {
           "mode": "multi"
         }
-      }
+      },
+      "targets": [
+        {
+          "format": 1,
+          "rawSql": "SELECT toStartOfMinute(source_ts) as time, avg(cdc_latency_ms) as avg_latency, max(cdc_latency_ms) as max_latency FROM cdc_pipeline.crypto_trades WHERE op = 'c' AND source_ts >= now() - INTERVAL 1 HOUR GROUP BY time ORDER BY time",
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          }
+        }
+      ],
+      "title": "CDC 구간 지연 (MySQL binlog → Flink)",
+      "type": "timeseries",
+      "description": "종단 지연은 '거래소 체결 → 적재'이고 이 패널은 그중 CDC 구간만이다. 구간을 나눠야 병목이 어디인지 말할 수 있다."
     },
     {
-      "id": 8,
-      "title": "이상탐지 등급 전이 (PRICE_24H 정식 v2.1.1 · VOLUME_24H 섀도)",
-      "type": "table",
+      "id": 15,
+      "type": "row",
+      "title": "④ 정확성 — 거래소·원장과 대조",
+      "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 24,
         "x": 0,
-        "y": 22
+        "y": 23,
+        "w": 24,
+        "h": 1
       },
+      "panels": []
+    },
+    {
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 8,
+        "h": 7
+      },
+      "id": 16,
       "targets": [
         {
-          "rawSql": "SELECT event_time as time, alert_type, market, concat('L', toString(prev_level), '→L', toString(level)) as transition, round(value, 1) as value_pct, threshold, rule_version FROM cdc_pipeline.market_alerts ORDER BY event_time DESC LIMIT 50",
-          "refId": "A",
-          "format": 1
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "format": 0,
+          "queryType": "sql",
+          "rawSql": "SELECT toDateTime(day_utc) as time, weighted_pct FROM cdc_pipeline.dq_reconcile_daily WHERE day_utc >= today() - 30 ORDER BY day_utc",
+          "refId": "A"
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "#FF4444"
-          },
-          "custom": {
-            "cellOptions": {
-              "type": "color-text"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "alert_type"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background-solid"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "dark-red"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "value"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "locale"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "threshold"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "locale"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "market"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#FF6666"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "displayName": "time",
-            "desc": true
-          }
-        ]
-      },
-      "description": "rule_version 으로 시대를 구분한다: v2.1.1-shadow = 승격 전, v2.1.1 = 정식, v2-shadow = VOLUME_24H(7일 창 판정 대기)."
+      "title": "Upbit 대조 — 일별 가중 비율 (%)",
+      "type": "timeseries"
     },
     {
-      "id": 9,
-      "title": "Recent Trades (최근 체결 내역)",
-      "type": "table",
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 30
-      },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
-      "targets": [
-        {
-          "rawSql": "SELECT \n    source_ts as time,\n    market,\n    ask_bid,\n    trade_price,\n    trade_volume,\n    trade_amount,\n    cdc_latency_ms\nFROM cdc_pipeline.crypto_trades \nWHERE op = 'c' AND source_ts >= now() - INTERVAL 5 MINUTE\nORDER BY source_ts DESC \nLIMIT 20",
-          "refId": "A",
-          "format": 1
-        }
-      ],
+      "description": "493 심볼 × 시간 셀. 첫 온전한 시간(09-20 01:00 UTC) 실측 100.000%, 불일치 셀 0/491.",
       "fieldConfig": {
         "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "trade_price"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "currencyKRW"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "trade_amount"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "currencyKRW"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "trade_volume"
-            },
-            "properties": [
-              {
-                "id": "decimals",
-                "value": 6
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "displayName": "time",
-            "desc": true
-          }
-        ]
-      }
+      "gridPos": {
+        "x": 8,
+        "y": 24,
+        "w": 8,
+        "h": 7
+      },
+      "id": 17,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "-- Upbit 은 '원장 대조'(체결 수량), Binance 는 REST 1시간 캔들의 체결 수와 우리 행 수를 센다(docs/31).\n-- 분모가 다르므로 같은 패널에 겹치지 않고 따로 둔다 — 같은 이름의 지표라도 정의가 다르면 나란히 두지 않는다.\nSELECT toDateTime(day_utc) AS time, weighted_pct AS `가중 비율(%)`, min_cell_pct AS `최소 셀(%)`\nFROM cdc_pipeline.dq_binance_reconcile_daily ORDER BY day_utc",
+          "refId": "A"
+        }
+      ],
+      "title": "Binance 대조 — 일별 가중 비율 (%)",
+      "type": "timeseries"
     },
     {
-      "id": 100,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "description": "불일치가 0 이어야 한다. 0 이 아니면 어느 구간이 깨졌는지를 두 열이 가른다.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 24,
+        "w": 8,
+        "h": 7
+      },
+      "id": 18,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "-- 우리 원장이 거래소와 같은가(ex_my), 그리고 CDC 가 그것을 온전히 옮겼는가(my_ch).\n-- 둘을 나눠 보는 이유: 앞은 '원장이 맞나', 뒤는 '파이프라인이 맞나' — 고칠 곳이 다르다.\nSELECT toString(day_utc) AS `날짜`, count() AS `심볼`,\n       sum(ex_my_mismatch) AS `거래소≠MySQL`, sum(my_ch_mismatch) AS `MySQL≠ClickHouse`,\n       sum(my_orders) AS `주문`, sum(my_filled) AS `체결`\nFROM cdc_pipeline.dq_ledger_daily GROUP BY day_utc ORDER BY day_utc DESC LIMIT 10",
+          "refId": "A"
+        }
+      ],
+      "title": "2층 원장 — 3자 대조 (거래소 = MySQL = ClickHouse)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 12,
+        "h": 7
+      },
+      "id": 19,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "format": 0,
+          "queryType": "sql",
+          "rawSql": "SELECT toDateTime(day_utc) as time, cells_below_99, markets_no_rows FROM cdc_pipeline.dq_reconcile_daily WHERE day_utc >= today() - 30 ORDER BY day_utc",
+          "refId": "A"
+        }
+      ],
+      "title": "Upbit 대조 — 99% 미만 셀 / 0건 마켓",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "description": "Binance Testnet 에 우리 규칙대로 주문을 내고, 상태를 바꾸는 주체는 거래소 매칭 엔진이다. 실돈은 없다.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 31,
+        "w": 12,
+        "h": 7
+      },
+      "id": 20,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "-- 시세는 전부 INSERT 뿐이라 CDC 의 본질인 상태 변경이 없다. 그 전이를 만들려고 2층 원장을 둔다(docs/28 B).\n-- avg_versions 가 1 보다 크다는 것이 곧 '한 주문 행이 여러 번 갱신됐다' = UPDATE 를 잡았다는 증거다.\nSELECT last_exec_type AS `전이`, count() AS `건수`, uniqExact(order_id) AS `주문 수`,\n       round(avg(version), 2) AS `평균 버전(=갱신 횟수)`\nFROM cdc_pipeline.virtual_orders FINAL\nWHERE is_deleted = 0 AND updated_ms >= toUnixTimestamp(now() - INTERVAL 24 HOUR) * 1000\nGROUP BY last_exec_type ORDER BY count() DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "2층 원장 — 24시간 상태 전이 (CDC 가 잡은 UPDATE)",
+      "type": "table"
+    },
+    {
+      "id": 21,
       "type": "row",
-      "title": "🌐 거래소 확장 · 2층 가상 원장 (2026-09-20 추가)",
+      "title": "⑤ 오류 · 공백 — 무엇이 빠졌나",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -786,10 +647,6 @@
       "panels": []
     },
     {
-      "id": 101,
-      "type": "timeseries",
-      "title": "거래소별 유입 (분당 행 수)",
-      "description": "Upbit 체결(289 마켓)·Binance 체결(493 심볼)·양쪽 호가. Binance 체결은 Kafka 직행이고 호가는 증분+스냅샷을 Flink 가 재구성한 1초 상위 20.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
@@ -798,126 +655,234 @@
         "x": 0,
         "y": 39,
         "w": 12,
-        "h": 8
+        "h": 7
       },
+      "id": 22,
       "targets": [
         {
-          "refId": "A",
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "rawSql": "-- 2026-09-20: 파이프라인이 Upbit 단일에서 Upbit+Binance 두 거래소로 넓어졌다(docs/31).\n-- 네 경로를 한 축에 놓아야 '무엇이 볼륨으로 일하는지'가 보인다.\nSELECT time,\n       sum(upbit_trades)     AS `Upbit 체결`,\n       sum(binance_trades)   AS `Binance 체결`,\n       sum(upbit_orderbook)  AS `Upbit 호가`,\n       sum(binance_orderbook) AS `Binance 호가`\nFROM (\n  SELECT toStartOfMinute(flink_ts) AS time, count() AS upbit_trades, 0 AS binance_trades, 0 AS upbit_orderbook, 0 AS binance_orderbook\n    FROM cdc_pipeline.crypto_trades WHERE flink_ts >= now() - INTERVAL 1 HOUR GROUP BY time\n  UNION ALL SELECT toStartOfMinute(flink_ts), 0, count(), 0, 0 FROM cdc_pipeline.binance_trades WHERE flink_ts >= now() - INTERVAL 1 HOUR GROUP BY 1\n  UNION ALL SELECT toStartOfMinute(recv_ts), 0, 0, count(), 0 FROM cdc_pipeline.orderbook_raw WHERE recv_ts >= now() - INTERVAL 1 HOUR GROUP BY 1\n  UNION ALL SELECT toStartOfMinute(ts), 0, 0, 0, count() FROM cdc_pipeline.binance_orderbook_raw WHERE ts >= now() - INTERVAL 1 HOUR GROUP BY 1\n)\nGROUP BY time ORDER BY time",
-          "format": 1,
+          "format": 0,
           "queryType": "sql",
-          "editorType": "sql"
+          "rawSql": "SELECT toDateTime(i.day_utc) as time, i.late_rows_gt_60s, ifNull(r.rows_recovered, 0) as rows_recovered FROM cdc_pipeline.dq_ingest_daily i LEFT JOIN (SELECT day_utc, sum(rows_recovered) rows_recovered FROM cdc_pipeline.dq_repairs_daily GROUP BY day_utc) r ON r.day_utc = i.day_utc WHERE i.day_utc >= today() - 30 ORDER BY i.day_utc",
+          "refId": "A"
         }
       ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {}
+      "title": "늦은 행(>60s, 가드 대상) / 수리 복구 행",
+      "type": "timeseries"
     },
     {
-      "id": 102,
-      "type": "table",
-      "title": "2층 원장 — 24시간 상태 전이 (CDC 가 잡은 UPDATE)",
-      "description": "Binance Testnet 에 우리 규칙대로 주문을 내고, 상태를 바꾸는 주체는 거래소 매칭 엔진이다. 실돈은 없다.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
+      },
+      "description": "코인별 거래지원 중단은 본문에 재개 시각만 있는 경우가 있어 창을 지어내지 않고 후보로만 둔다.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
       },
       "gridPos": {
         "x": 12,
         "y": 39,
         "w": 12,
-        "h": 8
+        "h": 7
       },
+      "id": 23,
+      "options": {},
       "targets": [
         {
-          "refId": "A",
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "rawSql": "-- 시세는 전부 INSERT 뿐이라 CDC 의 본질인 상태 변경이 없다. 그 전이를 만들려고 2층 원장을 둔다(docs/28 B).\n-- avg_versions 가 1 보다 크다는 것이 곧 '한 주문 행이 여러 번 갱신됐다' = UPDATE 를 잡았다는 증거다.\nSELECT last_exec_type AS `전이`, count() AS `건수`, uniqExact(order_id) AS `주문 수`,\n       round(avg(version), 2) AS `평균 버전(=갱신 횟수)`\nFROM cdc_pipeline.virtual_orders FINAL\nWHERE is_deleted = 0 AND updated_ms >= toUnixTimestamp(now() - INTERVAL 24 HOUR) * 1000\nGROUP BY last_exec_type ORDER BY count() DESC",
+          "editorType": "sql",
           "format": 1,
           "queryType": "sql",
-          "editorType": "sql"
+          "rawSql": "-- 공백을 세는 것만으로는 사고인지 점검인지 모른다. 업비트 서버 점검 중에는 전 마켓 거래가 멈춘다(정상).\n-- explained=1 이면 그 공백은 유실이 아니다(docs/37).\nSELECT toString(window_start) AS `시작`, gap_seconds AS `초`, reason AS `사유`,\n       inserted_rows AS `복구 행`, explained_by_maintenance AS `점검으로 설명됨`,\n       arrayStringConcat(maintenance_notices, ' / ') AS `공지`\nFROM cdc_pipeline.dq_ingest_gaps_labeled ORDER BY window_start DESC LIMIT 15",
+          "refId": "A"
         }
       ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {}
+      "title": "수집 공백 — 거래소 공지로 설명되나",
+      "type": "table"
     },
     {
-      "id": 103,
-      "type": "table",
-      "title": "2층 원장 — 최근 주문 (거울 CDC, 삭제까지 따라온다)",
-      "description": "체결 토픽은 보관소 모드(삭제 무시)이고 원장 토픽은 거울 모드(삭제 유지)다. 테스트넷 월 리셋 때 reset_epoch 가 오르고 이전 세대는 물리 삭제된다 — 그것이 DELETE 실증이다.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "PDEE91DDB90597936"
       },
       "gridPos": {
         "x": 0,
-        "y": 47,
-        "w": 24,
-        "h": 8
+        "y": 46,
+        "w": 12,
+        "h": 7
       },
+      "id": 24,
       "targets": [
         {
-          "refId": "A",
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
-          "rawSql": "SELECT fromUnixTimestamp64Milli(updated_ms) AS time, symbol, side, strategy, status,\n       last_exec_type, toFloat64(price) AS price, version, reset_epoch\nFROM cdc_pipeline.virtual_orders FINAL\nWHERE is_deleted = 0 ORDER BY updated_ms DESC LIMIT 20",
           "format": 1,
           "queryType": "sql",
-          "editorType": "sql"
+          "rawSql": "SELECT toDateTime(day_utc) as time, reason, repairs, gap_seconds, exchange_rows_in_windows, rows_recovered FROM cdc_pipeline.dq_repairs_daily ORDER BY day_utc DESC LIMIT 30",
+          "refId": "A"
         }
       ],
+      "title": "수리 계보 (창 단위)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "description": "위반이 있거나 3시간 넘게 기록이 없으면 quality_alerts DAG 이 Slack 으로 알린다.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
       },
-      "options": {}
-    }
-  ],
-  "schemaVersion": 39,
-  "version": 3,
-  "annotations": {
-    "list": [
-      {
-        "datasource": {
-          "type": "grafana-clickhouse-datasource",
-          "uid": "PDEE91DDB90597936"
-        },
-        "enable": true,
-        "hide": false,
-        "iconColor": "#FF0000",
-        "name": "🔴 이상 탐지 (Anomaly Alert)",
-        "target": {
+      "gridPos": {
+        "x": 12,
+        "y": 46,
+        "w": 12,
+        "h": 7
+      },
+      "id": 25,
+      "options": {},
+      "targets": [
+        {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
             "uid": "PDEE91DDB90597936"
           },
+          "editorType": "sql",
+          "format": 1,
           "queryType": "sql",
-          "rawSql": "SELECT detected_at as time, concat(alert_type, ' | ', market, ': ', toString(prev_level), '->', toString(level), ' (', toString(round(value, 1)), '%)') as text FROM cdc_pipeline.market_alerts WHERE $__timeFilter(detected_at) ORDER BY detected_at",
-          "refId": "Anno"
-        },
-        "filter": {
-          "exclude": false,
-          "ids": [
-            12
-          ]
+          "rawSql": "-- Debezium 을 schemas.enable=false 로 쓰므로 메시지 안에 스키마가 없다. 계약을 schemas/ 에 밖에 적고\n-- 살아 있는 토픽 표본과 매시 대조한다. '위반 없음'과 '검사 안 함'은 다르므로 마지막 실행 시각도 본다.\nSELECT topic AS `토픽`, status AS `상태`, checked AS `검사`, violations AS `위반`,\n       toString(max(ran_at)) AS `마지막 검증`\nFROM cdc_pipeline.schema_validation_runs\nWHERE ran_at >= (SELECT max(ran_at) FROM cdc_pipeline.schema_validation_runs)\nGROUP BY topic, status, checked, violations ORDER BY violations DESC, topic",
+          "refId": "A"
         }
-      }
-    ]
-  },
-  "editable": true
+      ],
+      "title": "토픽 계약 검증 (매시 cron → Airflow 판정)",
+      "type": "table"
+    },
+    {
+      "id": 26,
+      "type": "row",
+      "title": "⑥ 자원 · 알럿",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "description": "16GB 한 대에서 전부 돈다. 한도의 90% 를 넘으면 주간 다이제스트가 '고칠 것'에 올린다.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 54,
+        "w": 8,
+        "h": 8
+      },
+      "id": 27,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT ts AS time, mem_kafka_mb AS Kafka, mem_tm_mb AS `Flink TM`, mem_ch_mb AS ClickHouse,\n       mem_mysql_mb AS MySQL, mem_scheduler_mb AS `Airflow 스케줄러`\nFROM cdc_pipeline.ops_metrics_5m ORDER BY ts",
+          "refId": "A"
+        }
+      ],
+      "title": "컨테이너 메모리 (MiB)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "description": "스왑이 오르면 메모리 한도가 실사용보다 작다는 신호다(09-18 n8n 크래시 루프의 원인).",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 54,
+        "w": 8,
+        "h": 8
+      },
+      "id": 28,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT ts AS time, load1 AS load1, load5 AS load5, swap_used_mb / 100 AS `swap(100MiB)`\nFROM cdc_pipeline.ops_metrics_5m ORDER BY ts",
+          "refId": "A"
+        }
+      ],
+      "title": "호스트 부하 · 스왑",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "description": "알림은 Airflow 한 경로로만 나간다(n8n 은 09-20 에 비활성 확인 후 정리). 중복은 dedup_key 로 막는다.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 54,
+        "w": 8,
+        "h": 8
+      },
+      "id": 29,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "PDEE91DDB90597936"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "sql",
+          "rawSql": "SELECT toString(fired_at) AS `시각`, source AS `출처`, name AS `이름`, severity AS `등급`, message AS `내용`\nFROM cdc_pipeline.alert_events ORDER BY fired_at DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "울린 알럿 (alert_events)",
+      "type": "table"
+    }
+  ],
+  "description": "파이프라인이 '지금 제대로 도는가'에 답하는 대시보드. 유입 → 지연 → 정확성 → 오류/공백 → 자원 순으로 읽는다. 2026-09-20 재편: 예전에는 메인·품질·운영 세 개로 흩어져 유입·지연·알럿이 중복됐다."
 }
