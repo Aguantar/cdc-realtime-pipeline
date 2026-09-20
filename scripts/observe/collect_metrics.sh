@@ -12,6 +12,8 @@ CSV="$OUT_DIR/metrics_5m.csv"
 ENV_FILE=/home/calme/cdc-realtime-pipeline/.env
 mkdir -p "$OUT_DIR"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# 2026-09-20 (docs/32): 컨테이너 CPU 는 여기서 먼저 찍는다 — 아래 Kafka CLI(docker exec JVM) 가 돌고 난 뒤 재면 cdc-kafka-1 CPU 가 133% 로 부풀어 보인다(docs/23 의 147% 착시와 같은 원인, 02:55 실측)
+STATS_EARLY=$(docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' 2>/dev/null)
 
 # --- ClickHouse (readonly_user, HTTP) ---
 CH_USER=$(grep '^CLICKHOUSE_READONLY_USER=' $ENV_FILE | cut -d= -f2-)
@@ -79,7 +81,7 @@ PU=$(grep '^CLICKHOUSE_PIPELINE_USER=' $ENV_FILE | cut -d= -f2-); PP=$(grep '^CL
 L1=$(cut -d' ' -f1 /proc/loadavg); L5=$(cut -d' ' -f2 /proc/loadavg)
 read -r MU MA SU <<<"$(free -m | awk 'NR==2{u=$3; a=$7} NR==3{s=$3} END{print u, a, s}')"
 read -r DU DF <<<"$(df -m / | awk 'NR==2{print $3, $4}')"
-STATS=$(docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' 2>/dev/null)
+STATS="$STATS_EARLY"
 cpu_of(){ echo "$STATS" | awk -v n="$1" '$1==n {gsub("%","",$2); print $2+0; f=1} END{if(!f)print 0}'; }
 mem_of(){ echo "$STATS" | awk -v n="$1" '$1==n {v=$3; if (v ~ /GiB/) {gsub("GiB","",v); print int(v*1024)} else {gsub("MiB","",v); print int(v)}; f=1} END{if(!f)print 0}'; }
 CPU_COLL=$(echo "$(cpu_of cdc-upbit-producer) + $(cpu_of cdc-orderbook-collector) + $(cpu_of cdc-binance-collector) + $(cpu_of cdc-binance-depth-collector)" | bc 2>/dev/null || echo 0)
