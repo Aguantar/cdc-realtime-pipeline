@@ -165,3 +165,41 @@ dbt 1.5+ 의 `contract: enforced` 를 안 쓴다. 열 이름·타입이 바뀌�
 거래대금 급등 규칙은 **체결 시각** 기준이어야 한다. 평소 지연이 초 단위라 차이가 거의 없지만,
 적재 지연 36.9시간 사고(docs/08) 같은 일이 나면 거래가 엉뚱한 날에 잡힌다.
 이번에는 **한 번에 한 가지만 바꾼다**는 원칙에 따라 술어만 고치고 날짜 기준은 그대로 뒀다 — 별도 항목으로 남긴다.
+
+## 5. 2단계 실행 — 계약과 정의 (13:05 ~ 13:20 UTC)
+
+> 넘겨받는 쪽이 보는 것은 모델이 아니라 **열**이다. 값이 맞아도 뜻을 모르면 쓸 수 없다.
+
+| 항목 | 전 | 후 |
+|---|---|---|
+| 컬럼 설명 | 17 / 71 선언 | **314 / 314** (선언 자체를 314개로 늘림) |
+| 입도(grain) 명시 | 2 / 27 | **27 / 27** — 모든 모델 설명이 `**한 행 = …**` 로 시작한다 |
+| 계약(`contract: enforced`) | 0 | **9** (마트 2 · 신호 2 · 차원 5) |
+| `persist_docs` | 꺼짐 | **켬** — 설명이 ClickHouse 컬럼 주석으로 내려간다 |
+| 중복 schema yml | 3 파일이 같은 모델을 선언 | 레이어당 1파일 |
+
+### 5-1. 계약이 실제로 막는지 증명했다
+`mart_daily_summary` 의 `close_change_pct` 를 일부러 `close_chg_pct` 로 바꿔 빌드했다.
+
+```
+Compilation Error in model mart_daily_summary
+This model has an enforced contract that failed.
+| column_name | definition_type | contract_type | mismatch_reason |
+```
+
+**오늘 대시보드 10패널을 죽인 것과 정확히 같은 유형의 변경**(docs/38 §1-1)이 이제 빌드에서 멈춘다.
+`mart_trade_orderbook_1m` 은 증분이라 `on_schema_change` 를 정해야 했는데 **`fail`** 로 뒀다 —
+`append_new_columns` 는 '조용히 늘린다'는 뜻이라 계약의 취지에 반한다.
+
+### 5-2. 하다가 찾은 것 넷
+1. **같은 모델을 선언한 yml 이 3개 있었다**(`schema.yml`·`reconcile.yml`·`volume_surge.yml`). 내가 쓴 상세 설명이 반영되지 않아 알아챘다. 둘을 지우고 하나로 합쳤다.
+2. **`reconcile.yml` 이 없어진 열을 가리키고 있었다** — 설명에 `stg_trades.trade_date` 라고 적혀 있는데 그 열은 `day_kst` 로 바뀐 지 오래다. 문서가 코드보다 오래 산 사례.
+3. **옛 경고가 이미 해소된 문제를 가리키고 있었다**: `stg_trades` 설명에 "2026-02 지표는 재소비 중복 ~15.4% 포함, dedup 서브쿼리 필요"가 남아 있었다. 실측하니 2026-02-14 00~06시가 **FINAL 유무와 무관하게 127,445행 = 고유키 127,445개** — RMT 전환(docs/25)으로 이미 해결됐다. 문구를 실측으로 갱신했다.
+4. **`dim_coins` 의 조건부 유일성 검사를 내가 덮어써서 깨뜨렸다.** `binance_symbol` 은 바이낸스에 없는 코인에서 **빈 문자열**이라 82건이 중복으로 잡힌다. 원래 `where: "binance_symbol != ''"` 가 있었는데 문서화하며 날렸다 → 복원하고 **빈 값의 의미를 주석으로 못 박았다.**
+
+### 5-3. 레이어 기본값도 선언했다 (⑧)
+`dimensions`·`signals` 가 `dbt_project.yml` 에 없어 모델마다 `config` 로 버티고 있었다.
+config 를 빠뜨린 모델을 하나 추가하면 **조용히 view 가 된다.** 둘 다 `table` 로 못 박았다.
+
+### 5-4. 검증
+`dbt build` **110 PASS / 0 ERROR**. ClickHouse `system.columns.comment` 에 설명이 실제로 내려간 것을 확인했다.
