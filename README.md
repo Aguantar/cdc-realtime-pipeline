@@ -745,6 +745,7 @@ cdc-realtime-pipeline/
     ├── 11-orderbook-launch.md
     ├── 12-observation-plan.md          # 7일 관찰 가설·임계값
     ├── 13-sequential-id-collision-incident.md  # 유실 사고 #2: sid 마켓 간 충돌, 백필 210,469건
+    ├── 14-observation-week1.md       # 7일 무변경 관찰 결과: 가설 12개 중 10 통과·1 조건부·1 위반, 튜닝 순위 8건
     ├── 15-load-experiment-design.md    # 재생 증폭 부하 실험 설계(3계층, Binance 코퍼스, 준확정)
     ├── 16-anomaly-rule-basis.md        # 이상탐지 기준 재설계 — 업비트 시장경보 재현, 6개월 라벨 대비 정밀도·재현율
     ├── 16-appendix-queries.md          # 위 결론을 재생산하는 쿼리 10개와 출력 (scripts/analysis/rule_basis_check.sh)
@@ -756,6 +757,8 @@ cdc-realtime-pipeline/
     ├── 22-rules-v2-and-quality-layer.md # 이상탐지 v2(PRICE_24H 등급 전이 섀도, VOLUME_24H dbt 규칙) + dq_* 품질 층 + 규칙 평가 모델 + 승격 기준
     ├── 29-kafka-usage-review.md      # Kafka 사용 방식 냉정 평가: 체결 키 trade_id → market(재정렬 원인), 처리 시간 창, 압축·보존, DLQ, 스키마 계약
     ├── 30-lessons-consolidated.md # 실수를 교훈으로 통합: 부재 단정 3회·측정 오염·검증 전 커밋·분할·문서vs실측·조용한 실패 + 체크리스트
+    ├── 31-stack-dissection-and-binance-expansion.md # 스택 해체 분석(무엇이 일하나) + Binance 실시간 확장 1·2단계, 첫 시간 대조 100%, 스케줄러 OOM 사고, 운영 정리
+    ├── 32-slo-and-alerting.md        # SLO 표 15줄, 알럿 3층(즉시/품질 판정/주간 다이제스트), 실무 뒷단 ↔ 개인 규모, alert_events·ops_metrics_5m
     ├── 28-layer2-design.md           # 2층 설계: 체결 시각 파티션 재설계(설계 부채 해소)·가상 매매 원장(CDC 제자리)·케이스/내부 신호 (결정 대기)
     ├── 27-trade-orderbook-mart.md    # 체결×호가 분 결합 마트: 우리만의 데이터, volume_over_depth15, EURC 되튐 = 깊이 대비 체결량(500배)
     ├── 26-cdc-segment-review.md      # CDC 구간 재검토: 삭제 이벤트가 토픽의 46%·정리 DELETE 풀스캔·binlog 무기한 → skipped.operations/인덱스/보존, #1 철회, dim_markets (결정 대기)
