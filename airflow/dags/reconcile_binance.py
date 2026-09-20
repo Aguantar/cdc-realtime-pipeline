@@ -46,6 +46,16 @@ def _fetch_hourly_candles(**context) -> dict:
     return {"day": day, "symbols": len(symbols), "rows": len(rows), "failed": len(failed)}
 
 
+def _fetch_exchange_info(**context) -> dict:
+    """심볼 마스터 스냅샷(docs/34 #4): base/quote/status 를 거래소가 준 값으로 dim_coins 에 공급. RMT(fetched_at) 라 매일 덮어쓴다."""
+    from hooks.clickhouse_hook import ClickHouseHook
+    import json
+    info = requests.get(f"{REST}/api/v3/exchangeInfo", params={"permissions": "SPOT"}, timeout=30).json()
+    rows = [{"symbol": s["symbol"], "base_asset": s["baseAsset"], "quote_asset": s["quoteAsset"], "status": s["status"], "is_spot": 1 if s.get("isSpotTradingAllowed", True) else 0} for s in info["symbols"]]
+    ClickHouseHook().execute("INSERT INTO cdc_pipeline.binance_symbols FORMAT JSONEachRow\n" + "\n".join(json.dumps(r) for r in rows))
+    return {"symbols": len(rows)}
+
+
 with DAG(
     dag_id="reconcile_binance",
     default_args=default_args,
@@ -58,4 +68,5 @@ with DAG(
 ) as dag:
     fetch_hourly_candles = PythonOperator(task_id="fetch_hourly_candles", python_callable=_fetch_hourly_candles, pool="default_pool")
     dbt_reconcile = BashOperator(task_id="dbt_reconcile", bash_command="cd /opt/airflow/dbt && dbt run --profiles-dir /opt/airflow/dbt_profiles --select dq_binance_reconcile_daily 2>&1")
-    fetch_hourly_candles >> dbt_reconcile
+    fetch_exchange_info = PythonOperator(task_id="fetch_exchange_info", python_callable=_fetch_exchange_info)
+    fetch_exchange_info >> fetch_hourly_candles >> dbt_reconcile

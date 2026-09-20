@@ -13,3 +13,15 @@ models:
         tests:
           - accepted_values:
               values: ['daily_candle_first', 'before_window', 'unknown']
+
+  - name: dim_coins
+    description: "코인 차원(docs/34 #4): coin_id 로 Upbit 마켓과 Binance 심볼을 잇는다. 별칭은 seed coin_alias"
+    columns:
+      - name: coin_id
+        tests: [unique, not_null]
+      - name: upbit_market
+        tests: [unique, not_null]
+      - name: binance_symbol
+        tests:
+          - unique:
+              where: "binance_symbol != ''"

@@ -24,3 +24,13 @@ models:
           - not_null
       - name: trade_time_kst
         description: "Upbit 체결 시각 (Asia/Seoul 변환)"
+
+  - name: stg_binance_trades
+    description: "Binance 체결 스테이징(FINAL). taker_side 는 is_buyer_maker 를 테이커 방향으로 뒤집은 것"
+    columns:
+      - name: taker_side
+        tests:
+          - accepted_values:
+              values: ['ASK', 'BID']
+      - name: trade_id
+        tests: [not_null]

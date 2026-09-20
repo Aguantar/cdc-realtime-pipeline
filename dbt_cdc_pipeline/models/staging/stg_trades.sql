@@ -15,6 +15,7 @@ SELECT
     trade_volume,
     trade_amount,
     ask_bid,
+    ask_bid AS taker_side,   -- docs/34 #4: Upbit ask_bid 는 테이커 방향. Binance 와 같은 뜻으로 부르는 열
     toTimeZone(
         fromUnixTimestamp64Milli(upbit_timestamp),
         'Asia/Seoul'

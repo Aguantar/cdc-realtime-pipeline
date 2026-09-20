@@ -104,6 +104,8 @@ sources:
         description: "업비트 시장경보 지정/해제 이력 (이상탐지 정답 라벨, docs/16). 매시 증분 동기화."
       - name: upbit_market_events
         description: "거래소 시장경보 플래그 전이(1분 폴링, poll_market_events.py). 마켓·플래그별 최신 state 가 현재 지정 상태"
+      - name: binance_symbols
+        description: "Binance exchangeInfo 스냅샷(base/quote/status). dim_coins 원천. reconcile_binance 가 일 1회"
       - name: binance_hourly_candles
         description: "Binance REST 1h 캔들(체결 수 n 포함). reconcile_binance 가 일 1회 적재 — Binance 대조의 정답"
       - name: upbit_market_master

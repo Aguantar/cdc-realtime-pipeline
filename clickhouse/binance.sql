@@ -41,3 +41,11 @@ CREATE TABLE IF NOT EXISTS cdc_pipeline.binance_orderbook_raw AS cdc_pipeline.or
 ENGINE = MergeTree PARTITION BY toDate(ts) ORDER BY (market, ts) TTL toDateTime(ts) + INTERVAL 7 DAY;
 CREATE TABLE IF NOT EXISTS cdc_pipeline.binance_orderbook_1m AS cdc_pipeline.orderbook_1m
 ENGINE = MergeTree PARTITION BY toYYYYMM(window_start) ORDER BY (market, window_start) TTL window_start + INTERVAL 365 DAY;
+
+-- 2026-09-20 (docs/34 #4): Binance 심볼 마스터(exchangeInfo). dim_coins 의 원천 — base/quote 를 문자열 치환이 아니라 거래소가 준 값으로.
+CREATE TABLE IF NOT EXISTS cdc_pipeline.binance_symbols
+(
+    symbol LowCardinality(String), base_asset LowCardinality(String), quote_asset LowCardinality(String), status LowCardinality(String),
+    is_spot UInt8, fetched_at DateTime DEFAULT now()
+)
+ENGINE = ReplacingMergeTree(fetched_at) ORDER BY symbol;

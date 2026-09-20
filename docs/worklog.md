@@ -491,3 +491,4 @@
 - 09-20 04:05~04:08 UTC **보강 #2 FINAL**: RMT 를 읽는 모델 6개에 FINAL(7/7), 빌드 6~9초, 중복 주입 실험 원본 2 → stg 1. 실수: 주석을 config 블록 안에 넣어 Jinja 깨짐(4초 만에 조용히 끝남)
 - 09-20 04:10 UTC **정정**: #2 검증에서 "원본 2" 는 틀림(한 INSERT 의 두 행은 RMT 가 삽입 때 접음). 별도 INSERT 두 번으로 재검증 → 원본 2, stg(FINAL) 1. 검증 자체의 검증을 안 한 실수
 - 09-20 04:08~04:15 UTC **보강 #3 시간 규약**: day_utc / day_kst·hour_kst 로 15모델·소비자 4·대시보드 6패널 동시 변경, 검증 통과. 드러난 것 2: MySQL trade_amount DECIMAL(20,4) 로 먼지 체결 64,669행이 amount 0(→ #5), no_long_gaps 테스트 전제가 287마켓에 틀림(스테이블 3~5h 공백 정상) → 유동성 마켓만
+- 09-20 04:15~04:20 UTC **보강 #4 차원·사이드·환율**: binance_symbols(3,665)·dim_venues·coin_alias seed·dim_coins(289, 양쪽 207, 별칭 MANTRA↔OM)·taker_side 통일(Binance 반반)·int_fx_usdt_krw_hourly(KRW-USDT)·sig_kimchi_premium_hourly(BTC ±0.1%, 극단 LSK/EGLD 얇은 마켓). 실수 3(LEFT JOIN ''·FINAL 위치·LowCardinality CAST)

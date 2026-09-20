@@ -1,11 +1,13 @@
 {{ config(materialized='table', order_by='(day_utc, market)') }}
 -- 교차 거래소 신호 (docs/28 C-3): 우리 Binance 주문이 "같은 코인"의 Upbit 경보 구간 안에 들어간 건수.
 -- 같은 시장이 아니다 — 거래소·통화·호가장이 다르다. 그래서 가격·체결 품질은 비교하지 않고, "경보 중인 코인을 우리가 사고팔았나"만 센다.
--- 실무의 자리: 리스크·컴플라이언스가 묻는 "외부 신호(거래소 경보) ↔ 내부 활동(우리 원장)" 결합. 코인 매핑 = 심볼에서 USDT 를 뗀 기준 자산 → KRW-<자산>.
+-- 실무의 자리: 리스크·컴플라이언스가 묻는 "외부 신호(거래소 경보) ↔ 내부 활동(우리 원장)" 결합. 코인 매핑 = dim_coins.
 WITH orders AS (
-    SELECT order_id, symbol, concat('KRW-', replaceOne(symbol, 'USDT', '')) AS market, side, status, executed_qty, cum_quote_qty, strategy,
-           fromUnixTimestamp64Milli(created_ms) AS created_at
-    FROM {{ source('raw', 'virtual_orders') }} FINAL
+    -- docs/34 #4: 코인 매핑은 문자열 치환이 아니라 dim_coins(거래소가 준 base/quote + 별칭)
+    SELECT o.order_id AS order_id, o.symbol AS symbol, c.upbit_market AS market, o.side AS side, o.status AS status, o.executed_qty AS executed_qty, o.cum_quote_qty AS cum_quote_qty, o.strategy AS strategy,
+           fromUnixTimestamp64Milli(o.created_ms) AS created_at
+    FROM {{ source('raw', 'virtual_orders') }} AS o FINAL
+    INNER JOIN {{ ref('dim_coins') }} AS c ON c.binance_symbol = o.symbol
 ),
 overlap AS (
     SELECT o.order_id, o.symbol, o.market, o.side, o.status, o.executed_qty, o.cum_quote_qty, o.strategy, o.created_at, f.flag, f.level, f.valid_from, f.valid_to, f.source

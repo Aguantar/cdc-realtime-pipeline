@@ -34,3 +34,11 @@
   - `assert_positive_volume` FAIL: KRW-LINEA 09-11 05시 amount 0. 원인 = **MySQL trade_amount DECIMAL(20,4)** — 가격×수량 < 0.00005 KRW 인 먼지 체결이 0 으로 저장. 30일 64,669행·252마켓(진짜 금액 4e-12~5e-5 KRW). 합계엔 무의미하지만 "정밀도는 원천에 있었다"는 말이 이 열엔 틀렸다 → #5 에서 amount 를 저장하지 않고 Decimal price×volume 으로 계산. 테스트는 그때까지 0.0001 미만 먼지만 허용.
   - `assert_no_long_gaps` FAIL 4: KRW-USDS·RLUSD·USDE(하루 115~304건 스테이블) 3~5시간 공백. 5코인 시절 전제("24시간 거래") 가 287마켓엔 틀렸다 → 하루 1,000건 이상 마켓만. 파이프라인 공백은 커버리지·대조가 잡는다.
 - 실수: `quality_alerts` 의 SQL 에서 `WHERE day <` 만 바꾸고 `GROUP BY day`·`ORDER BY day` 를 남겨 404. 정규식으로 SQL 줄 전체를 바꿈.
+
+## 4-실행 (09-20 04:15 ~ 04:20 UTC)
+- `binance_symbols`(exchangeInfo 스냅샷, 3,665 심볼·USDT 현물 493) + reconcile_binance 에 일 1회 fetch. `dim_venues` seed(통화·하루 기준·사이드 의미·원장 여부·대조 정답), `coin_alias` seed(MANTRA↔OM — 사람이 검토한 별칭만).
+- `dim_coins`: 289 코인, **207 이 두 거래소에 모두**, 별칭 1. 검증 unique(coin_id·upbit_market·binance_symbol) 5/5. 실수 2: ClickHouse LEFT JOIN 은 NULL 대신 '' 를 주므로 coalesce 가 아니라 if(!='') — 첫 빌드에서 BTC 조차 안 붙어 both=1 로 나옴 / `FROM t FINAL AS a` 는 문법 오류, `AS a FINAL` 이 맞음 / LowCardinality 비교는 CAST.
+- `taker_side`: Upbit ask_bid 그대로, Binance 는 is_buyer_maker 를 뒤집음(BID=테이커 매수). 1시간 분포 BID 594k / ASK 592k — 반반이라 의미가 통일됐다는 방증.
+- 환율: 외부 FX 대신 **Upbit KRW-USDT**(하루 58k 체결, 1,365원) 시간 종가 → `int_fx_usdt_krw_hourly`. 우리 데이터라 조건이 같다.
+- `sig_kimchi_premium_hourly`: 어제 "가격은 비교하지 않는다"의 **정정** — 통화·환율·코인 차원이 갖춰지면 비교할 수 있고, 거래소가 다르기 때문에 성립한다. 실측: BTC/ETH/XRP 최근 3시간 −0.10 ~ +0.08%(김프 거의 0 인 날), 196 코인 918행, 중앙값 −0.07%. 극단값 LSK −27.8%·EGLD +38.4% 는 얇은 마켓(체결 ≥10 조건만)이라 조회 시 유동성 필터가 필요 — 그대로 둔 이유: 신호는 원인을 보여야지 숨기면 안 된다.
+- `sig_cross_venue_flag_overlap` 을 dim_coins 조인으로 바꿈(문자열 치환 제거) → 1행.
