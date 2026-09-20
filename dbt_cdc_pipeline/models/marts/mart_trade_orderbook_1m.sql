@@ -9,8 +9,11 @@
 -- 시간 축: 둘 다 거래소 시각(체결 upbit_timestamp, 호가 tms) 의 분. 체결은 RMT 라 FINAL 로 읽는다(재전송 중복 제거).
 -- 단위: 깊이(ask/bid_depth15_avg)는 수량 → volume_over_depth15 = 그 분 체결 수량 / 15호가 평균 잔량(양쪽 합). 1 이면 "호가 전체만큼 체결".
 -- 증분: 일 단위 delete+insert. 초기 적재는 mart_from/mart_to 로 하루씩(전체 FINAL 은 메모리 한도).
-{% set d_from = var('mart_from', "toString(toDate(now()) - 1)") %}
-{% set d_to   = var('mart_to',   "toString(toDate(now()))") %}
+{# 2026-09-20 (docs/40 ⑩): run_date 를 주면 그 날만. mart_from/mart_to 는 여러 날 한 번에 만들 때 쓴다(초기 적재).
+   두 이름을 남기는 이유: 백필의 단위는 '하루'지만 초기 적재는 '구간'이라 쓰임이 다르다. #}
+{% set _rd = var('run_date', none) %}
+{% set d_from = _rd if _rd else var('mart_from', "toString(toDate(now()) - 1)") %}
+{% set d_to   = _rd if _rd else var('mart_to',   "toString(toDate(now()))") %}
 {% set day_from = "toDate(" ~ ("'" ~ d_from ~ "'" if d_from[:2] == '20' else d_from) ~ ")" %}
 {% set day_to   = "toDate(" ~ ("'" ~ d_to   ~ "'" if d_to[:2]   == '20' else d_to)   ~ ")" %}
 

@@ -62,6 +62,10 @@ def _kst_day_bounds_ms(target_date: str) -> tuple[int, int]:
 
 default_args = {
     "owner": "calme",
+    # 2026-09-20 (docs/39 §2 ⑦): 증분 모델은 전날 결과 위에 쌓는다. 전날이 실패했는데 오늘이 돌면
+    # 구멍이 조용히 남는다 → 전날이 성공해야 오늘이 돈다.
+    # health_check 같은 '지금 상태' DAG 에는 걸지 않는다 — 과거 실패가 현재 점검을 막으면 안 된다.
+    "depends_on_past": True,
     "retries": 2,
     "retry_delay": timedelta(minutes=5),
     "on_failure_callback": task_failure_callback,
@@ -96,7 +100,11 @@ with DAG(
         task_id="dbt_run",
         bash_command=(
             "cd /opt/airflow/dbt && "
-            "dbt run --profiles-dir /opt/airflow/dbt_profiles 2>&1"
+            # 2026-09-20 (docs/40 ⑩ · docs/39 §3): 논리 날짜를 dbt 에 넘긴다.
+            # 전에는 dbt 가 now() 로 창을 잘라 **과거 날짜를 재실행해도 오늘을 다시 만들었다** —
+            # 대조·백업은 {{ ds }} 를 쓰는데 dbt 만 안 써서 한 파이프라인 안에서 재실행 가능 여부가 갈렸다.
+            # 이제 Airflow UI 에서 과거 날짜를 clear 하면 그 날이 다시 만들어진다.
+            'dbt run --profiles-dir /opt/airflow/dbt_profiles --vars \'{"run_date": "{{ ds }}"}\' 2>&1'
         ),
         sla=timedelta(hours=2),
     )
@@ -106,7 +114,7 @@ with DAG(
         task_id="dbt_test",
         bash_command=(
             "cd /opt/airflow/dbt && "
-            "dbt test --profiles-dir /opt/airflow/dbt_profiles 2>&1"
+            'dbt test --profiles-dir /opt/airflow/dbt_profiles --vars \'{"run_date": "{{ ds }}"}\' 2>&1'
         ),
         outlets=[DBT_COMPLETED],  # Dataset 트리거
     )

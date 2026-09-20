@@ -17,8 +17,11 @@ SELECT
 FROM {{ ref('stg_trades') }}
 WHERE 1 = 1
 {% if is_incremental() %}
-  AND source_ts >= toStartOfDay(now() - INTERVAL 1 DAY)
+  {# 2026-09-20 (docs/40 ⑩): now() → run_anchor(). 기본값이 now() 라 평소 동작은 그대로이고,
+     --vars '{"run_date": "YYYY-MM-DD"}' 를 주면 그 날(과 전날)만 다시 만든다. #}
+  AND source_ts >= toStartOfDay({{ run_anchor() }} - INTERVAL 1 DAY)
+  {% if var('run_date', none) %}AND source_ts < toStartOfDay({{ run_anchor() }} + INTERVAL 1 DAY){% endif %}
 {% else %}
-  AND source_ts >= toStartOfDay(now() - INTERVAL 30 DAY)
+  AND source_ts >= toStartOfDay({{ run_anchor() }} - INTERVAL 30 DAY)
 {% endif %}
 GROUP BY day_utc

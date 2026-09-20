@@ -7,8 +7,10 @@
 WITH days AS (
     SELECT DISTINCT toDate(recv_ts) AS day_utc
     FROM {{ source('raw', 'orderbook_raw') }}
-    {% if is_incremental() %} WHERE recv_ts >= toStartOfDay(now() - INTERVAL 1 DAY)
-    {% else %} WHERE recv_ts >= toStartOfDay(now() - INTERVAL 30 DAY) {% endif %}
+    {# 2026-09-20 (docs/40 ⑩): 백필 가능하게 run_anchor() 로. 기본값 now() #}
+    {% if is_incremental() %} WHERE recv_ts >= toStartOfDay({{ run_anchor() }} - INTERVAL 1 DAY)
+      {% if var('run_date', none) %} AND recv_ts < toStartOfDay({{ run_anchor() }} + INTERVAL 1 DAY) {% endif %}
+    {% else %} WHERE recv_ts >= toStartOfDay({{ run_anchor() }} - INTERVAL 30 DAY) {% endif %}
 ),
 per_sec AS (
     SELECT toStartOfSecond(recv_ts) AS s, count() AS c
