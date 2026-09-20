@@ -2,7 +2,7 @@
 
 > 사용자: "말한 모든 내용을 다 보강하자. 철저하게, '왜?'에 답이 되게. Float 도 DE 의 일 아닌가." → 맞다. 저장 층의 숫자 타입은 하류에 주는 계약이고, 정밀도는 원천(DECIMAL·문자열)에 있었는데 Flink 에서 double 로 버린 것이라 DE 책임.
 > 원칙: 항목마다 **왜 → 무엇을 → 어떻게 검증** 을 먼저 적고, 실행 뒤 결과를 §N-실행 에 붙인다. 순서는 위험(보안·정확성) → 계약(시간·차원·타입) → 정리.
-> 진행 상황(09-20 04:36 UTC): #1~#4 완료·커밋·푸시(§1-실행~§4-실행). **#5(Decimal)에서 세션이 끊겼고 코드는 한 줄도 안 바꿨다** — 조사만 끝난 상태(아래 §5-준비).
+> 진행 상황(09-20 05:20 UTC): #1~#5 완료·커밋·푸시(§1-실행~§5-실행). 남은 것 #6~#10.
 
 | # | 항목 | 왜 | 무엇을 | 검증 | 상태 |
 |---|---|---|---|---|---|
@@ -10,7 +10,7 @@
 | 2 | RMT 읽기 FINAL | ReplacingMergeTree 는 "결국" 중복 제거. 읽는 쪽이 보장해야 마트가 재시작 뒤 중복을 안 센다 | stg_trades 에 FINAL, 하류 6모델은 stg 경유(dim_markets·int_reconcile_hourly·int_alert_transitions_recomputed·int_volume_surge_daily·dq_ingest_daily 점검) | dbt build 통과, 중복 주입 뒤 마트 count 불변 실험 | **완료** 04:08 |
 | 3 | 하루 규약 | 마트=KST, dq=UTC 인데 열 이름이 둘 다 day | `day_kst`/`day_utc` 로 이름 통일, docs 규약 한 줄, Grafana·DAG 쿼리 동시 수정 | dbt build + 대시보드 12패널 조회 + DAG 테스트 | **완료** 04:15 |
 | 4 | 차원·사이드 | 코인 키가 거래소마다 다르고 문자열 치환으로 조인, 사이드 의미 반대 | `dim_coins`(coin_id·upbit_market·binance_symbol·base·quote·유효기간), `dim_venues`, 마트 `taker_side`. 환율은 Upbit KRW-USDT 마켓(우리 데이터) → `sig_kimchi_premium` | 조인 유일성 테스트, 김프 값이 공개 지표와 같은 부호·자릿수 | **완료** 04:20 |
-| 5 | Decimal | 금액·수량 Float64 는 회계·대조 등호에 못 쓴다. 원천은 정밀 | Flink 파서 BigDecimal → `setBigDecimal`, ClickHouse crypto_trades/binance_trades price·volume·amount Decimal(20,8)/(24,8) 로 무정지 재생성(EXCHANGE 런북), 마트 파생 타입 확인. 호가 배열은 Float64 유지(파생 지표) — 이유 명시 | 재생성 전후 sum(amount) 등호(Decimal 끼리), 프루닝·적재 지속 | **다음** — 중단 지점 |
+| 5 | Decimal | 금액·수량 Float64 는 회계·대조 등호에 못 쓴다. 원천은 정밀 | Flink 파서 BigDecimal → `setBigDecimal`, ClickHouse crypto_trades/binance_trades price·volume·amount Decimal(20,8)/(24,8) 로 무정지 재생성(EXCHANGE 런북), 마트 파생 타입 확인. 호가 배열은 Float64 유지(파생 지표) — 이유 명시 | 재생성 전후 sum(amount) 등호(Decimal 끼리), 프루닝·적재 지속 | **완료** 05:19 |
 | 6 | 재처리 런북 | 보존은 있는데 절차가 없다 | `scripts/ops/reprocess-day.sh`: 원장(MySQL, 7일) → ClickHouse `mysql()` 함수로 하루 파티션 재생성, Binance 는 Kafka(3일) 재소비 잡, 호가는 Parquet(120일) | 실제 하루를 다시 만들어 대조 100% | 대기 |
 | 7 | 죽은 산출물 | anomaly_alerts(09-17 정지)·coin_metadata·trade_aggregations·mart_alert_rate·mart_volume_spike·load_test_* + Grafana 패널 + n8n 빈 폴링 | 인벤토리 표 → 소비자 없는 것 DROP, Grafana 패널 교체, n8n 워크플로 export 를 repo 에 | Grafana 전 패널 데이터 있음, 참조 0 확인 뒤 DROP | 대기 |
 | 8 | 테스트·계약 | 새 테이블 테스트 0, exposure·메트릭 정의·데이터 사전 없음 | schema.yml(unique·not_null·accepted_values), exposures.yml, `docs/metrics.md`, `docs/data-catalog.md`, 토픽 JSON 스키마 + 파서 테스트 | dbt test 통과, 스키마 테스트 | 대기 |
@@ -56,3 +56,39 @@
 | ClickHouse `crypto_trades`·`binance_trades` | `Float64` | `Decimal(20,8)` / 금액 `Decimal(24,8)` — EXCHANGE 런북으로 무정지 재생성 |
 | MySQL `trade_amount` | `DECIMAL(20,4)` — 먼지 체결 64,669행이 0 (§3-실행에서 발견) | **amount 를 저장·전송하지 않고** ClickHouse 에서 `price*volume` 으로 계산(또는 MySQL 스케일 확대). 저장 안 하는 쪽이 단순 |
 순서: ① Flink 코드 + 테스트 → 빌드 ② 새 표 생성·복사·EXCHANGE(체결 1.16억 행, 어제 9분) ③ 잡 재배포 ④ 대조·마트 재빌드 ⑤ 기록. 위험: Flink 재배포 1회(정지 ~50초), ClickHouse 재생성 중 CPU.
+
+## 5-실행 (09-20 04:40 ~ 05:19 UTC) — 금액·수량 Decimal
+### 무엇을
+| 층 | 전 | 후 | 왜 |
+|---|---|---|---|
+| Flink 모델·파서·싱크 | `double` ← `parseDecimal` ← Debezium **문자열** | `BigDecimal` ← 문자열 그대로, `setBigDecimal` | 원천에 있던 정밀도를 우리가 버리고 있었다 |
+| `trade_amount` / `quote_qty` | MySQL DECIMAL(20,4) 값을 그대로 실어 나름 | **price × volume 계산**(스케일 8+8=16) | MySQL 스케일 4 라 먼지 체결이 0(30일 64,669행). 계산하면 "amount = 정의" 가 항상 성립 |
+| ClickHouse `crypto_trades`·`binance_trades` | Float64 | `Decimal(20,8)` / 금액 `Decimal(38,16)` | 정수부 22자리 vs 전 기간 합계 15자리 = 여유 7자리 |
+| `MarketAlertDetector` | double | **double 유지** | 판정이 비율 비교라 결과가 같고, `ValueState<double[]>` 타입을 바꾸면 세이브포인트 복원이 깨진다. 테스트 9/9 무수정 통과가 그 증거 |
+| 호가(`orderbook_raw`·`binance_orderbook_raw`) | Float64 | **Float64 유지** | 합산되는 금액이 아니라 비율 지표(mid·spread_bp·imbalance)의 재료. Array(Decimal) 은 초당 300 스냅샷에서 비용만 는다 |
+| `market_alerts` | Float64 | **Float64 유지** | 퍼센트·판정 근거이고 값이 탐지기 링에서 나온다 |
+| dbt 비율 7모델 | `if(v>0, a/v, 0)` | `toFloat64` + `nullIf` | **Decimal 나눗셈은 분모 0 에서 예외를 던져 모델이 죽는다**. `if` 가드는 ClickHouse 가 양쪽 분기를 다 계산해 무용(09-20 실측) |
+**타입 규약(이 프로젝트의 규칙)**: 금액·수량 = Decimal, 비율·파생지표 = Float64.
+
+### 발견 — `CAST(Float64 → Decimal)` 은 반올림이 아니라 **버림**
+1차 복사 검증에서 행수·수량합은 완전히 일치했는데 **월별 금액합만 2e-8 작게** 나왔다. 행 단위로 추적하니 KRW-PEPE 한 행에서 42.86 KRW 차이, 그 차이가 정확히 `volume × 1e-8`.
+원인: Float64 `0.00518` 의 실제 비트값은 `0.005179999…` 이고 `CAST`/`toDecimal64`/`accurateCast`/`CAST(round(x,8))` 가 **전부 버림**이라 `0.00517999` 가 됐다.
+해법: `toDecimal128(toString(x), 8)` — `toString` 은 그 double 로 되돌아가는 **최단 십진 표기**라 원본 DECIMAL(20,8) 을 복원한다. MySQL 원본과 대조: `4285662548.26254840`, `22199732.0000000007120000` 정확히 일치. 지수 표기(`1e-8`·`3.2e-7`)도 그대로 파싱.
+**교훈: 타입 변환 검증은 행수가 아니라 합계로 한다.** 행수만 봤으면 통과했다.
+
+### 절차와 실측
+| 단계 | 결과 |
+|---|---|
+| 빌드 | 테스트 19/19(먼지 체결 회귀 테스트 추가). 탐지기 9/9 무수정 통과 = 판정 불변 |
+| 복사 | 219일·116,900,045행, 누락 0·불일치 0, **행수·수량합·금액합 전부 정확히 일치**(vol_rel_diff 0, amt_ratio 1). 프로덕션 p95 불변 |
+| 창 (05:08:20~05:09:46, **86초**) | 두 잡 세이브포인트 정지 → 차이분 8,911(Upbit)·8,826(Binance) → EXCHANGE ×2 → 새 JAR → 복원. 5잡 RUNNING·실패 0·슬롯 8/8 |
+| 연속성 | 재기동 구간 MySQL 2,969 = ClickHouse 2,969 |
+| 새 행 | amount ≠ price×volume 인 행 **0/2,715**. 먼지 체결 amount=0 **0건**(전엔 하루 수천) |
+| 하류 | dbt run 24/24, test 41/41. 분 마트도 Decimal 로 12일 재생성(행수 기록과 일치) |
+| **층간 일관성** | 09-19 금액합: 원천 `2534256463850.60064504323932` = 마트 `2534256463850.60064504323932` — 소수 20자리까지 동일. Float64 였다면 마지막 자리가 달랐다 |
+| 테스트 원복 | #3 에서 먼지 때문에 느슨하게 뒀던 `assert_positive_volume` 을 원래대로(수량>0 이면 금액>0) → PASS |
+| 롤백 | 옛 Float64 표를 `crypto_trades_float_bak`(3.95GiB)·`binance_trades_float_bak`(128MiB) 로 보관. 7일 뒤 DROP |
+
+### 실수 2건
+- **돌고 있는 스크립트를 편집**해 복사 프로세스가 마지막 줄에서 죽었다(bash 는 파일을 나눠 읽는다). 09-18 에 기록한 실수의 반복 — 그때 남긴 규칙을 내가 안 지켰다. 다행히 루프는 끝난 뒤라 데이터는 온전했고 일 단위 전수로 확인했다.
+- 마트 재생성에서 `--vars '{mart_from: 2026-09-09}'` 처럼 **따옴표 없이** 날짜를 넘겨 YAML 이 `datetime.date` 로 파싱 → 모델의 문자열 슬라이싱이 터졌다. 12번 전부 실패했는데 grep 패턴이 좁아 못 봤고, 행수가 그대로인 것을 "성공"으로 읽었다. → 오늘 스스로 적은 규칙("출력이 비어 있으면 실행이 안 된 것부터 의심")을 적용해 잡음.

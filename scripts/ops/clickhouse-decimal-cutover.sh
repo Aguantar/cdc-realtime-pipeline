@@ -85,10 +85,10 @@ cutover)
   CH "EXCHANGE TABLES $CUR AND $NEW"
   CH "ATTACH TABLE cdc_pipeline.mv_latency_stats"
   say "  교환 완료: trade_price 타입 = $(CH "SELECT type FROM system.columns WHERE database='cdc_pipeline' AND table='crypto_trades' AND name='trade_price'")"
-  say "  옛 표는 crypto_trades_dec 이름으로 남는다(롤백 = EXCHANGE 역실행). 7일 뒤 DROP"
+  say "  옛 Float64 표는 crypto_trades_dec 이름으로 남는다(EXCHANGE 라 이름이 맞바뀐다 — 헷갈리므로 검증 뒤 *_float_bak 으로 rename). 롤백 = rollback 단계. 7일 뒤 DROP"
   ;;
 binance-prepare)
-  # Binance 체결(6M 행, 30일 TTL)도 같은 규칙. quote_qty 는 price×qty 로 다시 계산한다(옛 값은 Flink 가 double 로 곱한 것).
+  # Binance 체결(6M 행, 30일 TTL)도 같은 규칙(toString 경유). quote_qty 는 price×qty 로 다시 계산한다 — 옛 값은 Flink 가 double 로 곱한 것.
   CH "CREATE TABLE IF NOT EXISTS cdc_pipeline.binance_trades_dec (
     symbol LowCardinality(String), trade_id UInt64,
     price Decimal(20, 8), qty Decimal(20, 8), quote_qty Decimal(38, 16),
@@ -104,22 +104,24 @@ binance-prepare)
       SELECT symbol, trade_id, toDecimal128(toString(price), 8), toDecimal128(toString(qty), 8),
              toDecimal128(toString(price), 8) * toDecimal128(toString(qty), 8),
              is_buyer_maker, trade_ms, event_ms, recv_ms, flink_ts
-      FROM cdc_pipeline.binance_trades WHERE flink_ts < '"'"'$T1B'"'"'"
-  say "binance 복사: $(CH "SELECT count() FROM cdc_pipeline.binance_trades_dec") rows (원본 $(CH "SELECT count() FROM cdc_pipeline.binance_trades WHERE flink_ts < '"'"'$T1B'"'"'"))"
+      FROM cdc_pipeline.binance_trades WHERE flink_ts < '$T1B'"
+  say "binance 복사: $(CH "SELECT count() FROM cdc_pipeline.binance_trades_dec") / 원본 $(CH "SELECT count() FROM cdc_pipeline.binance_trades WHERE flink_ts < '$T1B'")"
   ;;
 binance-cutover)
   T1B=$(cat /home/calme/kafka-reassign/decimal-t1b)
-  RUNNING=$(curl -s -m 5 localhost:8081/jobs/overview | python3 -c "import sys,json; print(sum(1 for j in json.load(sys.stdin)['"'"'jobs'"'"'] if j['"'"'name'"'"']=='"'"'Binance Trade Pipeline'"'"' and j['"'"'state'"'"']=='"'"'RUNNING'"'"'))")
+  RUNNING=$(curl -s -m 5 localhost:8081/jobs/overview | python3 -c "import sys,json; print(sum(1 for j in json.load(sys.stdin)['jobs'] if j['name']=='Binance Trade Pipeline' and j['state']=='RUNNING'))")
   [ "$RUNNING" = "0" ] || { say "중단: Binance 잡이 아직 RUNNING"; exit 1; }
   CH "INSERT INTO cdc_pipeline.binance_trades_dec (symbol, trade_id, price, qty, quote_qty, is_buyer_maker, trade_ms, event_ms, recv_ms, flink_ts)
       SELECT symbol, trade_id, toDecimal128(toString(price), 8), toDecimal128(toString(qty), 8),
              toDecimal128(toString(price), 8) * toDecimal128(toString(qty), 8),
              is_buyer_maker, trade_ms, event_ms, recv_ms, flink_ts
-      FROM cdc_pipeline.binance_trades WHERE flink_ts >= '"'"'$T1B'"'"'"
+      FROM cdc_pipeline.binance_trades WHERE flink_ts >= '$T1B'"
+  say "  binance 차이분 $(CH "SELECT count() FROM cdc_pipeline.binance_trades WHERE flink_ts >= '$T1B'") rows"
   CH "EXCHANGE TABLES cdc_pipeline.binance_trades AND cdc_pipeline.binance_trades_dec"
-  say "binance 교환 완료: price 타입 = $(CH "SELECT type FROM system.columns WHERE database='"'"'cdc_pipeline'"'"' AND table='"'"'binance_trades'"'"' AND name='"'"'price'"'"'")"
+  say "binance 교환 완료: price 타입 = $(CH "SELECT type FROM system.columns WHERE database='cdc_pipeline' AND table='binance_trades' AND name='price'")"
   ;;
 rollback)
+  # 교환 직후엔 $NEW(crypto_trades_dec) 가 옛 Float64 표다. rename 을 이미 했다면 crypto_trades_float_bak 으로 바꿔 실행한다.
   CH "EXCHANGE TABLES $CUR AND $NEW"; say "롤백: 되돌림. trade_price 타입 = $(CH "SELECT type FROM system.columns WHERE database='cdc_pipeline' AND table='crypto_trades' AND name='trade_price'")"
   ;;
 status) CH "SELECT table, name, type FROM system.columns WHERE database='cdc_pipeline' AND table LIKE 'crypto_trades%' AND name IN ('trade_price','trade_volume','trade_amount') ORDER BY table, position FORMAT TSV";;
