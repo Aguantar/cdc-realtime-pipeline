@@ -34,6 +34,7 @@ with DAG(
     catchup=False,
     tags=["monitoring", "health"],
     max_active_runs=1,
+    max_active_tasks=6,   # 2026-09-20: 체크 12개를 한꺼번에 띄우면 스케줄러 컨테이너(640M) OOM — 두 물결로
 ) as dag:
 
     # ── ClickHouse 데이터 적재 확인 ──────────────────────────
