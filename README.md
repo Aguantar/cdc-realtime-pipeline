@@ -748,6 +748,7 @@ cdc-realtime-pipeline/
     ├── 21-backup-and-access-control.md # 백업(Oracle 오프사이트, 복원 리허설 79초)·접근 통제(사용자 분리, 컷오버 런북) — 판단 오류 2건 정정 포함
     ├── 22-rules-v2-and-quality-layer.md # 이상탐지 v2(PRICE_24H 등급 전이 섀도, VOLUME_24H dbt 규칙) + dq_* 품질 층 + 규칙 평가 모델 + 승격 기준
     ├── 29-kafka-usage-review.md      # Kafka 사용 방식 냉정 평가: 체결 키 trade_id → market(재정렬 원인), 처리 시간 창, 압축·보존, DLQ, 스키마 계약
+    ├── 30-lessons-consolidated.md # 실수를 교훈으로 통합: 부재 단정 3회·측정 오염·검증 전 커밋·분할·문서vs실측·조용한 실패 + 체크리스트
     ├── 28-layer2-design.md           # 2층 설계: 체결 시각 파티션 재설계(설계 부채 해소)·가상 매매 원장(CDC 제자리)·케이스/내부 신호 (결정 대기)
     ├── 27-trade-orderbook-mart.md    # 체결×호가 분 결합 마트: 우리만의 데이터, volume_over_depth15, EURC 되튐 = 깊이 대비 체결량(500배)
     ├── 26-cdc-segment-review.md      # CDC 구간 재검토: 삭제 이벤트가 토픽의 46%·정리 DELETE 풀스캔·binlog 무기한 → skipped.operations/인덱스/보존, #1 철회, dim_markets (결정 대기)
