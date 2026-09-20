@@ -40,8 +40,8 @@ services:
     image: confluentinc/cp-zookeeper:7.5.3
     container_name: cdc-zookeeper
     restart: unless-stopped
-    ports:
-      - "2181:2181"
+    # 2026-09-20: 2181 퍼블리시 제거. 호스트에서 이 포트를 쓰는 곳이 하나도 없었고(grep·연결 확인),
+    # Kafka 는 같은 도커 네트워크에서 zookeeper:2181 로 붙는다. LAN 에 열어 둘 이유가 없었다.
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -63,7 +63,10 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9092:9092"
+      # 2026-09-20: 0.0.0.0 → 127.0.0.1. EXTERNAL 리스너는 advertised 가 localhost:9092 라
+      # 애초에 다른 기기에서 쓸 수 없었다(브로커가 'localhost 로 오라'고 답한다). 쓸모는 없고 공격면만 됐다.
+      # 호스트에서 쓰는 곳은 pipeline-load-lab 의 재생 스크립트들(기본값 localhost:9092)뿐이라 그대로 동작한다.
+      - "127.0.0.1:9092:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
