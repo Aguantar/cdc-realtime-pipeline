@@ -1,10 +1,10 @@
-# 🚀 On-Premise Real-time CDC Pipeline
+# On-Premise Real-time CDC Pipeline
 
 > **물리 서버 기반 암호화폐 실시간 변경 데이터 캡처 및 이상 탐지 플랫폼**
 >
-> 🔗 **Live 운영**: 24시간 상시 가동 (Grafana·Airflow는 인증 뒤 운영 — 요청 시 통제된 라이브 데모 제공)
+>  **Live 운영**: 24시간 상시 가동 (Grafana·Airflow는 인증 뒤 운영 - 요청 시 통제된 라이브 데모 제공)
 
-## 💡 이 프로젝트가 증명하는 것 (2026-09-20 결론 중심으로 다시 씀)
+## 이 프로젝트가 증명하는 것 (2026-09-20 결론 중심으로 다시 씀)
 
 한 줄: **거래소 실데이터를 220일째 상시 운영하며, 지연·유실·중복을 "느낌"이 아니라 대조와 실측으로 찾아 고친 기록.** 아래 여덟 줄은 전부 문서에 수치와 조건이 있다.
 
@@ -12,7 +12,7 @@
 |---|---|---|
 | 지연과 유실을 구분해 진단한다 | "건수 반토막" 사고 → 거래소 일봉과 두 기준(적재·체결 시각)으로 대조 → 유실 0, **최대 36.9시간 적재 지연**(producer 상한 포화) | docs/08 |
 | 유실은 대조가 찾는다, 지표가 아니다 | 7일 100% 대조 뒤 DAG 첫 실행에서 유실 2건(분모가 우리 DB), sequential_id 마켓 간 충돌로 3% 조용한 유실 → 유니크 키 교체·7일 백필 210,469행 | docs/13·17·18 |
-| 중복은 원인별로 갈라 본다 | 누적 91.97M 중 중복 1.80% — 지배 원인은 장애 복구 재소비, 상시 0.0005%; 재전송 중복 27+239건 실측 뒤 ReplacingMergeTree 로 저장 층에서 제거 | docs/07·25 |
+| 중복은 원인별로 갈라 본다 | 누적 91.97M 중 중복 1.80% - 지배 원인은 장애 복구 재소비, 상시 0.0005%; 재전송 중복 27+239건 실측 뒤 ReplacingMergeTree 로 저장 층에서 제거 | docs/07·25 |
 | 임계를 실측하고 병목을 특정한다 | 녹화-재생 부하 실험: 5,000/s 까지 실시간, 10,000/s 정체. 병목은 예상(ClickHouse)이 아니라 **소스 체인에 묶인 동기 JDBC 싱크**, 배치 200→1,000 한 줄로 정체 0. 현 구성 여유 피크 85배 | docs/23 |
 | 구성은 실측으로 줄인다 | 브로커 3→1: 단일 호스트라 복제는 형식뿐임을 24h 대조·정지 실험으로 확인 → 무정지 재할당, 재기동 14초·유실 0 | docs/24 |
 | 스키마는 조회·삭제 기준으로 잡는다 | binlog 시각 파티션 → 체결 시각 파티션·이벤트 키로 무정지 재생성(MySQL RENAME, ClickHouse EXCHANGE). 1시간 조회 **39/39 파트 1.0s → 5/56 파트 0.10s**, 옛 키가 못 거른 중복 4행 정리 | docs/28 A |
@@ -25,9 +25,9 @@
 
 ---
 
-## 📊 실시간 모니터링 대시보드
+## 실시간 모니터링 대시보드
 
-> **🔗 실시간 대시보드**: Grafana 12패널 (아래 캡처 · 라이브 데모는 요청 시 제공)
+> ** 실시간 대시보드**: Grafana 12패널 (아래 캡처 · 라이브 데모는 요청 시 제공)
 
 <img width="2527" height="1235" alt="image" src="https://github.com/user-attachments/assets/edca902b-962a-4738-a538-f9ab973200a2" />
 
@@ -63,27 +63,27 @@
 
 ### 패널 상세 (12개)
 
-**상단 KPI (5개)** — 파이프라인 핵심 지표 한눈에
+**상단 KPI (5개)** - 파이프라인 핵심 지표 한눈에
 
 | 패널 | 데이터 범위 | 설명 |
 |------|-----------|------|
-| **⚠ Active Alerts (이상 탐지)** | 최근 1시간 | 이상 탐지 룰에 걸린 알림 건수 (빨간 배경 강조) |
+| ** Active Alerts (이상 탐지)** | 최근 1시간 | 이상 탐지 룰에 걸린 알림 건수 (빨간 배경 강조) |
 | **Total Trades (총 체결 건수)** | 전체 누적 | 파이프라인 가동 이후 총 체결 건수 (현재 9,100만+) |
 | **Avg CDC Latency (평균 지연시간)** | 최근 1시간 | MySQL → ClickHouse 평균 CDC 지연 (목표: <10ms, 실측: ~3ms) |
 | **Total Volume (최근 1시간 거래금액)** | 최근 1시간 | 5개 마켓 합산 체결 금액 (₩ 자동 포맷: K, M, B) |
 | **Markets Tracked (모니터링 마켓)** | 고정값 | BTC, ETH, XRP, SOL, DOGE (5개) |
 
-**중단 차트 (4개) + Pipeline Status** — 시장 흐름 + 이상 탐지 시각화
+**중단 차트 (4개) + Pipeline Status** - 시장 흐름 + 이상 탐지 시각화
 
 | 패널 | 위치 | 데이터 소스 | 설명 |
 |------|------|-----------|------|
-| **BTC Price (실시간 BTC 가격)** | 좌상 | `crypto_trades` | 분 단위 평균/최저/최고 + 🔴 **이상 탐지 빨간 점선** (Grafana Annotation) |
+| **BTC Price (실시간 BTC 가격)** | 좌상 | `crypto_trades` | 분 단위 평균/최저/최고 + **이상 탐지 빨간 점선** (Grafana Annotation) |
 | **Bid vs Ask (매수/매도 비율)** | 우상 | `crypto_trades` (2026-09-19, 체결 시각) | 마켓별 매수/매도 건수 막대 차트 (1시간 집계, 자동 갱신) |
 | **Trade Volume (5분 총 거래금액)** | 좌하 | `crypto_trades` 5분 버킷 (2026-09-19, 체결 시각) | 5개 코인 합산 거래금액 라인 차트 (₩ 단위, Flink 5분 윈도우 집계) |
 | **CDC Latency (CDC 지연시간)** | 우하 | `crypto_trades` | 평균(녹색)/최대(주황) 레이턴시 추이 (ms 단위) |
-| **Pipeline Status (파이프라인 상태)** | 우하 끝 | `crypto_trades` | 5분 내 데이터 유입 여부 (🟢 LIVE / 🔴 STALE, 글씨색 표시) |
+| **Pipeline Status (파이프라인 상태)** | 우하 끝 | `crypto_trades` | 5분 내 데이터 유입 여부 (LIVE /  STALE, 글씨색 표시) |
 
-**하단 테이블 (2개)** — 상세 데이터 조회
+**하단 테이블 (2개)** - 상세 데이터 조회
 
 | 패널 | 표시 건수 | 특징 |
 |------|----------|------|
@@ -91,7 +91,7 @@
 | **Recent Trades (최근 체결 내역)** | 최근 5분 내 20건 | trade_price (₩ 포맷), trade_amount (₩ 포맷), cdc_latency_ms |
 ---
 
-## 🔍 이상탐지 v2 — 거래소 경보의 재현과 검증 (2026-09-17 교체)
+## 이상탐지 v2 - 거래소 경보의 재현과 검증 (2026-09-17 교체)
 
 > 이전 버전(LARGE_TRADE 1억 · PRICE_SPIKE 직전 대비 3% · VOLUME_SURGE 수량 EMA×150)은 **삭제**했다.
 > 코드 주석은 그 규칙들을 업비트 이상거래 감시 유형(시세관여·체결관여·매매집중)에 대응시켰지만, 감시정책 원문을 읽어 보니 그 유형들은 전부
@@ -111,17 +111,17 @@
 근거 쿼리는 `scripts/analysis/rule_basis_check.sh` 로 재실행되고 `docs/16-appendix-queries.md` 에 출력이 있다.
 
 ### 규칙 검증 기반 (규칙보다 이것이 DE 의 산출물)
-- `market_alerts` — v2 출력(마켓·등급·전이 시각·`rule_version`). 섀도 기간엔 발송 없음.
-- `dq_rule_eval_daily` — 매일 우리 규칙 vs 거래소 지정의 **정밀도·재현율·선행 시간**. "왜 그 임계인가"에 대한 답이 매일 갱신되는 숫자로 남는다.
-- 승격 기준(`docs/22 §4`, 09-17 정정): PRICE_24H 는 실전 전이 10건 이상이 1분봉 재계산과 전부 일치(구현 동등성 — 임계 근거는 이미 6개월 역검증), VOLUME_24H 는 일 평가 7회 연속 정밀도·재현율 ≥ 0.75(요일 주기). 미달이면 규칙이 아니라 정의 차이(참조 시각·창·예외)를 먼저 의심한다.
-- 늦은 이벤트 가드: 적재 지연 > 60초인 행(백필·gap-fill)은 상태·판정에서 제외 — 백필 1건이 오탐 2건을 만들던 기전 제거(`docs/17 §4-4`, `docs/20`).
+- `market_alerts` - v2 출력(마켓·등급·전이 시각·`rule_version`). 섀도 기간엔 발송 없음.
+- `dq_rule_eval_daily` - 매일 우리 규칙 vs 거래소 지정의 **정밀도·재현율·선행 시간**. "왜 그 임계인가"에 대한 답이 매일 갱신되는 숫자로 남는다.
+- 승격 기준(`docs/22 §4`, 09-17 정정): PRICE_24H 는 실전 전이 10건 이상이 1분봉 재계산과 전부 일치(구현 동등성 - 임계 근거는 이미 6개월 역검증), VOLUME_24H 는 일 평가 7회 연속 정밀도·재현율 ≥ 0.75(요일 주기). 미달이면 규칙이 아니라 정의 차이(참조 시각·창·예외)를 먼저 의심한다.
+- 늦은 이벤트 가드: 적재 지연 > 60초인 행(백필·gap-fill)은 상태·판정에서 제외 - 백필 1건이 오탐 2건을 만들던 기전 제거(`docs/17 §4-4`, `docs/20`).
 
 ### 한계 (인정)
 - 1층 재현은 누구나 API 로 받을 수 있는 플래그의 재현이다. 가치는 선행 시간과, 규칙을 정의·검증·배포하는 기반에 있다.
 - 배포 직후 24시간은 PRICE_24H 참조(24h 전 종가)가 없어 출력이 없다. 상태 부트스트랩은 후속.
 - 알림을 받아 행동할 사람이 아직 없다. 이상탐지 정의는 본래 도메인 팀 몫이고, 여기서는 그 기반을 만든 것이다.
 
-## 🔔 n8n 자동 알림 시스템
+## n8n 자동 알림 시스템
 
 ![n8n Workflow](docs/images/n8n-workflow.png)
 
@@ -160,8 +160,8 @@
 
 | 알림 | 조건 | 채널 | 의미 |
 |------|------|------|------|
-| **🚨 FDS 이상거래 탐지** | anomaly_count > 0 (최근 1분) | Slack + Gmail | 이상 탐지 룰 발동, 상세 내역 포함 |
-| **🔴 CDC 파이프라인 장애** | 최근 5분간 데이터 0건 | Slack + Gmail | 파이프라인 중단, 복구 가이드 포함 |
+| ** FDS 이상거래 탐지** | anomaly_count > 0 (최근 1분) | Slack + Gmail | 이상 탐지 룰 발동, 상세 내역 포함 |
+| ** CDC 파이프라인 장애** | 최근 5분간 데이터 0건 | Slack + Gmail | 파이프라인 중단, 복구 가이드 포함 |
 
 ### 알림 메시지 예시
 
@@ -173,12 +173,12 @@
 
 ![Gmail Alert](docs/images/gmail-alert.png)
 
-**FDS 알림 (Slack)** — 2026-09-17 부터 n8n 은 우리 규칙이 아니라 **거래소 시장경보 지정·해제 전이**(`upbit_market_events`, 1분 폴링)를 보낸다.
+**FDS 알림 (Slack)** - 2026-09-17 부터 n8n 은 우리 규칙이 아니라 **거래소 시장경보 지정·해제 전이**(`upbit_market_events`, 1분 폴링)를 보낸다.
 우리 규칙(PRICE_24H·VOLUME_24H)은 `market_alerts` 에 섀도로만 쌓이고, 승격 기준(`docs/22 §4`)을 넘기 전엔 발송하지 않는다.
 아래는 교체 전(v1 규칙) 메시지 예시로, 형식 참고용이다.
 
 ```
-🚨 FDS 이상거래 탐지!  (v1, 2026-02 — 규칙은 폐기됨)
+🚨 FDS 이상거래 탐지!  (v1, 2026-02 - 규칙은 폐기됨)
 
 최근 1분간: 3건
 상세 내역:
@@ -205,7 +205,7 @@
 
 ---
 
-## 📋 프로젝트 개요
+## 프로젝트 개요
 
 ### 데이터 소스
 - **체결(trade)**: Upbit WebSocket, KRW 전 마켓 **287개** (2026-09-09 확장. 그 전 7개월은 BTC/ETH/XRP/SOL/DOGE 5개)
@@ -215,17 +215,17 @@
 
 ### 파이프라인 흐름
 ```
-[실시간 스트리밍 — 체결: CDC 경로]
+[실시간 스트리밍 - 체결: CDC 경로]
 Upbit WebSocket → MySQL → Debezium CDC → Kafka (1-broker, 2026-09-18 축소) → Flink → ClickHouse → Grafana
                                                                           │
-[실시간 스트리밍 — 호가: 직접 발행 경로 (2026-09)]                            │
+[실시간 스트리밍 - 호가: 직접 발행 경로 (2026-09)]                            │
 Upbit WebSocket → orderbook-collector → Kafka upbit.orderbook.v1 → Flink → ClickHouse (raw 7일 / 1분 파생 365일)
                                                                           │
-[실시간 스트리밍 — Binance 체결: 직접 발행 경로 (2026-09-20, docs/31)]                     │
+[실시간 스트리밍 - Binance 체결: 직접 발행 경로 (2026-09-20, docs/31)]                     │
 Binance WebSocket(USDT 493심볼 trade) → binance-collector → Kafka binance.trades.v1(6p) → Flink(병렬 2) → ClickHouse binance_trades (30일)
 Binance WebSocket(상위 10 depth@100ms + 5분 REST 스냅샷) → depth 수집기 → Kafka binance.depth.v1 → Flink 호가장 재구성(키별 상태·순번 검증) → binance_orderbook_raw/1m
                                                                           │
-[2층 원장 — CDC 거울 경로 (2026-09-19, docs/28 B·C)]                          │
+[2층 원장 - CDC 거울 경로 (2026-09-19, docs/28 B·C)]                          │
 Binance Testnet 주문(실돈 없음) → virtual-trader → MySQL(주문 거울·체결·케이스) → Debezium #2(삭제 유지) → Kafka ledger.* → ClickHouse RMT(version,is_deleted)
                                                                           │
 [배치 오케스트레이션]                                                       │
@@ -234,7 +234,7 @@ Airflow (Scheduler) → dbt (staging → intermediate → marts) ─────
     └─ health_check (10분) ─→ 이상 시 Slack 알림                            │
     └─ daily_pipeline (01:00 KST) ─→ 품질검증 + 일일 리포트 → Slack         │
                                                                            │
-[알림 — 2026-09-20 Airflow 로 일원화 (docs/35 §4)]                           │
+[알림 - 2026-09-20 Airflow 로 일원화 (docs/35 §4)]                           │
 Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · weekly_digest(월) → Slack
   ※ n8n 알림 워크플로는 v1 규칙 삭제(09-17)와 함께 멈췄고 되살리지 않았다. 정의는 n8n/workflows/ 에 보관
 ```
@@ -248,14 +248,14 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 | 시연할 때만 실행 | **24시간 실제 운영** (요청 시 통제된 라이브 데모) |
 | 무제한 리소스 | **16GB 메모리에서 30개 컨테이너 공존 (메모리 제한·실측 기반 배분)** |
 | 시뮬레이션 데이터 | **Upbit 실시간 체결(287마켓) + 호가(287마켓) 실데이터** |
-| 감으로 튜닝 | **사고 분석과 실측으로 결정** — 37시간 적재 지연 사고 분석(docs/08), 체크포인트 625MB→18KB(docs/10), 호가 압축률 14배 실측(docs/11), 모든 결정 근거는 docs/worklog.md |
+| 감으로 튜닝 | **사고 분석과 실측으로 결정** - 37시간 적재 지연 사고 분석(docs/08), 체크포인트 625MB→18KB(docs/10), 호가 압축률 14배 실측(docs/11), 모든 결정 근거는 docs/worklog.md |
 | 고정 임계값 이상 탐지 | **업비트 정책 + 학술 논문 + 실측 분포 분석 기반 동적 임계값** |
 | cron으로 dbt 실행 | **Airflow 오케스트레이션 (Custom Operator + Dynamic Task Mapping + Slack 리포트)** |
 | 탐지만 하고 끝 | **알림 3층 (10분 헬스 · 매시 품질 SLO 판정 · 주간 다이제스트) + 알럿 이력 표** (docs/32) |
 
 ---
 
-## 🏗️ 시스템 아키텍처
+## 시스템 아키텍처
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -282,7 +282,7 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
                              │
                              ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │                  Kafka (1 Broker, 2026-09-18 축소 — docs/24)      │
+  │                  Kafka (1 Broker, 2026-09-18 축소 - docs/24)      │
   │  ┌──────────┐                                                 │
   │  │ Broker 1 │  RF=1, 체결 토픽 zstd·7일 보존, DLQ 토픽         │
   │  │  512MB   │  (3 브로커·RF3 는 24h 실측 뒤 "형식뿐" 으로 축소)  │
@@ -380,7 +380,7 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 | 컴포넌트 | 메모리 Limit | 비고 |
 |----------|-------------|------|
 | MySQL | 1GB | CDC Source DB |
-| Kafka × 3 | 3.75GB | 1.25GB per broker (단일 호스트라 HA 아님 — 복제 의미론·장애 실험용, 실험 뒤 1브로커 축소 예정) |
+| Kafka × 3 | 3.75GB | 1.25GB per broker (단일 호스트라 HA 아님 - 복제 의미론·장애 실험용, 실험 뒤 1브로커 축소 예정) |
 | Zookeeper | 384MB | Kafka coordination (실험 뒤 KRaft 전환 예정) |
 | Debezium Connect | 1.25GB | CDC connector |
 | Flink (JM 896M + TM 2304M) | 3.2GB | 잡 3개, 슬롯 4, hashmap |
@@ -397,7 +397,7 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 
 ---
 
-## 🛠️ 기술 스택
+## 기술 스택
 
 | 컴포넌트 | 기술 | 버전 | 역할 |
 |----------|------|------|------|
@@ -421,21 +421,21 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 
 ---
 
-## 📅 구현 단계
+## 구현 단계
 
-### Phase 1: 인프라 구축 ✅
+### Phase 1: 인프라 구축
 - [x] Docker Compose 구성 (12개 컨테이너, 메모리 최적화)
 - [x] MySQL binlog 설정 (ROW 포맷, server-id, gtid)
 - [x] Kafka 3-broker 클러스터 (RF=3, 72시간 보존) → 2026-09-18 1-broker·RF1 로 축소 (docs/24), 체결 토픽 zstd·7일 보존 (docs/29)
 - [x] Zookeeper + 전체 healthcheck 구성
 
-### Phase 2: CDC 파이프라인 ✅
+### Phase 2: CDC 파이프라인
 - [x] Debezium MySQL CDC Connector 설정
 - [x] INSERT/UPDATE/DELETE 이벤트 캡처 검증
 - [x] Connect 내부 토픽 RF 문제 해결 (startup.sh 자동화)
 - [x] Kafka 토픽 생성 및 메시지 흐름 확인
 
-### Phase 3: Flink 스트리밍 ✅
+### Phase 3: Flink 스트리밍
 - [x] Java DataStream API Job 개발
 - [x] 5분 윈도우 집계 (거래량, 체결건수, 매수/매도) → 2026-09-19 폐기(처리 시간 창 왜곡, docs/29 §7). 분 마트(docs/27)·Grafana 원본 조회로 대체
 - [x] 이상 탐지 4가지 룰 설계 (LARGE_TRADE, PRICE_SPIKE, VOLUME_SURGE, RAPID_TRADES)
@@ -443,19 +443,19 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 - [x] NullSafeStringSchema (Debezium tombstone 방어)
 - [x] Restart 전략 (fixedDelay 3회/10초)
 
-### Phase 4: ClickHouse + Grafana ✅
+### Phase 4: ClickHouse + Grafana
 - [x] ClickHouse 테이블 설계 (MergeTree, 365일 TTL)
 - [x] Grafana 프로비저닝 (datasource + dashboard JSON)
 - [x] 12개 패널 대시보드 구성
 - [x] Caddy 리버스 프록시 + HTTPS 자동 인증서 외부 접근
 
-### Phase 5: 암호화폐 실시간 수집 ✅
+### Phase 5: 암호화폐 실시간 수집
 - [x] Upbit WebSocket Producer (Python, 5개 마켓)
 - [x] MySQL 스키마 전환 (주식 → 암호화폐)
 - [x] Flink Job 수정 (파싱, 집계, 이상탐지 전환)
 - [x] 데이터 라이프사이클 관리 (MySQL 7일, Kafka 72시간, ClickHouse 365일)
 
-### Phase 6: 이상 탐지 고도화 + 장애 복구 ✅
+### Phase 6: 이상 탐지 고도화 + 장애 복구
 - [x] 업비트 이상거래 감시정책 기반 임계값 재설계
 - [x] 학술 논문 근거 반영 (EWMA 동적 임계값)
 - [x] MySQL cleanup → Flink crash 장애 복구 (tombstone NPE)
@@ -463,21 +463,21 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 - [x] 숫자 포맷 통일 (₩ 단위, 콤마 구분)
 - [x] v3 임계값: 24시간 분포 분석 기반 VOLUME_SURGE 150x + RAPID_TRADES 비활성화
 
-### Phase 7: n8n 자동 알림 시스템 ✅
+### Phase 7: n8n 자동 알림 시스템
 - [x] n8n → ClickHouse 네트워크 연결 (Docker 외부 네트워크)
 - [x] FDS 이상거래 탐지 알림 (Slack + Gmail)
 - [x] CDC 파이프라인 장애 알림 (Slack + Gmail)
 - [x] 숫자 포맷 (콤마 구분) + 대시보드 바로가기 링크
 
-### Phase 8: Airflow 오케스트레이션 + dbt ✅
+### Phase 8: Airflow 오케스트레이션 + dbt
 - [x] Airflow 2.8.1 Docker 구축 (LocalExecutor, PostgreSQL 메타 DB)
-- [x] Custom Operator 개발 (ClickHouseOperator — HTTP API, FlinkHealthOperator — REST API)
-- [x] Custom Hook 개발 (ClickHouseHook — HTTP 인터페이스, 추가 드라이버 불필요)
-- [x] DAG 1: `health_check` (10분 간격) — 5개 컴포넌트 병렬 체크 → XCom 수집 → 이상 시 Slack
-- [x] DAG 2: `daily_pipeline` (매일 01:00 KST) — dbt run/test → Dynamic Task Mapping 코인별 품질검증 → quality gate → 일일 Slack 리포트
-- [x] DAG 3: `reconcile_trades` (매일 06:35 UTC) — 업비트 시간봉(진실값) 적재 → dbt build(유실·커버리지 테스트) → 실패 시 Slack. 첫 실행에서 상장 누락 마켓(BFC)과 재연결 5초 유실을 잡음 (docs/17)
-- [x] DAG 4: `backup_daily` (매일 01:20 UTC) — ClickHouse 증분 백업 + 호가 Parquet(zstd) 120일 롤링 → Oracle rsync → 원격 보존 → 동기 검증. 복원 리허설 79초/1.1억 행 (docs/21)
-- [x] DAG 5: `rules_daily` (매일 01:05 UTC) — VOLUME_24H 규칙 판정 + 규칙 평가(정밀도·재현율·선행 vs 거래소 지정) 갱신 (docs/22)
+- [x] Custom Operator 개발 (ClickHouseOperator - HTTP API, FlinkHealthOperator - REST API)
+- [x] Custom Hook 개발 (ClickHouseHook - HTTP 인터페이스, 추가 드라이버 불필요)
+- [x] DAG 1: `health_check` (10분 간격) - 5개 컴포넌트 병렬 체크 → XCom 수집 → 이상 시 Slack
+- [x] DAG 2: `daily_pipeline` (매일 01:00 KST) - dbt run/test → Dynamic Task Mapping 코인별 품질검증 → quality gate → 일일 Slack 리포트
+- [x] DAG 3: `reconcile_trades` (매일 06:35 UTC) - 업비트 시간봉(진실값) 적재 → dbt build(유실·커버리지 테스트) → 실패 시 Slack. 첫 실행에서 상장 누락 마켓(BFC)과 재연결 5초 유실을 잡음 (docs/17)
+- [x] DAG 4: `backup_daily` (매일 01:20 UTC) - ClickHouse 증분 백업 + 호가 Parquet(zstd) 120일 롤링 → Oracle rsync → 원격 보존 → 동기 검증. 복원 리허설 79초/1.1억 행 (docs/21)
+- [x] DAG 5: `rules_daily` (매일 01:05 UTC) - VOLUME_24H 규칙 판정 + 규칙 평가(정밀도·재현율·선행 vs 거래소 지정) 갱신 (docs/22)
 - [x] dbt 3계층 모델 (staging: stg_trades → intermediate: int_ohlcv_1h, int_ohlcv_daily → marts: mart_daily_summary, mart_volume_spike, mart_alert_rate)
 - [x] Airflow 메트릭 모니터링 (StatsD → Prometheus → Grafana Airflow Operations 대시보드 12패널)
 - [x] Fernet Key 암호화 (Slack Webhook URL 등 시크릿 보호)
@@ -486,7 +486,7 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 - [x] DAG 테스트 9/9 통과 (pytest)
 - [x] 기존 dbt cron 비활성화 → Airflow 완전 이관
 
-### Phase 9: 적재 지연 사고 분석 + Flink 재구성 + 전 코인·호가 확장 (2026-09-09) ✅
+### Phase 9: 적재 지연 사고 분석 + Flink 재구성 + 전 코인·호가 확장 (2026-09-09)
 - [x] 중복 감사 마감 (`docs/07`): 91.06M 적재 / 89.42M 고유, idempotent producer + 일일 (source_ts, trade_id) 게이트
 - [x] 8/29 "건수 반토막" 판별 → 유실 아님, producer 10 rows/s 상한 포화로 **최대 36.9시간 적재 지연** (`docs/08`)
 - [x] 호가 확장 사전 검증: Upbit WS 한도(5연결/s, 429), 287마켓 단일 커넥션, count별 크기, 압축, Oracle vs 미니PC 수신 지연 비교 (`~/cdc-orderbook-probe/REPORT.md`, `docs/09`)
@@ -498,9 +498,9 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 - [x] 7일 무변경 관찰 시작 (2026-09-09 06:10 UTC, 태그 `obs-week1-start`, 계획 `docs/12`)
 - [x] 관찰 중 예외 조치: sequential_id 마켓 간 충돌 유실 발견 → 유니크 키 교체 + 7일 원장 백필 210,469건 (이슈 7, `docs/13`)
 - [ ] 관찰 뒤 1순위: `reconcile_trades` DAG(일일 원장 대조·자동 백필·품질 테이블) + dbt `(market, sequential_id)` 유일성·커버리지·freshness 테스트
-- [x] 관찰 종료·분석 (`docs/14`) — 가설 12개 중 10 통과 / 1 조건부 / 1 위반(알림 편중), 튜닝 순위 8건
-- [x] 이상탐지 기준 재설계 (`docs/16`, 부록 `docs/16-appendix-queries.md`) — 업비트 시장경보 재현, 6개월 라벨 15,588건 대비 정밀도·재현율 실측
-- [x] DAG 3 `reconcile_trades` + dbt 계약 (`docs/17`) — 첫 실행에서 유실 2건 적발·복구 (이슈 8)
+- [x] 관찰 종료·분석 (`docs/14`) - 가설 12개 중 10 통과 / 1 조건부 / 1 위반(알림 편중), 튜닝 순위 8건
+- [x] 이상탐지 기준 재설계 (`docs/16`, 부록 `docs/16-appendix-queries.md`) - 업비트 시장경보 재현, 6개월 라벨 15,588건 대비 정밀도·재현율 실측
+- [x] DAG 3 `reconcile_trades` + dbt 계약 (`docs/17`) - 첫 실행에서 유실 2건 적발·복구 (이슈 8)
 - [x] 마켓 목록 5분 주기 갱신·재구독 (신규 상장 자동 반영)
 - [x] 배포 1 (`docs/20`): 늦은 이벤트 가드(재정렬 5.87% 실측으로 설계 변경) · 기동/재연결 gap-fill(독립 재대조 누락 0) · 수리 계보 · 10분 커버리지 · CI
 - [x] 백업 + 접근 통제 (`docs/21`): Oracle 150GB 오프사이트, 복원 리허설 79초/1.1억 행, ClickHouse 사용자 4종 분리·전 클라이언트 인증, 타 프로젝트 영향 범위 점검
@@ -518,14 +518,14 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 - [x] Binance 2단계 호가장 재구성 (`docs/31` §5): 증분+스냅샷 → 키별 상태(TreeMap)·U/u 순번·desync 복구, 1초 상위 20 을 Upbit 호가와 같은 스키마로. gap 0, 최우선 호가 = 거래소 bookTicker
 - [x] Binance 실시간 확장 1단계 (`docs/31`): 스택 해체 분석(볼륨으로 일하는 건 호가 경로뿐) → USDT 전 심볼 체결 수집(Kafka 직행, 6파티션 키=symbol) → Flink 별도 잡(병렬 2, DLQ) → ClickHouse RMT 30일 → REST 1h 캔들 체결 수 대조 DAG. 체결 경로 유입 36/s → ~370/s
 - [x] 인계 층 C (`docs/28` C): Upbit 경보 플래그 SCD(거래소 이력 16,202구간 + 폴링), 케이스 테이블(거울 CDC 두 번째, cases_hourly 자동 생성·사람 판정), 교차 거래소 신호(같은 코인 단위, 가격 비교 안 함)
-- [x] 이상탐지 승격 + 알림 일원화 (`docs/22` §6): PRICE_24H v2.1.1 섀도 → 정식(전이 116건 미매칭 0). 발송 `market_alerts_notify` DAG(10분, 승급만, 마켓·등급·시 dedup). 검증 중 "성공처럼 보였던 실패" 3건 적발 — 재배포가 옛 JAR 을 배포, dedup 이 플래핑에 뚫림, **DAG 4개가 만들어진 뒤 한 번도 돈 적 없음**(paused)
-- [x] 계약 검증 상시화 + 공지 라벨링 (`docs/37`): 토픽 계약을 매시 검증해 표에 적고 Airflow 가 판정(위반뿐 아니라 **검증기가 멈춘 것**도 알린다). 거래소 공지 1,200건을 받아 거래를 멈추는 것만 분류(카테고리는 못 믿는다 — `점검` 대부분이 신분증·입출금) → 수집 공백에 라벨
-- [x] 보강 프로그램 #1~#10 (`docs/34`): 세 관점 평가(`docs/33`)에서 나온 약점을 항목마다 **왜 → 무엇 → 검증**으로. 보안 3건·하루 규약 통일·차원/사이드·**금액·수량 Decimal 무정지 전환**·재처리 런북·죽은 산출물 정리(`docs/35`)·테스트/계약(dbt test 68/68, 지표 사전 `docs/36`, 토픽 JSON Schema 5종 + 검증기)·마켓 상태 SCD(폐지·정지를 유실과 구분 — REST 에 없고 웹소켓에만 있는 필드, 지금 폐지 예정 2건)·백업 제외 기준 재정의(증분 8.7GB→5.0GB)와 복원 리허설 스크립트화
+- [x] 이상탐지 승격 + 알림 일원화 (`docs/22` §6): PRICE_24H v2.1.1 섀도 → 정식(전이 116건 미매칭 0). 발송 `market_alerts_notify` DAG(10분, 승급만, 마켓·등급·시 dedup). 검증 중 "성공처럼 보였던 실패" 3건 적발 - 재배포가 옛 JAR 을 배포, dedup 이 플래핑에 뚫림, **DAG 4개가 만들어진 뒤 한 번도 돈 적 없음**(paused)
+- [x] 계약 검증 상시화 + 공지 라벨링 (`docs/37`): 토픽 계약을 매시 검증해 표에 적고 Airflow 가 판정(위반뿐 아니라 **검증기가 멈춘 것**도 알린다). 거래소 공지 1,200건을 받아 거래를 멈추는 것만 분류(카테고리는 못 믿는다 - `점검` 대부분이 신분증·입출금) → 수집 공백에 라벨
+- [x] 보강 프로그램 #1~#10 (`docs/34`): 세 관점 평가(`docs/33`)에서 나온 약점을 항목마다 **왜 → 무엇 → 검증**으로. 보안 3건·하루 규약 통일·차원/사이드·**금액·수량 Decimal 무정지 전환**·재처리 런북·죽은 산출물 정리(`docs/35`)·테스트/계약(dbt test 68/68, 지표 사전 `docs/36`, 토픽 JSON Schema 5종 + 검증기)·마켓 상태 SCD(폐지·정지를 유실과 구분 - REST 에 없고 웹소켓에만 있는 필드, 지금 폐지 예정 2건)·백업 제외 기준 재정의(증분 8.7GB→5.0GB)와 복원 리허설 스크립트화
 - [ ] 이후(2026-09-20): 섀도 승격 판단(동등성 10건 누적) → 정리 주간(README·여정 인덱스·교훈 통합·블로그) → 스키마 계약·JMX → KRaft 컷오버(체결 Kafka 선기록·markets 마스터·가상 매매 원장) → RMT → 녹화-재생 증폭 실험 3계층(① Upbit 코퍼스 ② Binance 공개 데이터 코퍼스 ③ 브로커 단독 상한, 브로커 장애 시나리오 포함, 설계 `docs/15`) → 브로커 3→1 + KRaft → CDC 유의미화(가상 매매 원장 + 이상탐지 케이스 관리) · MySQL DROP PARTITION 청소 전환 · ReplacingMergeTree
 
 ---
 
-## 🔧 운영 이슈 & 트러블슈팅
+## 운영 이슈 & 트러블슈팅
 
 ### 이슈 1: MySQL Cleanup DELETE 폭주 → Flink 장애
 
@@ -564,7 +564,7 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 | **원인** | Docker volume 재생성 시 기존 meta.properties와 충돌 |
 | **해결** | startup.sh에서 Connect 내부 토픽 자동 재생성 로직 추가 |
 
-### 이슈 5: 적재 지연 36.9시간 — 유실로 오인될 뻔한 사고 (2026-08-19 ~ 08-30)
+### 이슈 5: 적재 지연 36.9시간 - 유실로 오인될 뻔한 사고 (2026-08-19 ~ 08-30)
 
 | 항목 | 내용 |
 |------|------|
@@ -584,7 +584,7 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 | **해결** | n8n 제한 제거(compose 재생성). Node 앱은 `NODE_OPTIONS=--max-old-space-size`와 함께 정해야 함 |
 | **교훈** | 스왑이 많은 호스트에서 `docker stats` RSS는 메모리 산정 근거로 부적합 |
 
-### 이슈 7: 유실 사고 #2 — sequential_id 마켓 간 충돌로 INSERT IGNORE가 체결을 폐기 (2026-09-10)
+### 이슈 7: 유실 사고 #2 - sequential_id 마켓 간 충돌로 INSERT IGNORE가 체결을 폐기 (2026-09-10)
 
 | 항목 | 내용 |
 |------|------|
@@ -597,49 +597,49 @@ Airflow health_check(10분, 12체크) · quality_alerts(매시, 품질 SLO) · w
 | **부작용** | 백필 체결이 "현재"로 처리돼 PRICE_SPIKE 오탐 1,646건(삭제), 5분 집계 창 오염(기록). 백필 창 하한을 소스(MySQL 7일 보존) 기준으로 잡아 ClickHouse 중복 53,012행 발생 → 삭제. 교훈: 백필 창은 타깃 기준 |
 | **교훈** | 외부 ID 유일성은 프로파일링으로 검증 후 키에 넣는다. 조용히 버리는 쓰기에는 지표·알림을 붙인다. 정합성 불일치는 소스 탓으로 결론내기 전에 독립 수신기로 재현한다. 대조는 거래량이 아닌 건수·ID 단위로, 원장 보존 창 안에 매일 자동으로. 상세 `docs/13-sequential-id-collision-incident.md` |
 
-### 이슈 8: 유실 사고 #3 — 대조의 분모를 우리 DB에서 만들어 6일간 안 보였다 (2026-09-16)
+### 이슈 8: 유실 사고 #3 - 대조의 분모를 우리 DB에서 만들어 6일간 안 보였다 (2026-09-16)
 
 | 항목 | 내용 |
 |------|------|
 | **현상** | 7일 관찰 내내 일일 원장 대조가 **6일 연속 가중 100.0%**. 같은 대조를 Airflow DAG + dbt 테스트로 옮긴 첫 실행에서 즉시 2건 실패 |
-| **유실 A — 구독 누락** | KRW-BFC 가 09-10 상장했으나 체결·호가 **0건, 6일간**. producer·수집기가 기동 시 마켓 목록을 1회만 조회하고 갱신하지 않음 |
+| **유실 A - 구독 누락** | KRW-BFC 가 09-10 상장했으나 체결·호가 **0건, 6일간**. producer·수집기가 기동 시 마켓 목록을 1회만 조회하고 갱신하지 않음 |
 | **왜 안 보였나** | 관찰 cron 대조가 **비교할 마켓 목록을 ClickHouse 에서** 가져왔다. 우리가 안 받은 마켓은 분모에 없으므로 구조적으로 탐지 불가. "100.0%"는 그 마켓을 제외한 값이었다 |
-| **유실 B — 재연결 구멍** | 09-15 20:47:00 WS 끊김 → 20:47:05 재연결. 45초 창 287마켓 대조에서 REST 996 / 보유 836 → **160건(16.06%)** 누락. TIA 20시 셀 50.6%. 하루 가중으로는 99.3%+ 라 임계에 안 걸림 |
-| **해결** | ① 커버리지 테스트 분리 — 마켓 목록 기준을 **거래소**로 두고 "거래소에 거래가 있는데 우리는 0건"을 별도 판정(유실은 비율로, 구독 누락은 부재로 나타나므로) ② 셀(마켓×시간) 단위 99% 임계 ③ 마켓 목록 5분 주기 갱신 + **같은 연결에서 재구독**(프로브로 교체·연결 유지 실측 후 적용, 재연결 없으므로 갱신 자체가 공백을 만들지 않음) |
+| **유실 B - 재연결 구멍** | 09-15 20:47:00 WS 끊김 → 20:47:05 재연결. 45초 창 287마켓 대조에서 REST 996 / 보유 836 → **160건(16.06%)** 누락. TIA 20시 셀 50.6%. 하루 가중으로는 99.3%+ 라 임계에 안 걸림 |
+| **해결** | ① 커버리지 테스트 분리 - 마켓 목록 기준을 **거래소**로 두고 "거래소에 거래가 있는데 우리는 0건"을 별도 판정(유실은 비율로, 구독 누락은 부재로 나타나므로) ② 셀(마켓×시간) 단위 99% 임계 ③ 마켓 목록 5분 주기 갱신 + **같은 연결에서 재구독**(프로브로 교체·연결 유지 실측 후 적용, 재연결 없으므로 갱신 자체가 공백을 만들지 않음) |
 | **복구** | BFC 261,713건(전량) + 재연결 구간 160건. 재대조 09-10~15 **가중 100.000%, 99% 미만 셀 0, 0건 셀 0** |
 | **부작용·새 발견** | 백필이 Flink `AnomalyDetector` 의 마켓별 `lastPrice` keyed state 를 덮어, **한 번의 백필이 두 번 오탐**(백필된 옛 체결 vs 현재가 5건 + 직후 실시간 체결 vs 백필된 옛 가격 5건). 09-10 백필의 1,687건도 같은 기전이었음을 사후 특정. gap-fill 자동화 설계 전제로 기록 |
 | **교훈** | 대조의 **분모를 외부 기준으로** 잡는다. 우리가 만든 목록으로 우리를 검증하면 못 본 것은 영원히 못 본다. 유실 비율과 커버리지는 다른 테스트다. 임계는 집계 단위에 따라 통과·실패가 갈리므로 셀 단위로 본다. 배치 백필이 스트림 상태를 공유하면 오염된다. 상세 `docs/17-reconcile-dag-dbt-contracts.md`, `docs/18-findings-and-lessons.md` |
 
 ---
 
-## 📊 성능 지표
+## 성능 지표
 
 | 지표 | 목표 | 실측 |
 |------|------|------|
-| CDC Latency (binlog → Debezium) | < 10ms | **p50: 3ms, p95: 5ms, p99: 7ms** ✅ (단, 이 구간만 재면 producer 앞단 지연을 못 봄 — 이슈 5) |
+| CDC Latency (binlog → Debezium) | < 10ms | **p50: 3ms, p95: 5ms, p99: 7ms**  (단, 이 구간만 재면 producer 앞단 지연을 못 봄 - 이슈 5) |
 | 적재 지연 (거래소 체결시각 → MySQL) | p95 < 5s | **287마켓 실측 p50 1.1~1.2s / p95 2.1s / max 2.8s** (2026-09-09 dry-run 1h). 개선 전 최대 36.9시간 |
 | 호가 e2e (거래소 → ClickHouse) | p95 < 3s | **p50 849ms / p95 1.9s** (JDBC 배치 2초 창이 대부분) |
 | Throughput (체결) | > 100 TPS | **287마켓 25~30 rows/s, 피크 53.6 msg/s (Upbit 제공량이 상한)**; producer 처리 상한 2,500 rows/s |
 | Throughput (호가) | - | **154~262 msg/s, 273 KB/s** |
-| 데이터 정합성 | 중복 0% | **실측 중복 1.80% — 지배 원인은 46시간 장애 복구 재소비, 상시 유입은 0.0005% (07-dedup-audit.md). (source_ts, trade_id) 일일 감시 게이트 운영. 2026-09-09 재제출 3회 모두 유실 0·중복 0(savepoint)** |
+| 데이터 정합성 | 중복 0% | **실측 중복 1.80% - 지배 원인은 46시간 장애 복구 재소비, 상시 유입은 0.0005% (07-dedup-audit.md). (source_ts, trade_id) 일일 감시 게이트 운영. 2026-09-09 재제출 3회 모두 유실 0·중복 0(savepoint)** |
 | Flink 체크포인트 | - | **17.8KB / e2e avg 51ms** (RocksDB 시절 625MB / 1,388ms) |
-| 체결 e2e (거래소 → ClickHouse), 2026-09-19 | - | **거래소→수신 82ms, 수신→MySQL 1.1s(배치), MySQL→Flink 1.7s(3초 배치)** — 시각 6개가 한 행에 (docs/28 A-8) |
+| 체결 e2e (거래소 → ClickHouse), 2026-09-19 | - | **거래소→수신 82ms, 수신→MySQL 1.1s(배치), MySQL→Flink 1.7s(3초 배치)** - 시각 6개가 한 행에 (docs/28 A-8) |
 | 원장 e2e (거래소 이벤트 → Kafka), 2026-09-19 | - | **p50 219ms** (수신 21 → binlog +6 → Debezium +3 → Kafka +192). 3자 대조 불일치 0 (docs/28 B-7) |
 | 체결 시각 파티션 효과 | - | 1시간 조회 **39/39 파트 1.0s → 5/56 파트 0.10s** (docs/28 A-7) |
 | 장애 복구 시간 | < 5분 | **Flink restart 30초 이내**, 재시작 전략 20회×30초 |
 | 메모리 사용 | < 14GB | **used 약 9GB + swap 4GB (30개 컨테이너, 2026-09-09)** |
-| 24시간 운영 | ✅ | **2026-02-13 가동 시작, 200일+** ✅ |
-| 외부 접근 | ✅ | **인증 뒤 운영 · 요청 시 라이브 데모** ✅ |
+| 24시간 운영 | 상시 가동 | **2026-02-13 가동 시작, 200일+** |
+| 외부 접근 | 가능 | **인증 뒤 운영 · 요청 시 라이브 데모** |
 | 총 적재 | - | **체결 누적 91.97M행(2026-09-09), 고유 이벤트 기준 89.42M+ (중복 1.80%는 장애 복구 재소비가 지배 원인)** |
 | 호가 저장 효율 | - | **on-disk 39.7 B/스냅샷 (압축 전 562B, JSON 1,050B)** → 원본 7일 약 6GB |
-| 이상 탐지 | 의미 있는 알림 | **~13건/시간 (v1 대비 98% 감소, 31일 실측)** ✅ |
-| 실시간 알림 | 매분 | **n8n → Slack + Gmail** ✅ |
-| 일일 리포트 | 매일 01:00 KST | **Airflow → 품질검증 + CDC 지연 + 이상탐지 요약 → Slack** ✅ |
-| dbt 품질검증 | 코인별 자동 | **Dynamic Task Mapping 5개 코인 병렬, 100% 통과** ✅ |
+| 이상 탐지 | 의미 있는 알림 | **~13건/시간 (v1 대비 98% 감소, 31일 실측)** |
+| 실시간 알림 | 매분 | **n8n → Slack + Gmail** |
+| 일일 리포트 | 매일 01:00 KST | **Airflow → 품질검증 + CDC 지연 + 이상탐지 요약 → Slack** |
+| dbt 품질검증 | 코인별 자동 | **Dynamic Task Mapping 5개 코인 병렬, 100% 통과** |
 
 ---
 
-## 📁 프로젝트 구조
+## 프로젝트 구조
 
 ```
 cdc-realtime-pipeline/
@@ -738,11 +738,11 @@ cdc-realtime-pipeline/
 │   ├── build-flink-job.sh              # Flink Job 빌드 + 배포
 │   ├── sync-annotations.sh            # Grafana annotation 자동 동기화
 │   ├── ops/validate-topic-schemas.py   # 살아 있는 토픽 표본 ↔ schemas/ 대조, 위반이면 exit 1 (--self-test 로 검증기 자체 확인)
-│   ├── labels/poll_market_state.py     # 마켓 거래 상태 10분 폴링 (상장폐지·정지를 유실과 구분) — 이 정보는 웹소켓에만 있다
+│   ├── labels/poll_market_state.py     # 마켓 거래 상태 10분 폴링 (상장폐지·정지를 유실과 구분) - 이 정보는 웹소켓에만 있다
 │   ├── labels/poll_exchange_notices.py # 거래소 공지 매시 수집 (수집 공백이 점검인지 유실인지 가르는 근거)
 │   ├── lib/minws.py                    # 표준 라이브러리 웹소켓 클라이언트 (의존성을 늘리지 않으려고 직접)
 │   ├── ops/reprocess-day.sh            # 하루 재처리 런북 (보존 경계 표 + 커버리지 측정)
-│   ├── ops/restore-rehearsal.sh        # 복원 리허설 — 표 단위 복원(DB째 하면 Kafka 엔진 표가 프로덕션 컨슈머를 가로챈다) + 금액 합 대조
+│   ├── ops/restore-rehearsal.sh        # 복원 리허설 - 표 단위 복원(DB째 하면 Kafka 엔진 표가 프로덕션 컨슈머를 가로챈다) + 금액 합 대조
 │   └── observe/collect_metrics.sh      # 7일 관찰용 5분 지표 스냅샷 (87컬럼, crontab)
 │
 └── docs/
@@ -760,13 +760,13 @@ cdc-realtime-pipeline/
     ├── 13-sequential-id-collision-incident.md  # 유실 사고 #2: sid 마켓 간 충돌, 백필 210,469건
     ├── 14-observation-week1.md       # 7일 무변경 관찰 결과: 가설 12개 중 10 통과·1 조건부·1 위반, 튜닝 순위 8건
     ├── 15-load-experiment-design.md    # 재생 증폭 부하 실험 설계(3계층, Binance 코퍼스, 준확정)
-    ├── 16-anomaly-rule-basis.md        # 이상탐지 기준 재설계 — 업비트 시장경보 재현, 6개월 라벨 대비 정밀도·재현율
+    ├── 16-anomaly-rule-basis.md        # 이상탐지 기준 재설계 - 업비트 시장경보 재현, 6개월 라벨 대비 정밀도·재현율
     ├── 16-appendix-queries.md          # 위 결론을 재생산하는 쿼리 10개와 출력 (scripts/analysis/rule_basis_check.sh)
     ├── 17-reconcile-dag-dbt-contracts.md  # 원장 대조 DAG·dbt 계약 설계 결정 + 첫 실행이 잡은 유실 2건
-    ├── 18-findings-and-lessons.md      # 2026-09-16 발견 총괄 — 무엇을 찾았고 어떻게 찾았나, 정정 기록 포함
-    ├── 19-loss-prevention-gap-map.md   # 유실 방지 구조 실무 대비 현황표(14항목) + 작업 순서 — 이후 작업의 기준
-    ├── 20-deployment-1.md              # 배포 1: 늦은 이벤트 가드·gap-fill·수리 계보·10분 커버리지·CI — 설계 변경 근거와 실측 검증
-    ├── 21-backup-and-access-control.md # 백업(Oracle 오프사이트, 복원 리허설 79초)·접근 통제(사용자 분리, 컷오버 런북) — 판단 오류 2건 정정 포함
+    ├── 18-findings-and-lessons.md      # 2026-09-16 발견 총괄 - 무엇을 찾았고 어떻게 찾았나, 정정 기록 포함
+    ├── 19-loss-prevention-gap-map.md   # 유실 방지 구조 실무 대비 현황표(14항목) + 작업 순서 - 이후 작업의 기준
+    ├── 20-deployment-1.md              # 배포 1: 늦은 이벤트 가드·gap-fill·수리 계보·10분 커버리지·CI - 설계 변경 근거와 실측 검증
+    ├── 21-backup-and-access-control.md # 백업(Oracle 오프사이트, 복원 리허설 79초)·접근 통제(사용자 분리, 컷오버 런북) - 판단 오류 2건 정정 포함
     ├── 22-rules-v2-and-quality-layer.md # 이상탐지 v2(PRICE_24H 등급 전이 섀도, VOLUME_24H dbt 규칙) + dq_* 품질 층 + 규칙 평가 모델 + 승격 기준
     ├── 29-kafka-usage-review.md      # Kafka 사용 방식 냉정 평가: 체결 키 trade_id → market(재정렬 원인), 처리 시간 창, 압축·보존, DLQ, 스키마 계약
     ├── 30-lessons-consolidated.md # 실수를 교훈으로 통합: 부재 단정 3회·측정 오염·검증 전 커밋·분할·문서vs실측·조용한 실패 + 체크리스트
@@ -791,7 +791,7 @@ cdc-realtime-pipeline/
 
 ---
 
-## 🎤 예상 질문
+## 예상 질문
 
 ### Q1. 왜 On-Premise를 선택했나요?
 > "AWS같은 클라우드 시스템이 아닌, On-Premise 클러스터 구축을 해보고 싶어서, 클라우드 관리형 서비스가 아닌 물리 서버에서 직접 구축하고 24시간 운영하며 실제 장애 대응까지 경험했습니다."
@@ -834,10 +834,10 @@ cdc-realtime-pipeline/
 > "10분 확인은 '깨지지 않았다'만 알려 줍니다. 8월 지연 사고도 하루 단위 데이터를 봐야 보였습니다. 피크 시간대(KST 09시, 22~24시)와 주말 저거래 구간을 한 사이클 겪어야 언제 밀리는지 알 수 있어서, 가설 12개와 임계값을 먼저 적어 두고 5분마다 87개 지표를 쌓습니다. 관찰 결과로 튜닝 순서를 정하고, 그 뒤에 같은 실데이터를 배속 재생하는 부하 실험으로 개선 전후를 비교합니다."
 
 ### Q15. Kafka 를 "분산 처리"로 쓰고 있나요?
-> "아니요. 단일 호스트라 복제·병렬·확장은 24시간 실측 뒤 껐습니다(브로커 3→1). 쓰는 건 로그 성질입니다 — 오프셋 재개(세이브포인트 재배포 때 trade_id +1 연속), 생산자·소비자 분리(Flink 30분 정지에도 원장 무손실), 한 토픽 다중 소비자(CDC·서킷·부하 실험·ClickHouse 엔진), 키 순서(market 키로 재정렬 5.87% 원인 제거). Kafka 없이 Flink CDC 직결로도 됐고 처음 고른 이유는 역량 증명이었습니다. 규모가 필요해지는 지점과 그때 손댈 순서(파티션→브로커)는 부하 실험으로 말합니다."
+> "아니요. 단일 호스트라 복제·병렬·확장은 24시간 실측 뒤 껐습니다(브로커 3→1). 쓰는 건 로그 성질입니다 - 오프셋 재개(세이브포인트 재배포 때 trade_id +1 연속), 생산자·소비자 분리(Flink 30분 정지에도 원장 무손실), 한 토픽 다중 소비자(CDC·서킷·부하 실험·ClickHouse 엔진), 키 순서(market 키로 재정렬 5.87% 원인 제거). Kafka 없이 Flink CDC 직결로도 됐고 처음 고른 이유는 역량 증명이었습니다. 규모가 필요해지는 지점과 그때 손댈 순서(파티션→브로커)는 부하 실험으로 말합니다."
 
 ### Q16. 체결은 INSERT 뿐인데 그게 CDC 인가요?
-> "체결만 보면 큐와 같습니다. 그래서 2층에 상태가 바뀌는 원장(주문)을 두고, 상태를 바꾸는 주체를 우리가 아니라 거래소 매칭 엔진(Binance Testnet, 실돈 없음)으로 뒀습니다. UPDATE·DELETE 가 키 순서로 흘러 ClickHouse 에서 최종 상태가 재구성되고, 거래소·MySQL·ClickHouse 3자 대조로 매일 증명합니다. 체결 커넥터는 삭제를 버리고(보관소), 원장 커넥터는 살립니다(거울) — 같은 도구의 두 모드를 상황에 맞게 골랐습니다."
+> "체결만 보면 큐와 같습니다. 그래서 2층에 상태가 바뀌는 원장(주문)을 두고, 상태를 바꾸는 주체를 우리가 아니라 거래소 매칭 엔진(Binance Testnet, 실돈 없음)으로 뒀습니다. UPDATE·DELETE 가 키 순서로 흘러 ClickHouse 에서 최종 상태가 재구성되고, 거래소·MySQL·ClickHouse 3자 대조로 매일 증명합니다. 체결 커넥터는 삭제를 버리고(보관소), 원장 커넥터는 살립니다(거울) - 같은 도구의 두 모드를 상황에 맞게 골랐습니다."
 
 ### Q17. 파티션 키를 왜 바꿨나요?
 > "처음 표는 '언제 들어왔나'(binlog 시각)로 나뉘어 있었는데 조회는 전부 '언제 일어났나'(체결 시각)로 걸어서 프루닝이 안 됐습니다. 1시간 조회가 7개월을 훑었습니다(39/39 파트, 1.0초). 체결 시각 파티션·이벤트 키로 무정지 재생성해 5/56 파트 0.10초가 됐고, 키를 업무 정체성(마켓+sequential_id)으로 바꾸자 옛 키가 못 거르던 재스냅샷 중복 4행이 걸러졌습니다. MySQL 도 같은 기준이라 재처리·삭제 단위가 양쪽에서 같습니다."
@@ -846,17 +846,17 @@ cdc-realtime-pipeline/
 > "세 번 있습니다. 유실을 소스 탓으로, 시장경보 이력이 없다고, Binance 가 같은 범주라고. 셋 다 실제로 구독하거나 번들을 뒤지니 나왔습니다. 그 뒤 규칙이 '외부 API 의 없다·같다는 공식 문서와 실제 연결 두 갈래로 확인한 뒤에만'이고, 그 확인으로 amend keepPriority·Demo Mode·announcement 스트림을 찾았습니다."
 
 ### Q11. 알림 체계가 n8n과 Airflow 두 개인 이유는?
-> "역할이 다릅니다. n8n은 매분 ClickHouse를 폴링하여 FDS 이상거래와 CDC 장애를 **즉시** Slack + Gmail로 알립니다. Airflow는 매일 01:00 KST에 전날 데이터를 **일일 리포트**로 종합합니다 — CDC 지연 percentile, 코인별 품질검증, 이상탐지 요약, 거래량 급등 등. health_check DAG은 10분 간격으로 파이프라인 컴포넌트 상태를 점검하되, 이상 시에만 알림을 보내 alert fatigue를 방지합니다."
+> "역할이 다릅니다. n8n은 매분 ClickHouse를 폴링하여 FDS 이상거래와 CDC 장애를 **즉시** Slack + Gmail로 알립니다. Airflow는 매일 01:00 KST에 전날 데이터를 **일일 리포트**로 종합합니다 - CDC 지연 percentile, 코인별 품질검증, 이상탐지 요약, 거래량 급등 등. health_check DAG은 10분 간격으로 파이프라인 컴포넌트 상태를 점검하되, 이상 시에만 알림을 보내 alert fatigue를 방지합니다."
 
 ---
 
-## 🔗 관련 프로젝트
+## 관련 프로젝트
 
-- [FDS Pipeline Lab](https://github.com/Aguantar/fds-pipeline-lab) — 이상거래 탐지 파이프라인 (Redis+Consumer로 TPS 70→17,500, 250배 최적화)
+- [FDS Pipeline Lab](https://github.com/Aguantar/fds-pipeline-lab) - 이상거래 탐지 파이프라인 (Redis+Consumer로 TPS 70→17,500, 250배 최적화)
 
 ---
 
-## 🖥️ 서버 환경
+## 서버 환경
 
 | 항목 | 스펙 |
 |------|------|
